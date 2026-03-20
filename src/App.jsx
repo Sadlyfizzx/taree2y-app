@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Home, Ticket, Wallet as WalletIcon, User, MapPin, Calendar, Users, 
@@ -168,6 +169,7 @@ export default function App() {
       <div className="w-full bg-white dark:bg-slate-950 shadow-2xl relative flex flex-col md:flex-row h-[100dvh] overflow-hidden">
         <UserApp user={user} onLogout={() => { setUser(null); localStorage.removeItem('taree2y_v7_user'); }} isDark={isDark} setIsDark={setIsDark} />
       </div>
+          <Analytics />
     </div>
   );
 }
