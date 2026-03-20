@@ -31,61 +31,117 @@ const DRIVERS = [
   { name: 'كابتن سيد رمضان', rating: 4.9, trips: 520, img: '👨🏾‍✈️' }
 ];
 
+const createSeededRandom = (seedString) => {
+  let seed = 0;
+
+  for (let i = 0; i < seedString.length; i++) {
+    seed = (seed * 31 + seedString.charCodeAt(i)) >>> 0;
+  }
+
+  return () => {
+    seed = (1664525 * seed + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+};
+
+const getTripDateTime = (date, time) => new Date(`${date}T${time}:00`);
+
+const getArrivalDateTime = (date, departureTime, arrivalTime) => {
+  const departure = getTripDateTime(date, departureTime);
+  const arrival = getTripDateTime(date, arrivalTime);
+
+  if (arrival < departure) {
+    arrival.setDate(arrival.getDate() + 1);
+  }
+
+  return arrival;
+};
+
 const generateSeats = (tripId, tripDate, tripTime) => {
-  const seats = [];
+  const random = createSeededRandom(`${tripId}-${tripDate}-${tripTime}`);
   const now = new Date();
   const tripDateTime = new Date(`${tripDate}T${tripTime}:00`);
   const hoursDiff = (tripDateTime - now) / (1000 * 60 * 60);
 
-  let bookedProb = hoursDiff < 0 ? 1.0 : hoursDiff < 12 ? 0.90 : hoursDiff < 48 ? 0.70 : hoursDiff < 120 ? 0.40 : 0.15;
-  const randomSeed = (tripId.charCodeAt(tripId.length - 1) % 10) / 100;
+  const bookedProb =
+    hoursDiff < 0 ? 1 :
+    hoursDiff < 12 ? 0.9 :
+    hoursDiff < 48 ? 0.7 :
+    hoursDiff < 120 ? 0.4 :
+    0.15;
 
-  for (let i = 1; i <= 40; i++) {
-    const isBooked = Math.random() < (bookedProb + randomSeed);
-    seats.push({ id: i, number: `${i}${['A','B','C','D'][i%4]}`, status: isBooked ? 'booked' : 'available' });
-  }
-  return seats;
+  return Array.from({ length: 40 }, (_, index) => {
+    const seatIndex = index + 1;
+
+    return {
+      id: seatIndex,
+      number: `${seatIndex}${['A', 'B', 'C', 'D'][index % 4]}`,
+      status: random() < bookedProb ? 'booked' : 'available',
+    };
+  });
 };
 
 const generateTrips = (from, to, date) => {
   if (!from || !to || from === to) return { trips: [], isDirect: false };
+
   const routeKey = `${from}-${to}`;
   const basePrice = DIRECT_ROUTES[routeKey];
+
   if (!basePrice) return { trips: [], isDirect: false };
-  
-  const numTrips = Math.floor(Math.random() * 4) + 4; 
-  const trips = Array.from({ length: numTrips }).map((_, i) => {
-    const id = `TRP-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const hour = 5 + (i * 2) + Math.floor(Math.random() * 2); 
-    const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+
+  const searchRandom = createSeededRandom(`${from}-${to}-${date}`);
+  const numTrips = 4 + Math.floor(searchRandom() * 4);
+
+  const trips = Array.from({ length: numTrips }, (_, i) => {
+    const tripRandom = createSeededRandom(`${from}-${to}-${date}-${i}`);
+    const id = `TRP-${date.replace(/-/g, '').slice(2)}-${i + 1}`;
+    const hour = 5 + i * 2 + Math.floor(tripRandom() * 2);
+    const departureTime = `${hour.toString().padStart(2, '0')}:00`;
     const isVIP = i % 2 === 0;
-    
-    const baseDuration = Math.max(2, basePrice / 60); 
-    const randomVariance = (Math.random() * 1.5) - 0.5; 
-    const finalDuration = baseDuration + randomVariance;
-    
-    const arrHour = Math.floor(hour + finalDuration) % 24;
-    const arrMins = Math.round((finalDuration % 1) * 60);
-    const arrivalStr = `${arrHour.toString().padStart(2, '0')}:${arrMins.toString().padStart(2, '0')}`;
-    
+
+    const baseDuration = Math.max(2, basePrice / 60);
+    const durationMinutes = Math.round((baseDuration + (tripRandom() * 1.5 - 0.5)) * 60);
+    const arrivalTotalMinutes = hour * 60 + durationMinutes;
+    const arrivalHour = Math.floor((arrivalTotalMinutes / 60) % 24);
+    const arrivalMinutes = arrivalTotalMinutes % 60;
+    const arrivalTime = `${arrivalHour.toString().padStart(2, '0')}:${arrivalMinutes.toString().padStart(2, '0')}`;
+
     let finalPrice = isVIP ? Math.floor(basePrice * 1.5) : basePrice;
-    finalPrice += Math.floor(Math.random() * 4) * 10; 
+    finalPrice += Math.floor(tripRandom() * 4) * 10;
 
     return {
-      id, from, to, date, departureTime: timeStr, arrivalTime: arrivalStr,
-      durationHour: parseFloat(finalDuration.toFixed(1)), price: finalPrice,
-      company: ['جو باص', 'سوبر جيت', 'بلو باص'][i % 3], class: isVIP ? 'VIP رجال أعمال' : 'اقتصادي مميز',
-      rating: (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1), seats: generateSeats(id, date, timeStr),
-      driver: DRIVERS[i % DRIVERS.length]
+      id,
+      from,
+      to,
+      date,
+      departureTime,
+      arrivalTime,
+      durationHour: Number((durationMinutes / 60).toFixed(1)),
+      price: finalPrice,
+      company: ['جو باص', 'سوبر جيت', 'بلو باص'][i % 3],
+      class: isVIP ? 'VIP رجال أعمال' : 'اقتصادي مميز',
+      rating: (4 + tripRandom()).toFixed(1),
+      seats: generateSeats(id, date, departureTime),
+      driver: DRIVERS[i % DRIVERS.length],
     };
   });
 
-  const cheapest = [...trips].sort((a,b) => a.price - b.price)[0];
-  const fastest = [...trips].sort((a,b) => a.durationHour - b.durationHour)[0];
-  
-  return { 
-    trips: trips.map(t => ({ ...t, badge: t.id === cheapest?.id ? 'cheapest' : t.id === fastest?.id ? 'fastest' : t.class.includes('VIP') ? 'vip' : null })),
-    isDirect: true 
+  const cheapest = [...trips].sort((a, b) => a.price - b.price)[0];
+  const fastest = [...trips].sort((a, b) => a.durationHour - b.durationHour)[0];
+
+  return {
+    trips: trips.map((t) => ({
+      ...t,
+      badge:
+        t.id === cheapest?.id
+          ? 'cheapest'
+          : t.id === fastest?.id
+            ? 'fastest'
+            : t.class.includes('VIP')
+              ? 'vip'
+              : null,
+    })),
+    isDirect: true,
   };
 };
 
@@ -172,29 +228,36 @@ function UserApp({ user, onLogout, isDark, setIsDark }) {
     if(!params.from || !params.to || !params.date) return showToast('حدد مكان التحرك والوصول وتاريخ الرحلة الأول 📍', 'error');
     if(params.from === params.to) return showToast('مكان الانطلاق هو هو مكان الوصول!', 'error');
     if (predefinedParams) setSearchParams(params);
-    setIsSearching(true); navigateTo('search');
-    setTimeout(() => { setSearchResults(generateTrips(params.from, params.to, params.date)); setIsSearching(false); }, 1200);
+    setIsSearching(true);
+    navigateTo('search');
+    const results = generateTrips(params.from, params.to, params.date);
+    setSearchResults(results);
+    setIsSearching(false);
   };
 
   const processDelayedRefund = (tripToCancel) => {
     const feeRatio = COMPANY_FEES[tripToCancel.company] || 0.20;
-    const refundAmount = tripToCancel.finalTotal * (1 - feeRatio);
+    const refundAmount = Math.round(tripToCancel.finalTotal * (1 - feeRatio));
 
-    setMyTrips(prev => prev.map(t => t.pnr === tripToCancel.pnr ? {...t, status: 'refund_pending'} : t));
-    showToast('جاري الإلغاء ومعالجة طلب الاسترداد ⏳', 'success');
+    setMyTrips(prev =>
+      prev.map(t =>
+        t.pnr === tripToCancel.pnr ? { ...t, status: 'cancelled' } : t
+      )
+    );
 
-    setTimeout(() => {
-      setMyTrips(currentTrips => {
-         const exists = currentTrips.find(t => t.pnr === tripToCancel.pnr);
-         if (exists) {
-            setWallet(p => p + refundAmount);
-            setTransactions(p => [{ id: `REF-${Math.random().toString(36).substr(2,4).toUpperCase()}`, type: 'credit', amount: refundAmount, date: new Date().toISOString().split('T')[0], desc: `استرداد تذكرة ${tripToCancel.pnr}` }, ...p]);
-            showToast(`تم الإلغاء! رجعلك ${refundAmount} ج.م للمحفظة 💸`, 'success');
-            return currentTrips.map(t => t.pnr === tripToCancel.pnr ? {...t, status: 'cancelled'} : t);
-         }
-         return currentTrips;
-      });
-    }, 5000); 
+    setWallet(prev => prev + refundAmount);
+    setTransactions(prev => [
+      {
+        id: `REF-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        type: 'credit',
+        amount: refundAmount,
+        date: new Date().toISOString().split('T')[0],
+        desc: `استرداد تذكرة ${tripToCancel.pnr}`,
+      },
+      ...prev,
+    ]);
+
+    showToast(`تم الإلغاء! رجعلك ${refundAmount} ج.م للمحفظة 💸`, 'success');
   };
 
   return (
@@ -276,7 +339,12 @@ function UserApp({ user, onLogout, isDark, setIsDark }) {
             )}
             {activeView === 'checkout' && selectedTrip && (
               <CheckoutView trip={selectedTrip} seats={selectedSeats} passengers={searchParams.passengers} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} setPoints={setPoints} subscription={subscription}
-                onSuccess={(ticket, invoice) => { setMyTrips([ticket, ...myTrips]); setCurrentInvoice(invoice); setViewedTicket(ticket); navigateTo('invoice'); }} showToast={showToast} openModal={setActiveModal} />
+                onSuccess={(ticket, invoice) => {
+                  setMyTrips(prev => [ticket, ...prev]);
+                  setCurrentInvoice(invoice);
+                  setViewedTicket(ticket);
+                  navigateTo('invoice');
+                }} showToast={showToast} openModal={setActiveModal} />
             )}
             {activeView === 'invoice' && currentInvoice && (
               <InvoiceView invoice={currentInvoice} onContinue={() => navigateTo('ticket')} />
@@ -314,11 +382,11 @@ function UserApp({ user, onLogout, isDark, setIsDark }) {
       </div>
 
       {/* Modals - Lower Z-Index than Toasts */}
-      {activeModal === 'courier' && <CourierModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} showToast={showToast} />}
-      {activeModal === 'bot' && <ChatbotModal closeModal={()=>setActiveModal(null)} user={user} />}
-      {activeModal === 'subs' && <SubscriptionsModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} subscription={subscription} setSubscription={setSubscription} showToast={showToast} />}
-      {activeModal === 'food' && <FoodOrderModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} showToast={showToast} />}
-      {activeModal === 'points' && <PointsModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} points={points} setPoints={setPoints} showToast={showToast} />}
+      {false && activeModal === 'courier' && <CourierModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} showToast={showToast} />}
+      {false && activeModal === 'bot' && <ChatbotModal closeModal={()=>setActiveModal(null)} user={user} />}
+      {false && activeModal === 'subs' && <SubscriptionsModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} subscription={subscription} setSubscription={setSubscription} showToast={showToast} />}
+      {false && activeModal === 'food' && <FoodOrderModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} showToast={showToast} />}
+      {false && activeModal === 'points' && <PointsModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} points={points} setPoints={setPoints} showToast={showToast} />}
       {activeModal === 'topup' && <TopUpFlowModal closeModal={()=>setActiveModal(null)} wallet={wallet} setWallet={setWallet} setTransactions={setTransactions} showToast={showToast} />}
 
     </>
@@ -436,6 +504,7 @@ function HomeView({ searchParams, setSearchParams, onSearch, showToast, onPromoS
       </div>
 
       {/* Services Grid */}
+      {false && (
       <div className="px-5 lg:px-16 mt-8 mb-4 w-full shrink-0">
         <h3 className="font-black text-slate-800 dark:text-slate-100 text-lg mb-4">خدمات السفر 💼</h3>
         <div className="flex md:grid md:grid-cols-5 xl:grid-cols-5 gap-4 overflow-x-auto hide-scrollbar pb-4 snap-x w-full">
@@ -454,6 +523,7 @@ function HomeView({ searchParams, setSearchParams, onSearch, showToast, onPromoS
           ))}
         </div>
       </div>
+      )}
 
       {/* Offers Slider */}
       <div className="px-5 lg:px-16 mt-2 mb-8 w-full shrink-0">
@@ -574,7 +644,19 @@ function SearchResultsView({ searchParams, searchResults, isSearching, onSelectT
                const almostFull = availableSeats > 0 && availableSeats <= 5;
                
                return (
-               <div key={trip.id} onClick={() => availableSeats > 0 ? onSelectTrip(trip) : showToast('سجلنا اسمك في قائمة الانتظار، هنبلغك لو في مكان فضي ⏳', 'success')} 
+               <div key={trip.id} onClick={() => {
+                 if (availableSeats === 0) {
+                   showToast('سجلنا اسمك في قائمة الانتظار، هنبلغك لو في مكان فضي ⏳', 'success');
+                   return;
+                 }
+
+                 if (availableSeats < searchParams.passengers) {
+                   showToast(`المتاح ${availableSeats} مقاعد فقط للرحلة دي`, 'error');
+                   return;
+                 }
+
+                 onSelectTrip(trip);
+               }} 
                     className={`bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 transition-all active:scale-[0.98] relative overflow-hidden group ${availableSeats===0?'cursor-pointer hover:shadow-md hover:border-orange-300 dark:hover:border-orange-600':'cursor-pointer hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600'}`}>
                  
                  {trip.badge === 'cheapest' && <Badge color="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400" text="🔥 الأرخص" />}
@@ -661,10 +743,11 @@ function SeatSelectionView({ trip, passengers, selectedSeats, setSelectedSeats, 
         <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-6 max-w-[320px] mx-auto border-4 border-slate-200 dark:border-slate-700 relative shadow-sm mb-6">
           <div className="w-16 h-5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-10 relative"><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-2 bg-slate-300 dark:bg-slate-600 rounded-full"></div></div> 
           
-          <div className="grid grid-cols-4 gap-3 gap-x-8" dir="ltr">
+          <div className="grid grid-cols-[1fr_1fr_1.5rem_1fr_1fr] gap-3" dir="ltr">
             {trip.seats.map((seat, i) => {
               const isSelected = selectedSeats.includes(seat.number);
               const isBooked = seat.status === 'booked';
+              const colInRow = i % 4;
               return (
                 <React.Fragment key={seat.id}>
                   <button onClick={() => toggleSeat(seat)} disabled={isBooked}
@@ -675,7 +758,7 @@ function SeatSelectionView({ trip, passengers, selectedSeats, setSelectedSeats, 
                   >
                     {isSelected ? <Check className="w-5 h-5" /> : seat.number}
                   </button>
-                  {i % 4 === 1 && <div className="w-4"></div>} 
+                  {colInRow === 1 && <div aria-hidden="true" />} 
                 </React.Fragment>
               );
             })}
@@ -706,13 +789,10 @@ function CheckoutView({ trip, seats, passengers, wallet, setWallet, setTransacti
   const [needsAccess, setNeedsAccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const subDiscountRate = subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
-  
   const baseTotal = trip.price * passengers;
-  const autoDiscount = Math.floor(baseTotal * subDiscountRate);
   const luggageFee = hasLuggage ? (50 * passengers) : 0;
   const rideFee = rideToStation ? 80 : 0;
-  const finalTotal = baseTotal + luggageFee + rideFee - discount - autoDiscount;
+  const finalTotal = baseTotal + luggageFee + rideFee - discount;
   const isWalletSufficient = wallet >= finalTotal;
 
   const applyPromo = () => {
@@ -725,6 +805,11 @@ function CheckoutView({ trip, seats, passengers, wallet, setWallet, setTransacti
   };
 
   const handlePayment = () => {
+    if (seats.length !== passengers) {
+      showToast('لازم تختار كل المقاعد المطلوبة قبل الدفع', 'error');
+      return;
+    }
+
     if(!isWalletSufficient) return; 
     
     setIsProcessing(true);
@@ -734,9 +819,6 @@ function CheckoutView({ trip, seats, passengers, wallet, setWallet, setTransacti
       setWallet(p => p - finalTotal);
       setTransactions(p => [{ id: `TXN-${Math.random().toString(36).substr(2,6).toUpperCase()}`, type: 'debit', amount: finalTotal, date: new Date().toISOString().split('T')[0], desc: `تذكرة: ${trip.from} - ${trip.to}` }, ...p]);
       
-      const earnedPoints = Math.floor(finalTotal / 5);
-      setPoints(p => p + earnedPoints);
-
       const ticket = { ...trip, pnr, bookingDate: new Date().toISOString().split('T')[0], selectedSeats: seats, finalTotal, luggage: hasLuggage, ride: rideToStation, access: needsAccess, paymentMethod: 'wallet', status: 'upcoming' };
       
       const invoice = {
@@ -744,7 +826,6 @@ function CheckoutView({ trip, seats, passengers, wallet, setWallet, setTransacti
         items: [{ name: `تذاكر (${passengers})`, price: baseTotal }, 
                 ...(hasLuggage ? [{ name: 'وزن إضافي', price: luggageFee }] : []), 
                 ...(rideToStation ? [{ name: 'أوبر للمحطة', price: rideFee }] : []), 
-                ...(autoDiscount ? [{ name: 'خصم الباقة', price: -autoDiscount }] : []), 
                 ...(discount ? [{ name: 'كود خصم', price: -discount }] : [])]
       };
 
@@ -766,7 +847,13 @@ function CheckoutView({ trip, seats, passengers, wallet, setWallet, setTransacti
            <div className="flex justify-between font-black text-lg text-slate-800 dark:text-slate-100 mb-1">
              <span>{trip.from}</span><ArrowRightLeft className="w-5 h-5 text-slate-300" /><span>{trip.to}</span>
            </div>
-           <div className="text-sm font-bold text-slate-500 dark:text-slate-400 text-left" dir="ltr">{trip.departureTime} • {trip.date}</div>
+           <div className="text-sm font-bold text-slate-500 dark:text-slate-400 text-left space-y-1" dir="ltr">
+             <div>Departure: {trip.departureTime} • {trip.date}</div>
+             <div>
+               Arrival: {trip.arrivalTime} • {getArrivalDateTime(trip.date, trip.departureTime, trip.arrivalTime).toISOString().split('T')[0]}
+               {getArrivalDateTime(trip.date, trip.departureTime, trip.arrivalTime).toISOString().split('T')[0] !== trip.date && ' (Next day)'}
+             </div>
+           </div>
         </div>
 
         <div className="relative z-10 pt-6">
@@ -823,9 +910,7 @@ function CheckoutView({ trip, seats, passengers, wallet, setWallet, setTransacti
             <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between font-black text-xl text-slate-900 dark:text-white">
                <span>المطلوب دفعه</span><span className="text-indigo-600 dark:text-indigo-400" dir="ltr">{finalTotal} ج.م</span>
             </div>
-            <div className="text-[10px] text-center text-slate-400 bg-slate-50 dark:bg-slate-900 py-1.5 rounded-lg flex items-center justify-center gap-1">
-               <Award className="w-3 h-3 text-indigo-500"/> هتكسب {Math.floor(finalTotal/5)} نقطة ولاء بعد الرحلة دي
-            </div>
+            
          </div>
       </div>
 
@@ -901,8 +986,8 @@ function TripsView({ trips, setMyTrips, processRefund, onViewTicket, showToast }
     let changed = false;
     const updatedTrips = trips.map(t => {
       if (t.status === 'upcoming') {
-        const tripDate = new Date(`${t.date}T${t.arrivalTime.split(':')[0]}:00`);
-        if (now > tripDate) { changed = true; return { ...t, status: 'past' }; }
+        const arrivalDate = getArrivalDateTime(t.date, t.departureTime, t.arrivalTime);
+        if (now > arrivalDate) { changed = true; return { ...t, status: 'past' }; }
       }
       return t;
     });
@@ -1025,6 +1110,8 @@ function TicketView({ ticket, user, onTrack, showToast }) {
                 <div><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">الراكب</span><span className="font-bold text-slate-800 dark:text-slate-200">{user.name}</span></div>
                 <div className="text-left"><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">التاريخ</span><span className="font-bold text-slate-800 dark:text-slate-200" dir="ltr">{ticket.date}</span></div>
                 <div><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">التحرك</span><span className="font-black text-indigo-600 dark:text-indigo-400 text-lg" dir="ltr">{ticket.departureTime}</span></div>
+                <div className="text-left"><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">الوصول</span><span className="font-black text-slate-800 dark:text-slate-200 text-lg" dir="ltr">{ticket.arrivalTime}</span></div>
+                <div><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">تاريخ الوصول</span><span className="font-bold text-slate-800 dark:text-slate-200" dir="ltr">{getArrivalDateTime(ticket.date, ticket.departureTime, ticket.arrivalTime).toISOString().split('T')[0]}</span></div>
                 <div className="text-left"><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">كراسي</span><span className="font-black text-slate-800 dark:text-slate-200 text-lg" dir="ltr">{ticket.selectedSeats?.join(', ') || ''}</span></div>
              </div>
              
@@ -1059,10 +1146,8 @@ function TrackingView({ ticket, showToast, openModal }) {
   const isPast = ticket.status === 'past';
   const now = new Date();
   
-  const departureDate = new Date(`${ticket.date}T${ticket.departureTime.split(':')[0]}:00`);
-  const [arrH, arrM] = ticket.arrivalTime.split(':');
-  const arrivalDate = new Date(`${ticket.date}T${arrH}:${arrM}:00`);
-  if (arrivalDate < departureDate) arrivalDate.setDate(arrivalDate.getDate() + 1);
+  const departureDate = getTripDateTime(ticket.date, ticket.departureTime);
+  const arrivalDate = getArrivalDateTime(ticket.date, ticket.departureTime, ticket.arrivalTime);
 
   let progress = 0;
   let statusText = 'لسه متحركتش (في الانتظار)';
@@ -1123,7 +1208,9 @@ function TrackingView({ ticket, showToast, openModal }) {
             
             <div className="absolute top-1/2 right-1/2 translate-x-1/2 w-4 h-4 bg-orange-400 rounded-full border-2 border-slate-50 dark:border-slate-900 z-10 flex items-center justify-center"></div>
             <div className="absolute top-1/2 right-8 text-xs font-bold text-slate-500 dark:text-slate-400 w-24 whitespace-nowrap -translate-y-1/2">استراحة ريست</div>
+            {false && (
             <button onClick={()=>openModal('food')} className="absolute top-1/2 left-8 bg-orange-50 dark:bg-orange-900/30 text-orange-600 text-[10px] font-bold px-2 py-1 rounded-lg border border-orange-200 dark:border-orange-800 -translate-y-1/2 whitespace-nowrap flex items-center gap-1 active:scale-95 transition"><Coffee className="w-3 h-3"/> اطلب للريست</button>
+            )}
 
             <div className="absolute bottom-0 right-1/2 translate-x-1/2 w-5 h-5 bg-emerald-500 rounded-full border-4 border-slate-50 dark:border-slate-900 z-10"></div>
             <div className="absolute bottom-0 right-8 text-sm font-black dark:text-white w-24 whitespace-nowrap">{ticket.to}</div>
@@ -1203,6 +1290,7 @@ function TopUpFlowModal({ closeModal, wallet, setWallet, setTransactions, showTo
 
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
   const [ipa, setIpa] = useState('');
   const [card, setCard] = useState({num: '', exp: '', cvv: ''});
 
@@ -1220,8 +1308,8 @@ function TopUpFlowModal({ closeModal, wallet, setWallet, setTransactions, showTo
 
   const handleSendOTP = () => {
      if(!phone || phone.length < 11) return showToast('رقم الموبايل غلط', 'error');
-     showToast('بعتنالك الكود ✉️', 'success');
-     setTimeout(() => setOtp('123456'), 1500); 
+     showToast('بعتنالك الكود على موبايلك ✉️', 'success');
+     setOtpSent(true);
   };
 
   const handleConfirm = () => {
@@ -1288,11 +1376,11 @@ function TopUpFlowModal({ closeModal, wallet, setWallet, setTransactions, showTo
                     <Phone className="w-5 h-5 text-slate-400 absolute top-1/2 -translate-y-1/2 right-4" />
                     <input type="tel" placeholder="رقم الموبايل المرتبط بالمحفظة" value={phone} onChange={e=>setPhone(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl py-4 pr-12 pl-4 text-base font-bold text-slate-800 dark:text-white outline-none focus:border-red-500 text-left" dir="ltr" />
                   </div>
-                  {!otp && <button onClick={handleSendOTP} className="w-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-white font-bold py-3 rounded-xl">إرسال كود التأكيد (OTP)</button>}
-                  {otp && (
+                  {!otpSent && <button onClick={handleSendOTP} className="w-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-white font-bold py-3 rounded-xl">إرسال كود التأكيد (OTP)</button>}
+                  {otpSent && (
                      <div className="animate-fade-in-down space-y-2">
                         <label className="text-xs font-bold text-slate-500">كود التأكيد من الرسالة:</label>
-                        <input type="text" value={otp} onChange={e=>setOtp(e.target.value)} className="w-full bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500 rounded-2xl py-4 px-4 text-center text-xl tracking-[0.5em] font-black text-emerald-700 dark:text-emerald-400 outline-none" dir="ltr" />
+                        <input type="text" placeholder="------" value={otp} onChange={e=>setOtp(e.target.value)} className="w-full bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500 rounded-2xl py-4 px-4 text-center text-xl tracking-[0.5em] font-black text-emerald-700 dark:text-emerald-400 outline-none" dir="ltr" />
                      </div>
                   )}
                </div>
@@ -1349,6 +1437,7 @@ function ProfileView({ user, points, subscription, isDark, setIsDark, onLogout, 
             </div>
          </div>
 
+         {false && (
          <div onClick={()=>openModal('points')} className="bg-white dark:bg-slate-800 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-center cursor-pointer hover:border-indigo-300 transition group">
             <div className="flex justify-between items-center mb-4">
                <h4 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-lg"><Award className="w-6 h-6 text-indigo-500 group-hover:scale-110 transition-transform"/> نقاط ولاء طريقي</h4>
@@ -1362,21 +1451,26 @@ function ProfileView({ user, points, subscription, isDark, setIsDark, onLogout, 
                <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${Math.min(100, (points/1000)*100)}%` }}></div>
             </div>
          </div>
+         )}
        </div>
 
        <div className="space-y-3 pt-4 max-w-4xl">
           <h4 className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase px-2">إعدادات التطبيق</h4>
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
              
+             {false && (
+             <>
              <div onClick={()=>openModal('subs')} className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
                 <div className="flex items-center gap-4"><div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center"><Crown className="w-5 h-5 text-purple-600 dark:text-purple-400"/></div><span className="font-bold text-base dark:text-slate-200">باقات التوفير</span></div>
                 {subscription !== 'none' ? <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-bold">باقة مفعلة</span> : <ChevronRight className="w-5 h-5 text-slate-400 rotate-180"/>}
              </div>
              <div className="h-px bg-slate-100 dark:bg-slate-700 mx-5"></div>
+             </>
+             )}
              
              <div onClick={()=>setIsDark(!isDark)} className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
                 <div className="flex items-center gap-4"><div className="w-10 h-10 bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center"><Moon className="w-5 h-5 text-slate-600 dark:text-slate-400"/></div><span className="font-bold text-base dark:text-slate-200">الوضع الليلي (Dark Mode)</span></div>
-                <div className={`w-14 h-7 rounded-full relative transition-colors ${isDark ? 'bg-indigo-600' : 'bg-slate-300'}`}><div className={`w-6 h-6 bg-white rounded-full absolute top-0.5 transition-transform ${isDark ? 'right-0.5 -translate-x-7' : 'left-0.5'}`}></div></div>
+                <div className={`w-14 h-7 rounded-full relative transition-colors ${isDark ? 'bg-indigo-600' : 'bg-slate-300'}`}><div className={`w-6 h-6 bg-white rounded-full absolute top-0.5 transition-all duration-300 ${isDark ? 'right-0.5' : 'left-0.5'}`}></div></div>
              </div>
              <div className="h-px bg-slate-100 dark:bg-slate-700 mx-5"></div>
              
