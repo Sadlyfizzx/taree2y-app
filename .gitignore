@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.ai_patch_backup_*/
+.patch_backup_*/
+.refactor-backups/
+.taree2y_backups/
+backup/
+taree2y-app-ai-context-*.txt
+taree2y-app-ai-export-*.txt
+*.backup.jsx
+*.backup.js
+*.bak
+*.bak.*
+.stability_backups/
+.stability/

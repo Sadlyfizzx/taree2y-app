@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { createLogger } from '../../lib/logger';
+
+const log = createLogger('auth-session');
 
 export function useAuthSession() {
   const [session, setSession] = useState(null);
@@ -9,39 +12,97 @@ export function useAuthSession() {
   useEffect(() => {
     let mounted = true;
 
-    const loadProfile = async (userId) => {
+    const applyFallbackProfile = async (user) => {
+      const fallbackProfile = {
+        id: user.id,
+        display_name:
+          user?.user_metadata?.display_name ||
+          user?.email?.split('@')[0] ||
+          'مستخدم',
+        phone: user?.user_metadata?.phone || '',
+      };
+
+      if (mounted) setProfile(fallbackProfile);
+
+      const { error } = await supabase.from('profiles').upsert({
+        id: user.id,
+        display_name: fallbackProfile.display_name,
+        phone: fallbackProfile.phone || null,
+      });
+
+      if (error) {
+        log.warn('profile_bootstrap_failed', {
+          userId: user.id,
+          error,
+        });
+      } else {
+        log.info('profile_bootstrap_completed', {
+          userId: user.id,
+        });
+      }
+    };
+
+    const loadProfile = async (user) => {
+      const userId = user?.id;
+      if (!userId) {
+        if (mounted) setProfile(null);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (!mounted) return;
 
       if (error) {
-        console.error(error);
-        setProfile(null);
+        log.error('profile_load_failed', {
+          userId,
+          error,
+        });
+        await applyFallbackProfile(user);
+        return;
+      }
+
+      if (!data) {
+        log.warn('profile_missing_row', {
+          userId,
+        });
+        await applyFallbackProfile(user);
         return;
       }
 
       setProfile(data);
+      log.debug('profile_loaded', {
+        userId,
+      });
     };
 
     const bootstrap = async () => {
-      const { data } = await supabase.auth.getSession();
-      const currentSession = data.session ?? null;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
 
-      if (!mounted) return;
+        const currentSession = data.session ?? null;
+        if (!mounted) return;
 
-      setSession(currentSession);
-
-      if (currentSession?.user?.id) {
-        await loadProfile(currentSession.user.id);
-      } else {
-        setProfile(null);
+        setSession(currentSession);
+        if (currentSession?.user?.id) {
+          await loadProfile(currentSession.user);
+        } else {
+          setProfile(null);
+        }
+      } catch (error) {
+        log.error('bootstrap_failed', { error });
+        if (mounted) {
+          setSession(null);
+          setProfile(null);
+        }
+      } finally {
+        if (mounted) setAuthLoading(false);
       }
-
-      if (mounted) setAuthLoading(false);
     };
 
     bootstrap();
@@ -53,12 +114,15 @@ export function useAuthSession() {
 
       if (!nextSession?.user?.id) {
         setProfile(null);
+        setAuthLoading(false);
         return;
       }
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         if (!mounted) return;
-        loadProfile(nextSession.user.id);
+        loadProfile(nextSession.user).finally(() => {
+          if (mounted) setAuthLoading(false);
+        });
       }, 0);
     });
 

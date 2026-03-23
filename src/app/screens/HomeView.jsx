@@ -27,7 +27,7 @@ function HomeView({ searchParams, setSearchParams, onSearch, showToast, onPromoS
     } else {
       let ta = document.createElement("textarea");
       ta.value = code; ta.style.position = "fixed"; document.body.appendChild(ta); ta.focus(); ta.select();
-      try { document.execCommand('copy'); } catch (err) {}
+      try { document.execCommand('copy'); } catch (_err) { void _err; }
       document.body.removeChild(ta);
     }
     showToast(`نسخنا كود الخصم (${code}) بنجاح! ✂️`, 'success');

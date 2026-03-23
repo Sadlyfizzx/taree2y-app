@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { loadSupabaseAppState, saveSupabaseAppState } from '../../lib/supabaseAppState';
+import {
+  loadSupabaseAppState,
+  saveSupabaseAppState,
+} from '../../lib/supabaseAppState';
 import { supabase } from '../../lib/supabase';
+import { createLogger } from '../../lib/logger';
 import { readJSON, readNumber, demoKey } from '../../utils/storage';
 import { getTripLifecycleStatus } from '../utils/travel';
+
+const log = createLogger('cloud-app-state');
 
 export function useCloudAppState(userId) {
   const [wallet, setWallet] = useState(0);
@@ -20,131 +26,216 @@ export function useCloudAppState(userId) {
   const lastRefreshAtRef = useRef(0);
   const currentStateSignatureRef = useRef('');
 
-  const buildStateSignature = useCallback((state) => JSON.stringify({
-    wallet: Number(state?.wallet ?? 0),
-    transactions: Array.isArray(state?.transactions) ? state.transactions : [],
-    myTrips: Array.isArray(state?.myTrips) ? state.myTrips : [],
-    points: Number(state?.points ?? 0),
-    subscription: state?.subscription || 'none',
-  }), []);
+  const buildStateSignature = useCallback(
+    (state) =>
+      JSON.stringify({
+        wallet: Number(state?.wallet ?? 0),
+        transactions: Array.isArray(state?.transactions) ? state.transactions : [],
+        myTrips: Array.isArray(state?.myTrips) ? state.myTrips : [],
+        points: Number(state?.points ?? 0),
+        subscription: state?.subscription || 'none',
+      }),
+    [],
+  );
 
-  const applyAppState = useCallback((nextState) => {
-    const normalized = {
-      wallet: Number(nextState?.wallet ?? 0),
-      transactions: Array.isArray(nextState?.transactions) ? nextState.transactions : [],
-      myTrips: Array.isArray(nextState?.myTrips) ? nextState.myTrips : [],
-      points: Number(nextState?.points ?? 0),
-      subscription: nextState?.subscription || 'none',
-    };
+  const applyAppState = useCallback(
+    (nextState) => {
+      const normalized = {
+        wallet: Number(nextState?.wallet ?? 0),
+        transactions: Array.isArray(nextState?.transactions)
+          ? nextState.transactions
+          : [],
+        myTrips: Array.isArray(nextState?.myTrips) ? nextState.myTrips : [],
+        points: Number(nextState?.points ?? 0),
+        subscription: nextState?.subscription || 'none',
+      };
 
-    const signature = buildStateSignature(normalized);
-    if (signature === currentStateSignatureRef.current) return false;
+      const signature = buildStateSignature(normalized);
+      if (signature === currentStateSignatureRef.current) return false;
 
-    isHydratingCloudRef.current = true;
-    currentStateSignatureRef.current = signature;
-    setWallet(normalized.wallet);
-    setTransactions(normalized.transactions);
-    setMyTrips(normalized.myTrips);
-    setPoints(normalized.points);
-    setSubscription(normalized.subscription);
-    return true;
-  }, [buildStateSignature]);
+      isHydratingCloudRef.current = true;
+      currentStateSignatureRef.current = signature;
+      setWallet(normalized.wallet);
+      setTransactions(normalized.transactions);
+      setMyTrips(normalized.myTrips);
+      setPoints(normalized.points);
+      setSubscription(normalized.subscription);
+      return true;
+    },
+    [buildStateSignature],
+  );
 
-  const refreshCloudState = useCallback(async ({ silent = false, force = false } = {}) => {
-    if (!userId) return;
-    const nowMs = Date.now();
-    if (!force && silent) {
-      if (isSavingRef.current) return;
-      if (nowMs - lastLocalMutationAtRef.current < 1500) return;
-      if (nowMs - lastRefreshAtRef.current < 2000) return;
-    }
+  const refreshCloudState = useCallback(
+    async ({ silent = false, force = false } = {}) => {
+      if (!userId) return;
 
-    if (!silent) setBackendLoading(true);
-    const { data, error } = await loadSupabaseAppState(userId);
-    if (error) {
-      console.error('refreshCloudState error', error);
+      const nowMs = Date.now();
+      if (!force && silent) {
+        if (isSavingRef.current) return;
+        if (nowMs - lastLocalMutationAtRef.current < 1500) return;
+        if (nowMs - lastRefreshAtRef.current < 2000) return;
+      }
+
+      if (!silent) setBackendLoading(true);
+
+      const { data, error } = await loadSupabaseAppState(userId);
+      if (error) {
+        log.error('refresh_failed', {
+          userId,
+          error,
+        });
+        if (!silent) setBackendLoading(false);
+        return;
+      }
+
+      lastRefreshAtRef.current = Date.now();
+      applyAppState({
+        wallet: data?.wallet ?? 0,
+        transactions: data?.transactions ?? [],
+        myTrips: data?.myTrips ?? [],
+        points: data?.points ?? 0,
+        subscription: data?.subscription ?? 'none',
+      });
+      setBackendReady(true);
+      setDidSeedSupabaseFromLocal(false);
+
       if (!silent) setBackendLoading(false);
-      return;
-    }
 
-    lastRefreshAtRef.current = Date.now();
-    applyAppState({
-      wallet: data?.wallet ?? 0,
-      transactions: data?.transactions ?? [],
-      myTrips: data?.myTrips ?? [],
-      points: data?.points ?? 0,
-      subscription: data?.subscription ?? 'none',
-    });
-    setBackendReady(true);
-    setDidSeedSupabaseFromLocal(false);
-    if (!silent) setBackendLoading(false);
-  }, [applyAppState, userId]);
+      log.debug('refresh_completed', {
+        userId,
+        wallet: data?.wallet ?? 0,
+        trips: (data?.myTrips || []).length,
+      });
+    },
+    [applyAppState, userId],
+  );
 
   useEffect(() => {
     let active = true;
+
     (async () => {
       setBackendLoading(true);
+
       const { data, error } = await loadSupabaseAppState(userId);
       if (!active) return;
-      if (error) console.error('initial loadSupabaseAppState error', error);
+
+      if (error) {
+        log.error('initial_load_failed', {
+          userId,
+          error,
+        });
+      }
 
       const localWallet = readNumber(demoKey(userId, 'wallet'), 0);
       const localTransactions = readJSON(demoKey(userId, 'txns'), []);
       const localTrips = readJSON(demoKey(userId, 'trips'), []);
       const localPoints = readNumber(demoKey(userId, 'points'), 0);
-      const localSubscription = localStorage.getItem(demoKey(userId, 'sub')) || 'none';
+      const localSubscription =
+        localStorage.getItem(demoKey(userId, 'sub')) || 'none';
 
-      const cloudLooksEmpty = !data || (
-        Number(data?.wallet ?? 0) === 0 &&
-        Number(data?.points ?? 0) === 0 &&
-        (data?.subscription ?? 'none') === 'none' &&
-        (data?.transactions ?? []).length === 0 &&
-        (data?.myTrips ?? []).length === 0
-      );
+      const cloudLooksEmpty =
+        !data ||
+        (Number(data?.wallet ?? 0) === 0 &&
+          Number(data?.points ?? 0) === 0 &&
+          (data?.subscription ?? 'none') === 'none' &&
+          (data?.transactions ?? []).length === 0 &&
+          (data?.myTrips ?? []).length === 0);
 
-      const localHasData = localWallet > 0 || localPoints > 0 || localSubscription !== 'none' || localTransactions.length > 0 || localTrips.length > 0;
+      const localHasData =
+        localWallet > 0 ||
+        localPoints > 0 ||
+        localSubscription !== 'none' ||
+        localTransactions.length > 0 ||
+        localTrips.length > 0;
 
       if (cloudLooksEmpty && localHasData) {
-        applyAppState({ wallet: localWallet, transactions: localTransactions, myTrips: localTrips, points: localPoints, subscription: localSubscription });
+        applyAppState({
+          wallet: localWallet,
+          transactions: localTransactions,
+          myTrips: localTrips,
+          points: localPoints,
+          subscription: localSubscription,
+        });
         setDidSeedSupabaseFromLocal(true);
+        log.info('local_state_seeded_into_runtime', {
+          userId,
+          localTrips: localTrips.length,
+          localTransactions: localTransactions.length,
+        });
       } else {
-        applyAppState({ wallet: data?.wallet ?? 0, transactions: data?.transactions ?? [], myTrips: data?.myTrips ?? [], points: data?.points ?? 0, subscription: data?.subscription ?? 'none' });
+        applyAppState({
+          wallet: data?.wallet ?? 0,
+          transactions: data?.transactions ?? [],
+          myTrips: data?.myTrips ?? [],
+          points: data?.points ?? 0,
+          subscription: data?.subscription ?? 'none',
+        });
         setDidSeedSupabaseFromLocal(false);
       }
 
       setBackendReady(true);
       setBackendLoading(false);
     })();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+    };
   }, [applyAppState, userId]);
 
   useEffect(() => {
     if (!backendReady) return;
-    if (isHydratingCloudRef.current) { isHydratingCloudRef.current = false; return; }
-    currentStateSignatureRef.current = buildStateSignature({ wallet, transactions, myTrips, points, subscription });
+    if (isHydratingCloudRef.current) {
+      isHydratingCloudRef.current = false;
+      return;
+    }
+
+    currentStateSignatureRef.current = buildStateSignature({
+      wallet,
+      transactions,
+      myTrips,
+      points,
+      subscription,
+    });
     lastLocalMutationAtRef.current = Date.now();
   }, [wallet, transactions, myTrips, points, subscription, backendReady, buildStateSignature]);
 
   useEffect(() => {
     if (!backendReady || !userId) return;
+
     const snapshot = { wallet, transactions, myTrips, points, subscription };
-    const timeoutId = setTimeout(async () => {
+
+    const timeoutId = window.setTimeout(async () => {
       try {
         isSavingRef.current = true;
         await saveSupabaseAppState(userId, snapshot);
         if (didSeedSupabaseFromLocal) setDidSeedSupabaseFromLocal(false);
         await refreshCloudState({ silent: true, force: true });
       } catch (error) {
-        console.error('saveSupabaseAppState error', error);
+        log.error('save_failed', {
+          userId,
+          error,
+        });
       } finally {
         isSavingRef.current = false;
       }
     }, didSeedSupabaseFromLocal ? 120 : 350);
-    return () => clearTimeout(timeoutId);
-  }, [userId, wallet, transactions, myTrips, points, subscription, backendReady, didSeedSupabaseFromLocal, refreshCloudState]);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    userId,
+    wallet,
+    transactions,
+    myTrips,
+    points,
+    subscription,
+    backendReady,
+    didSeedSupabaseFromLocal,
+    refreshCloudState,
+  ]);
 
   useEffect(() => {
     if (!backendReady) return;
+
     localStorage.setItem(demoKey(userId, 'wallet'), String(wallet));
     localStorage.setItem(demoKey(userId, 'txns'), JSON.stringify(transactions));
     localStorage.setItem(demoKey(userId, 'trips'), JSON.stringify(myTrips));
@@ -154,20 +245,56 @@ export function useCloudAppState(userId) {
 
   useEffect(() => {
     if (!backendReady || !userId) return;
-    const syncNow = () => refreshCloudState({ silent: true }).catch((error) => console.error('refreshCloudState error', error));
+
+    const syncNow = () =>
+      refreshCloudState({ silent: true }).catch((error) =>
+        log.error('realtime_refresh_failed', { userId, error }),
+      );
+
     const channel = supabase
       .channel(`taree2y-live-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_wallets', filter: `user_id=eq.${userId}` }, syncNow)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_wallet_transactions', filter: `user_id=eq.${userId}` }, syncNow)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${userId}` }, syncNow)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_wallets',
+          filter: `user_id=eq.${userId}`,
+        },
+        syncNow,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_wallet_transactions',
+          filter: `user_id=eq.${userId}`,
+        },
+        syncNow,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `user_id=eq.${userId}`,
+        },
+        syncNow,
+      )
       .subscribe();
 
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') syncNow(); };
-    const intervalId = setInterval(syncNow, 15000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') syncNow();
+    };
+
+    const intervalId = window.setInterval(syncNow, 15000);
     window.addEventListener('focus', syncNow);
     document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
-      clearInterval(intervalId);
+      window.clearInterval(intervalId);
       window.removeEventListener('focus', syncNow);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       supabase.removeChannel(channel);
@@ -177,18 +304,48 @@ export function useCloudAppState(userId) {
   useEffect(() => {
     let changed = false;
     let awardedPoints = 0;
+
     const nextTrips = myTrips.map((trip) => {
       if (trip.status !== 'upcoming') return trip;
+
       const lifecycle = getTripLifecycleStatus(trip);
       if (lifecycle.key !== 'arrived') return trip;
-      changed = true;
-      if (!trip.pointsAwarded && trip.earnedPointsPending > 0) awardedPoints += trip.earnedPointsPending;
-      return { ...trip, status: 'past', pointsAwarded: true };
-    });
-    if (!changed) return;
-    setMyTrips(nextTrips);
-    if (awardedPoints > 0) setPoints((p) => p + awardedPoints);
-  }, [myTrips]);
 
-  return { wallet, setWallet, transactions, setTransactions, myTrips, setMyTrips, points, setPoints, subscription, setSubscription, backendLoading, refreshCloudState };
+      changed = true;
+      if (!trip.pointsAwarded && trip.earnedPointsPending > 0) {
+        awardedPoints += trip.earnedPointsPending;
+      }
+
+      return {
+        ...trip,
+        status: 'past',
+        pointsAwarded: true,
+      };
+    });
+
+    if (!changed) return;
+
+    setMyTrips(nextTrips);
+    if (awardedPoints > 0) setPoints((value) => value + awardedPoints);
+
+    log.info('trip_lifecycle_promoted_to_past', {
+      userId,
+      awardedPoints,
+    });
+  }, [myTrips, userId]);
+
+  return {
+    wallet,
+    setWallet,
+    transactions,
+    setTransactions,
+    myTrips,
+    setMyTrips,
+    points,
+    setPoints,
+    subscription,
+    setSubscription,
+    backendLoading,
+    refreshCloudState,
+  };
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { Award, X } from 'lucide-react';
 import { getLocalDateInputValue } from '../utils/travel';
 
-function PointsModal({ closeModal, wallet, setWallet, setTransactions, points, setPoints, showToast }) {
+function PointsModal({ closeModal, wallet: _wallet, setWallet, setTransactions, points, setPoints, showToast }) {
   const handleRedeem = () => {
     if (points < 500) return showToast('محتاج 500 نقطة على الأقل عشان تبدلهم بفلوس', 'error');
     const pointsToRedeem = 500;

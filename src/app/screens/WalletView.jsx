@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowDown, CreditCard, Phone, Plus, QrCode, Send, ShieldCheck, Ticket } from 'lucide-react';
 
-function WalletView({ wallet, setWallet, transactions, setTransactions, showToast, openTopUp }) {
+function WalletView({ wallet, setWallet: _setWallet, transactions, setTransactions: _setTransactions, showToast, openTopUp }) {
   return (
     <div className="p-5 lg:px-16 space-y-6 flex-1 max-w-[1800px] mx-auto w-full relative">
       <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">المحفظة التجريبية 💰</h2>

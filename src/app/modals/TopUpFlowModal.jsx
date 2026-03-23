@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { getLocalDateInputValue } from '../utils/travel';
 
-function TopUpFlowModal({ closeModal, wallet, setWallet, setTransactions, showToast }) {
+function TopUpFlowModal({ closeModal, wallet: _wallet, setWallet, setTransactions, showToast }) {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
 

@@ -1,28 +1,19 @@
 import { supabase } from './supabase';
+import {
+  createLogger,
+  isMissingRpcError,
+  normalizeSupabaseError,
+} from './logger';
 import { generateTrips } from '../app/utils/travel';
 
+const log = createLogger('trip-inventory');
 const HOLD_MINUTES = 5;
-const warned = new Set();
-
-const warnOnce = (key, message, error) => {
-  if (warned.has(key)) return;
-  warned.add(key);
-  console.warn(message, error);
-};
 
 const toTimeText = (value) => {
   if (!value) return '';
-  const str = String(value);
-  return str.length >= 5 ? str.slice(0, 5) : str;
+  const text = String(value);
+  return text.length >= 5 ? text.slice(0, 5) : text;
 };
-
-const mapSeatRow = (row, currentUserId) => ({
-  id: row.id || row.seat_number,
-  number: row.seat_number,
-  status: row.status === 'booked' ? 'booked' : row.status === 'held' ? 'held' : 'available',
-  heldByCurrentUser: Boolean(currentUserId && row.held_by_user_id && row.held_by_user_id === currentUserId),
-  holdExpiresAt: row.hold_expires_at || null,
-});
 
 const mapTripRow = (row) => ({
   id: row.trip_code || row.id,
@@ -30,8 +21,6 @@ const mapTripRow = (row) => ({
   tripCode: row.trip_code || row.id,
   from: row.from_city,
   to: row.to_city,
-  fromStationName: row.from_station_name || null,
-  toStationName: row.to_station_name || null,
   date: row.departure_date,
   departureTime: toTimeText(row.departure_time),
   arrivalTime: toTimeText(row.arrival_time),
@@ -54,62 +43,82 @@ const mapTripRow = (row) => ({
     : null,
 });
 
+const mapSeatRow = (row, currentUserId) => ({
+  id: row.id || row.seat_number,
+  number: row.seat_number,
+  status:
+    row.status === 'booked'
+      ? 'booked'
+      : row.status === 'held'
+      ? 'held'
+      : 'available',
+  heldByCurrentUser: Boolean(
+    currentUserId && row.held_by_user_id && row.held_by_user_id === currentUserId,
+  ),
+  holdExpiresAt: row.hold_expires_at || null,
+});
+
 async function getCurrentUserId() {
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
   return data?.user?.id ?? null;
 }
 
-function normalizeRpcResult(result) {
-  if (!result) return { ok: false, message: 'Empty response' };
-  if (typeof result === 'object' && 'ok' in result) return result;
-  return { ok: true, data: result };
-}
-
-function decorateTrips(trips) {
-  const cloned = trips.map((trip) => ({ ...trip }));
-  if (cloned.length === 0) return cloned;
-
-  const cheapest = [...cloned].sort((a, b) => a.price - b.price)[0];
-  const fastest = [...cloned].sort((a, b) => a.durationHour - b.durationHour)[0];
-
-  return cloned.map((trip) => {
-    const tripKey = trip.instanceId || trip.id;
-    const cheapestKey = cheapest.instanceId || cheapest.id;
-    const fastestKey = fastest.instanceId || fastest.id;
-
-    return {
-      ...trip,
-      badge:
-        trip.badge ||
-        (tripKey === cheapestKey
-          ? 'cheapest'
-          : tripKey === fastestKey
-          ? 'fastest'
-          : trip.class?.includes('VIP')
-          ? 'vip'
-          : null),
-    };
-  });
-}
-
-export async function ensureTripInventoryForSearch({ from, to, date }) {
-  const { data, error } = await supabase.rpc('seed_trip_inventory_for_search', {
-    p_from_city: from,
-    p_to_city: to,
-    p_departure_date: date,
-  });
-
-  if (error) {
-    throw error;
+function normalizeRpcPayload(operation, data) {
+  if (data && typeof data === 'object' && 'ok' in data) {
+    if (data.ok) {
+      log.info(`${operation}_rpc_success`, data);
+    } else {
+      log.warn(`${operation}_rpc_rejected`, data);
+    }
+    return data;
   }
 
-  return normalizeRpcResult(data);
+  log.info(`${operation}_rpc_success`, { wrapped: true });
+  return { ok: true, data };
 }
 
-export async function searchTripInventory({ from, to, date, passengers = 1 }) {
+function toRpcFailure(operation, error, fallbackMessage) {
+  const normalized = normalizeSupabaseError(error);
+  const errorClass = isMissingRpcError(error) ? 'missing_rpc' : 'rpc_error';
+
+  const payload = {
+    ok: false,
+    errorClass,
+    message: normalized.message || fallbackMessage,
+    code: normalized.code || null,
+    httpStatus: normalized.status || null,
+    details: normalized.details || null,
+    hint: normalized.hint || null,
+  };
+
+  log.error(`${operation}_rpc_failed`, payload);
+  return payload;
+}
+
+export async function searchTripInventory({
+  from,
+  to,
+  date,
+  passengers = 1,
+}) {
+  log.info('search_started', {
+    from,
+    to,
+    date,
+    passengers,
+  });
+
   try {
-    await ensureTripInventoryForSearch({ from, to, date });
+    const seedResult = await supabase.rpc('seed_trip_inventory_for_search', {
+      p_from_city: from,
+      p_to_city: to,
+      p_departure_date: date,
+    });
+
+    if (seedResult.error && !isMissingRpcError(seedResult.error)) {
+      throw seedResult.error;
+    }
 
     const { data, error } = await supabase
       .from('trip_instances')
@@ -123,11 +132,20 @@ export async function searchTripInventory({ from, to, date, passengers = 1 }) {
       throw error;
     }
 
-    const trips = decorateTrips(
-      (data || [])
-        .map(mapTripRow)
-        .filter((trip) => Number(trip.availableSeatsCount ?? 0) >= Number(passengers)),
-    );
+    const trips = (data || [])
+      .map(mapTripRow)
+      .filter(
+        (trip) => Number(trip.availableSeatsCount ?? 0) >= Number(passengers),
+      );
+
+    log.info('search_completed', {
+      from,
+      to,
+      date,
+      passengers,
+      count: trips.length,
+      source: 'supabase',
+    });
 
     return {
       trips,
@@ -135,7 +153,14 @@ export async function searchTripInventory({ from, to, date, passengers = 1 }) {
       source: 'supabase',
     };
   } catch (error) {
-    warnOnce('trip_inventory_fallback', 'searchTripInventory fallback to generator', error);
+    log.warn('search_fallback_used', {
+      from,
+      to,
+      date,
+      passengers,
+      error,
+    });
+
     return {
       ...generateTrips(from, to, date),
       source: 'fallback',
@@ -148,7 +173,9 @@ export async function loadTripSeats(tripInstanceId) {
 
   const { data, error } = await supabase
     .from('trip_seats')
-    .select('id, seat_number, seat_index, status, hold_expires_at, held_by_user_id')
+    .select(
+      'id, seat_number, seat_index, status, held_by_user_id, hold_expires_at',
+    )
     .eq('trip_instance_id', tripInstanceId)
     .order('seat_index', { ascending: true });
 
@@ -161,8 +188,12 @@ export async function loadTripSeats(tripInstanceId) {
 
 export async function hydrateTripWithSeats(trip) {
   if (!trip?.instanceId) return trip;
+
   const seats = await loadTripSeats(trip.instanceId);
-  const activeHold = seats.find((seat) => seat.heldByCurrentUser && seat.holdExpiresAt)?.holdExpiresAt || null;
+  const activeHold =
+    seats.find((seat) => seat.heldByCurrentUser && seat.holdExpiresAt)
+      ?.holdExpiresAt || null;
+
   return {
     ...trip,
     seats,
@@ -171,6 +202,11 @@ export async function hydrateTripWithSeats(trip) {
 }
 
 export async function holdTripSeats({ tripInstanceId, seatNumbers }) {
+  log.info('hold_trip_seats_started', {
+    tripInstanceId,
+    seatsRequested: Array.isArray(seatNumbers) ? seatNumbers.length : 0,
+  });
+
   const { data, error } = await supabase.rpc('hold_trip_seats', {
     p_trip_instance_id: tripInstanceId,
     p_seat_numbers: seatNumbers,
@@ -178,30 +214,14 @@ export async function holdTripSeats({ tripInstanceId, seatNumbers }) {
   });
 
   if (error) {
-    return {
-      ok: false,
-      message: error.message || 'تعذر تثبيت المقاعد مؤقتاً',
-      code: error.code || 'rpc_error',
-    };
+    return toRpcFailure(
+      'hold_trip_seats',
+      error,
+      'تعذر تثبيت المقاعد مؤقتاً',
+    );
   }
 
-  return normalizeRpcResult(data);
-}
-
-export async function releaseSeatHold({ tripInstanceId }) {
-  const { data, error } = await supabase.rpc('release_my_seat_hold', {
-    p_trip_instance_id: tripInstanceId,
-  });
-
-  if (error) {
-    return {
-      ok: false,
-      message: error.message || 'تعذر تحرير المقاعد',
-      code: error.code || 'rpc_error',
-    };
-  }
-
-  return normalizeRpcResult(data);
+  return normalizeRpcPayload('hold_trip_seats', data);
 }
 
 export async function createBookingAtomic({
@@ -213,39 +233,45 @@ export async function createBookingAtomic({
   rideToStation,
   needsAccess,
 }) {
+  log.info('create_booking_atomic_started', {
+    tripInstanceId,
+    seatsRequested: Array.isArray(seatNumbers) ? seatNumbers.length : 0,
+    passengers,
+    hasPromoCode: Boolean(String(promoCode || '').trim()),
+    hasLuggage: Boolean(hasLuggage),
+    rideToStation: Boolean(rideToStation),
+    needsAccess: Boolean(needsAccess),
+  });
+
   const { data, error } = await supabase.rpc('create_booking_atomic', {
     p_trip_instance_id: tripInstanceId,
     p_seat_numbers: seatNumbers,
     p_passengers: passengers,
-    p_promo_code: promoCode?.trim() ? promoCode.trim().toUpperCase() : null,
+    p_promo_code: String(promoCode || '').trim().toUpperCase() || null,
     p_has_luggage: Boolean(hasLuggage),
     p_ride_to_station: Boolean(rideToStation),
     p_needs_access: Boolean(needsAccess),
   });
 
   if (error) {
-    return {
-      ok: false,
-      message: error.message || 'تعذر إنشاء الحجز',
-      code: error.code || 'rpc_error',
-    };
+    return toRpcFailure('create_booking_atomic', error, 'تعذر إنشاء الحجز');
   }
 
-  return normalizeRpcResult(data);
+  return normalizeRpcPayload('create_booking_atomic', data);
 }
 
 export async function cancelBookingAtomic({ bookingId }) {
+  log.info('cancel_booking_atomic_started', {
+    bookingId,
+  });
+
   const { data, error } = await supabase.rpc('cancel_booking_atomic', {
     p_booking_id: bookingId,
   });
 
   if (error) {
-    return {
-      ok: false,
-      message: error.message || 'تعذر إلغاء الحجز',
-      code: error.code || 'rpc_error',
-    };
+    return toRpcFailure('cancel_booking_atomic', error, 'تعذر إلغاء الحجز');
   }
 
-  return normalizeRpcResult(data);
+  return normalizeRpcPayload('cancel_booking_atomic', data);
 }
