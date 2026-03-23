@@ -1,0 +1,10 @@
+
+> taree2y-app@0.0.0 dev
+> vite
+
+
+  VITE v8.0.1  ready in 316 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help

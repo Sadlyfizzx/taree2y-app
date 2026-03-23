@@ -1,0 +1,4 @@
+طريقي rollback safety snapshot
+Timestamp: 20260322-204201
+Project: /home/sadlyfizzx/taree2y-app
+Source backup restored from: /home/sadlyfizzx/taree2y-app/.taree2y_backups/ui_refactor_20260322-111448
