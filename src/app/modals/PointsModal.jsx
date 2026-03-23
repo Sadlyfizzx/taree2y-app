@@ -1,42 +1,74 @@
 import React from 'react';
-import { Award, X } from 'lucide-react';
+import { Award } from 'lucide-react';
+import ModalShell from '../components/ui/ModalShell';
+import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { getLocalDateInputValue } from '../utils/travel';
 
-function PointsModal({ closeModal, wallet: _wallet, setWallet, setTransactions, points, setPoints, showToast }) {
+function PointsModal({
+  closeModal,
+  wallet: _wallet,
+  setWallet,
+  setTransactions,
+  points,
+  setPoints,
+  showToast,
+}) {
   const handleRedeem = () => {
-    if (points < 500) return showToast('محتاج 500 نقطة على الأقل عشان تبدلهم بفلوس', 'error');
-    const pointsToRedeem = 500;
-    const moneyGained = 50;
+    if (points < 500) {
+      showToast('محتاج 500 نقطة على الأقل عشان الاستبدال.', 'error');
+      return;
+    }
 
-    setPoints(p => p - pointsToRedeem);
-    setWallet(p => p + moneyGained);
-    setTransactions(p => [{ id: `TXN-${Math.random().toString(36).substr(2,6).toUpperCase()}`, type: 'credit', amount: moneyGained, date: getLocalDateInputValue(), desc: 'استبدال 500 نقطة ولاء' }, ...p]);
-    
-    showToast(`عاش! بدلت 500 نقطة بـ ${moneyGained} ج.م في محفظتك 💸`, 'success');
+    setPoints((currentValue) => currentValue - 500);
+    setWallet((currentValue) => currentValue + 50);
+    setTransactions((currentValue) => [
+      {
+        id: `POINTS-${Date.now()}`,
+        type: 'credit',
+        amount: 50,
+        date: getLocalDateInputValue(),
+        desc: 'استبدال 500 نقطة ولاء',
+      },
+      ...currentValue,
+    ]);
+
+    showToast('تم استبدال 500 نقطة بـ 50 ج.م في المحفظة.', 'success');
     closeModal();
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in-down">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-[400px] rounded-[2rem] p-8 shadow-2xl relative text-center">
-        <button onClick={closeModal} className="absolute top-4 left-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500"><X className="w-5 h-5"/></button>
-        <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
-           <Award className="w-10 h-10"/>
+    <ModalShell
+      onClose={closeModal}
+      title="نقاط الولاء"
+      subtitle="كل رحلة منتهية بتضيف نقاط، وتقدر تحولها لرصيد في المحفظة لما توصل للحد المطلوب."
+      icon={<Award className="h-6 w-6" />}
+      footer={
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <SecondaryButton onClick={closeModal}>رجوع</SecondaryButton>
+          <PrimaryButton onClick={handleRedeem} disabled={points < 500}>
+            استبدل 500 نقطة
+          </PrimaryButton>
         </div>
-        <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2">نقاط ولاء طريقي</h3>
-        <p className="text-sm font-bold text-slate-500 mb-6">رصيدك الحالي من النقاط اللي جمعتها من رحلاتك.</p>
-        
-        <div className="text-5xl font-black text-indigo-600 mb-8" dir="ltr">{points} <span className="text-sm text-slate-400">Pts</span></div>
-
-        <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl mb-6 text-sm font-bold text-slate-600 dark:text-slate-300">
-           تقدر تبدل كل 500 نقطة بـ 50 ج.م رصيد في محفظتك.
+      }
+    >
+      <div className="space-y-5">
+        <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-center dark:border-slate-800 dark:bg-slate-950/60">
+          <p className="text-sm font-black text-slate-500 dark:text-slate-400">رصيدك الحالي</p>
+          <p className="mt-3 text-5xl font-black text-indigo-700 dark:text-indigo-300">{points}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <MetaChip label="كل 500 نقطة = 50 ج.م" tone="brand" />
+            <MetaChip label="التحويل للمحفظة" tone="success" />
+          </div>
         </div>
 
-        <button onClick={handleRedeem} disabled={points < 500} className={`w-full font-black text-lg py-4 rounded-2xl transition shadow-lg ${points >= 500 ? 'bg-indigo-600 text-white shadow-indigo-600/30 hover:bg-indigo-700 active:scale-95' : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'}`}>
-           استبدل 500 نقطة بـ 50 ج
-        </button>
+        <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm font-black text-slate-900 dark:text-white">إزاي تكسب النقاط؟</p>
+          <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
+            بعد ما الرحلة تنتهي بنجاح، التطبيق بيضيف نقاط بناءً على قيمة الحجز بعد الخصومات. كل ما تسافر أكتر، رصيدك يزيد أسرع.
+          </p>
+        </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

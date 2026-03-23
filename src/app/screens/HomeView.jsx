@@ -9,141 +9,395 @@ import {
   Crown,
   MapPin,
   Package,
-  Star,
-  Sun,
-  Tag,
+  Search,
+  Ticket,
   Users,
-  ChevronLeft,
+  Wallet as WalletIcon,
 } from 'lucide-react';
+import {
+  AppSurface,
+  FieldShell,
+  MetaChip,
+  PageHeading,
+  PrimaryButton,
+  SecondaryButton,
+  SectionHeader,
+} from '../components/ui/AppPrimitives';
+import { InlineNotice } from '../components/ui/StateBlocks';
 import { CITIES, getLocalDateInputValue } from '../utils/travel';
+import { getPrimaryStationName } from '../utils/stations';
 
-function HomeView({ searchParams, setSearchParams, onSearch, showToast, onPromoSearch, openModal }) {
-  const handleSwap = () => setSearchParams(p => ({ ...p, from: p.to, to: p.from }));
+const QUICK_ROUTES = [
+  { from: 'القاهرة', to: 'الإسكندرية' },
+  { from: 'القاهرة', to: 'المنصورة' },
+  { from: 'القاهرة', to: 'أسوان' },
+  { from: 'الإسكندرية', to: 'مرسى مطروح' },
+];
+
+const SERVICES = [
+  {
+    icon: Package,
+    title: 'إرسال طرد',
+    subtitle: 'بين المحافظات بتسعير واضح',
+    action: 'courier',
+    tone: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+  },
+  {
+    icon: Crown,
+    title: 'باقات التوفير',
+    subtitle: 'خصومات ثابتة للمسافرين الكتير',
+    action: 'subs',
+    tone: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
+  },
+  {
+    icon: Bot,
+    title: 'الدعم والمساعدة',
+    subtitle: 'اسأل بسرعة عن الحجز والإلغاء',
+    action: 'bot',
+    tone: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300',
+  },
+  {
+    icon: Car,
+    title: 'توصيل للمحطة',
+    subtitle: 'بيتفعل وقت الدفع حسب رحلتك',
+    action: 'coming',
+    tone: 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300',
+  },
+];
+
+const OFFERS = [
+  {
+    code: 'AHLAN50',
+    title: 'خصم 50 جنيه',
+    text: 'على أول رحلة ليك على طريقي',
+    tone: 'from-amber-400 via-orange-500 to-orange-600',
+    action: 'copy',
+  },
+  {
+    code: 'SA3EED15',
+    title: 'خصم رحلات الصعيد',
+    text: 'خصم 15% على الرحلات الطويلة',
+    tone: 'from-emerald-500 via-teal-500 to-cyan-600',
+    action: 'copy',
+  },
+  {
+    code: 'مطروح',
+    title: 'رحلات الساحل السريعة',
+    text: 'ادخل على القاهرة → مرسى مطروح فورًا',
+    tone: 'from-sky-500 via-blue-500 to-indigo-600',
+    action: 'route',
+    params: { from: 'القاهرة', to: 'مرسى مطروح' },
+  },
+];
+
+const HELPER_CARDS = [
+  {
+    icon: Search,
+    title: 'ابحث بسرعة',
+    text: 'حدد المحافظة واليوم وشوف الرحلات بترتيب واضح من غير لف.',
+  },
+  {
+    icon: Ticket,
+    title: 'التذكرة جاهزة فورًا',
+    text: 'بعد التأكيد هتلاقي التذكرة والـ QR وكل التفاصيل في لحظتها.',
+  },
+  {
+    icon: WalletIcon,
+    title: 'المحفظة والاسترداد',
+    text: 'لو حصل إلغاء أو استرداد، الحركة هتظهر قدامك مباشرة وبوضوح.',
+  },
+];
+
+function HomeView({
+  searchParams,
+  setSearchParams,
+  onSearch,
+  showToast,
+  onPromoSearch,
+  openModal,
+  openGuide,
+}) {
   const todayDate = getLocalDateInputValue();
+
+  const handleSwap = () => {
+    setSearchParams((currentValue) => ({
+      ...currentValue,
+      from: currentValue.to,
+      to: currentValue.from,
+    }));
+  };
 
   const copyPromo = (code) => {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(code);
     } else {
-      let ta = document.createElement("textarea");
-      ta.value = code; ta.style.position = "fixed"; document.body.appendChild(ta); ta.focus(); ta.select();
-      try { document.execCommand('copy'); } catch (_err) { void _err; }
-      document.body.removeChild(ta);
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      textArea.style.position = 'fixed';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        // ignore fallback copy error
+      }
+      document.body.removeChild(textArea);
     }
-    showToast(`نسخنا كود الخصم (${code}) بنجاح! ✂️`, 'success');
+
+    showToast(`تم نسخ الكود ${code} جاهز للاستخدام`, 'success');
   };
 
+  const searchFieldClassName =
+    'h-14 w-full rounded-[22px] border border-slate-200 bg-white px-4 pr-12 text-base font-black text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white';
+
   return (
-    <div className="flex flex-col flex-1 w-full">
-      {/* Hero Section */}
-      <div className="bg-indigo-600 dark:bg-slate-900 md:rounded-[2.5rem] px-5 lg:px-16 pt-10 pb-24 md:m-6 rounded-b-[2.5rem] relative overflow-hidden shrink-0">
-         <h2 className="text-3xl font-black text-white mb-2 leading-tight relative z-10">على فين <br/>يا بطل؟ 👋</h2>
-         <p className="text-indigo-200 text-base relative z-10">طريقي معاك في كل مكان في مصر.</p>
-         <div className="absolute left-0 bottom-0 opacity-10 pointer-events-none md:scale-150 transform origin-bottom-left scale-x-[-1]">
-            <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><path fill="#FFFFFF" d="M44.7,-76.4C58.8,-69.2,71.8,-59.1,81.3,-46.3C90.8,-33.5,96.8,-18,95.5,-2.9C94.2,12.2,85.6,26.9,75.3,39.6C65,52.3,53,63,39.4,70.5C25.8,78,10.6,82.3,-4.2,88.7C-19,95.1,-33.4,103.6,-45.3,98.1C-57.2,92.6,-66.6,73.1,-74.6,56.1C-82.6,39.1,-89.2,24.6,-91.1,9.4C-93,-5.8,-90.2,-21.7,-82.9,-35.1C-75.6,-48.5,-63.8,-59.4,-50.2,-66.8C-36.6,-74.2,-21.2,-78.1,-5.6,-70C10,-61.9,20.2,-62.4,30.6,-83.6L44.7,-76.4Z" transform="translate(100 100)" /></svg>
-         </div>
-      </div>
-
-      {/* Main Search Card */}
-      <div className="px-5 lg:px-16 -mt-16 relative z-10 shrink-0 w-full mx-auto">
-        <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 md:p-8 shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700">
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-             <div className="md:col-span-2 relative bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-3xl flex flex-col md:flex-row p-1">
-                <div className="relative flex-1">
-                   <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none"/>
-                   <select value={searchParams.from} onChange={e=>setSearchParams(p=>({...p, from:e.target.value}))} className="w-full bg-transparent h-14 pr-12 pl-4 text-base font-bold text-slate-700 dark:text-slate-100 outline-none appearance-none">
-                     <option value="" disabled>هتتحرك منين؟</option>
-                     {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-                   </select>
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-[36px] bg-[linear-gradient(135deg,#10233f_0%,#163c98_48%,#2156d9_100%)] px-5 pb-6 pt-6 text-white shadow-[0_30px_60px_-36px_rgba(16,35,63,0.6)] md:px-7 md:pt-7">
+        <div className="pointer-events-none absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(255,255,255,0.24), transparent 28%), linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize: 'auto, 24px 24px, 24px 24px' }} />
+        <div className="relative z-10 grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start">
+          <div className="space-y-5">
+            <PageHeading
+              eyebrow="رحلات مصر بشكل أوضح"
+              title="احجز رحلتك من غير توتر ولا دوشة"
+              subtitle="طريقي مصمم عشان يوريك الرحلة، المحطة، ميعاد التحرك، المقاعد، والدفع بشكل مفهوم جدًا من أول مرة."
+              className="text-white [&_h1]:text-white [&_p]:text-white/80 [&_[class*='text-indigo-600']]:text-white/70"
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <MetaChip label="تذكرة فورية" tone="brand" className="border-white/15 bg-white/12 text-white" />
+                  <MetaChip label="استرداد للمحفظة" tone="brand" className="border-white/15 bg-white/12 text-white" />
+                  <MetaChip label="متابعة الرحلة" tone="brand" className="border-white/15 bg-white/12 text-white" />
                 </div>
-                
-                <div className="h-px md:h-10 md:w-px bg-slate-200 dark:bg-slate-700 mx-4 md:my-auto shrink-0"></div>
-                
-                <div className="relative flex-1">
-                   <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-500 w-5 h-5 pointer-events-none"/>
-                   <select value={searchParams.to} onChange={e=>setSearchParams(p=>({...p, to:e.target.value}))} className="w-full bg-transparent h-14 pr-12 pl-4 text-base font-bold text-slate-700 dark:text-slate-100 outline-none appearance-none">
-                     <option value="" disabled>رايح فين؟</option>
-                     {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-                   </select>
-                </div>
+              }
+            />
 
-                <button onClick={handleSwap} className="absolute left-6 md:left-1/2 md:-translate-x-1/2 top-1/2 -translate-y-1/2 w-12 h-12 bg-white dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-full shadow-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:scale-105 active:scale-95 transition-transform z-10">
-                   <ArrowRightLeft className="w-5 h-5 rotate-90 md:rotate-0" />
-                </button>
-             </div>
-
-             <div className="relative group md:col-span-1">
-                <Calendar className="w-5 h-5 text-slate-400 absolute top-1/2 -translate-y-1/2 right-4 pointer-events-none" />
-                <input type="date" value={searchParams.date} min={todayDate} onChange={e=>setSearchParams(p=>({...p, date:e.target.value}))} className="w-full h-14 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl pr-12 pl-4 text-base font-bold text-slate-700 dark:text-slate-100 outline-none focus:border-indigo-500 transition" />
-             </div>
-             
-             <div className="relative group md:col-span-1">
-                <Users className="w-5 h-5 text-slate-400 absolute top-1/2 -translate-y-1/2 right-4 pointer-events-none" />
-                <select value={searchParams.passengers} onChange={e=>setSearchParams(p=>({...p, passengers:Number(e.target.value)}))} className="w-full h-14 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl pr-12 pl-4 text-base font-bold text-slate-700 dark:text-slate-100 outline-none focus:border-indigo-500 transition appearance-none">
-                  {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} أفراد</option>)}
-                </select>
-             </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:max-w-[520px]">
+              <button
+                type="button"
+                onClick={openGuide}
+                className="rounded-[26px] border border-white/15 bg-white/10 p-4 text-right transition hover:bg-white/14"
+              >
+                <p className="text-sm font-black">أول مرة تستخدم طريقي؟</p>
+                <p className="mt-1 text-sm font-bold text-white/75">دليل سريع يشرح البحث، الكرسي، الدفع، التذكرة، والتتبع.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => openModal('bot')}
+                className="rounded-[26px] border border-white/15 bg-white/10 p-4 text-right transition hover:bg-white/14"
+              >
+                <p className="text-sm font-black">محتاج مساعدة؟</p>
+                <p className="mt-1 text-sm font-bold text-white/75">افتح الدعم واسأل عن الإلغاء، الرصيد، أو العروض المتاحة.</p>
+              </button>
+            </div>
           </div>
 
-          <button onClick={onSearch} className="w-full md:w-auto md:px-12 md:mx-auto bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg py-4 rounded-2xl mt-6 active:scale-95 transition-all shadow-lg shadow-indigo-600/30 flex justify-center items-center gap-2">
-            يلا بينا ندور 🚀
-          </button>
-        </div>
-      </div>
+          <AppSurface className="border-white/10 bg-white/95 p-5 backdrop-blur sm:p-6 dark:border-slate-800 dark:bg-slate-950/95">
+            <SectionHeader title="دور على رحلتك" subtitle="المحطة بتظهر تلقائيًا حسب المحافظة اللي هتختارها." />
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <FieldShell
+                label="منين"
+                hint={searchParams.from ? getPrimaryStationName(searchParams.from) : 'اختار محافظة التحرك'}
+                icon={<MapPin />}
+              >
+                <select
+                  value={searchParams.from}
+                  onChange={(event) =>
+                    setSearchParams((currentValue) => ({ ...currentValue, from: event.target.value }))
+                  }
+                  className={`${searchFieldClassName} appearance-none`}
+                >
+                  <option value="">اختار محافظة التحرك</option>
+                  {CITIES.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </FieldShell>
 
-      {/* Services Grid */}
-      <div className="px-5 lg:px-16 mt-8 mb-4 w-full shrink-0">
-        <h3 className="font-black text-slate-800 dark:text-slate-100 text-lg mb-4">خدمات السفر 💼</h3>
-        <div className="flex md:grid md:grid-cols-5 xl:grid-cols-5 gap-4 overflow-x-auto hide-scrollbar pb-4 snap-x w-full">
-          {[ {i:Package, l:'إرسال طرد', m:'courier', c:'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'}, 
-             {i:Crown, l:'باقات التوفير', m:'subs', c:'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'}, 
-             {i:Car, l:'مشاركة سيارات', m:'carpool', c:'bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400'}, 
-             {i:Users, l:'تأجير باص', m:'charter', c:'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'},
-             {i:Bot, l:'مساعد و دعم', m:'bot', c:'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400'} 
-          ].map((s, idx) => (
-            <div key={idx} onClick={()=> s.m === 'carpool' || s.m === 'charter' ? showToast('الخدمة دي هتنزل قريب جداً 🔜', 'success') : openModal(s.m)} className="min-w-[120px] w-full flex flex-col items-center gap-3 cursor-pointer group active:scale-95 transition-transform bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 snap-center">
-              <div className={`w-14 h-14 md:w-16 md:h-16 rounded-[1.25rem] md:rounded-[1.5rem] flex items-center justify-center ${s.c} shadow-inner`}>
-                 <s.i className="w-7 h-7" />
-              </div>
-              <span className="text-xs md:text-sm font-bold text-slate-700 dark:text-slate-300 text-center leading-tight whitespace-nowrap">{s.l}</span>
+              <FieldShell
+                label="رايح فين"
+                hint={searchParams.to ? getPrimaryStationName(searchParams.to) : 'اختار محافظة الوصول'}
+                icon={<MapPin />}
+              >
+                <select
+                  value={searchParams.to}
+                  onChange={(event) =>
+                    setSearchParams((currentValue) => ({ ...currentValue, to: event.target.value }))
+                  }
+                  className={`${searchFieldClassName} appearance-none`}
+                >
+                  <option value="">اختار محافظة الوصول</option>
+                  {CITIES.map((city) => (
+                    <option key={city} value={city}>
+                      {city}
+                    </option>
+                  ))}
+                </select>
+              </FieldShell>
+
+              <FieldShell label="يوم السفر" icon={<Calendar />}>
+                <input
+                  type="date"
+                  value={searchParams.date}
+                  min={todayDate}
+                  onChange={(event) =>
+                    setSearchParams((currentValue) => ({ ...currentValue, date: event.target.value }))
+                  }
+                  className={searchFieldClassName}
+                />
+              </FieldShell>
+
+              <FieldShell label="عدد الركاب" icon={<Users />}>
+                <select
+                  value={searchParams.passengers}
+                  onChange={(event) =>
+                    setSearchParams((currentValue) => ({
+                      ...currentValue,
+                      passengers: Number(event.target.value),
+                    }))
+                  }
+                  className={`${searchFieldClassName} appearance-none`}
+                >
+                  {[1, 2, 3, 4, 5].map((count) => (
+                    <option key={count} value={count}>
+                      {count} {count === 1 ? 'راكب' : 'ركاب'}
+                    </option>
+                  ))}
+                </select>
+              </FieldShell>
             </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/70">
+              <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                لو عايز تبدّل الاتجاه بسرعة، استخدم الزر ده بدل ما تعيد اختيار المدن.
+              </p>
+              <SecondaryButton icon={<ArrowRightLeft className="h-4 w-4" />} onClick={handleSwap}>
+                بدّل الاتجاه
+              </SecondaryButton>
+            </div>
+
+            <PrimaryButton className="mt-5 w-full text-base" icon={<Search className="h-5 w-5" />} onClick={onSearch}>
+              دور على الرحلات
+            </PrimaryButton>
+          </AppSurface>
+        </div>
+      </section>
+
+      <InlineNotice
+        title="الحجز لأول مرة لازم يبقى مطمّن"
+        text="كل خطوة في طريقي بتوضح إنت فين، حصل إيه، وإيه اللي جاي بعده. ولو في مشكلة هتلاقي تصرف واضح بدل شاشة مبهمة."
+        actionLabel="شوف الدليل"
+        onAction={openGuide}
+      />
+
+      <section className="space-y-4">
+        <SectionHeader
+          title="مسارات سريعة"
+          subtitle="اختيارات جاهزة للمسارات الأشهر عشان تبدأ أسرع."
+        />
+        <div className="hide-scrollbar flex gap-3 overflow-x-auto pb-1">
+          {QUICK_ROUTES.map((route) => (
+            <button
+              key={`${route.from}-${route.to}`}
+              type="button"
+              onClick={() =>
+                onPromoSearch({
+                  from: route.from,
+                  to: route.to,
+                  date: searchParams.date || todayDate,
+                  passengers: searchParams.passengers || 1,
+                })
+              }
+              className="min-w-[220px] rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-right shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800 dark:hover:bg-slate-800"
+            >
+              <p className="text-sm font-black text-slate-900 dark:text-white">
+                {route.from} <span className="mx-1 text-slate-300">←</span> {route.to}
+              </p>
+              <p className="mt-2 text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
+                {getPrimaryStationName(route.from)} · {getPrimaryStationName(route.to)}
+              </p>
+            </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Offers Slider */}
-      <div className="px-5 lg:px-16 mt-2 mb-8 w-full shrink-0">
-         <h3 className="font-black text-slate-800 dark:text-slate-100 text-lg mb-4">عروض لقطة 🎁</h3>
-         <div className="flex gap-6 overflow-x-auto hide-scrollbar pb-6 snap-x w-full">
-            <div onClick={()=>copyPromo('AHLAN50')} className="cursor-pointer active:scale-95 transition-transform flex-1 min-w-[280px] md:min-w-[400px] xl:w-1/3 flex-shrink-0 bg-gradient-to-r from-amber-400 to-orange-500 rounded-3xl p-6 text-white shadow-lg shadow-orange-500/20 relative overflow-hidden snap-center">
-               <div className="relative z-10">
-                 <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded-lg mb-3 inline-flex items-center gap-1"><Copy className="w-3 h-3"/> انسخ: AHLAN50</span>
-                 <h4 className="font-black text-2xl mb-1">50 ج.م خصم!</h4>
-                 <p className="text-sm font-medium text-orange-50">على أول رحلة تطلبها من طريقي</p>
-               </div>
-               <Tag className="w-32 h-32 absolute -left-6 -bottom-6 text-white opacity-20 transform -rotate-12" />
-            </div>
-            
-            <div onClick={()=>onPromoSearch({ from: 'القاهرة', to: 'مرسى مطروح', date: todayDate, passengers: 1 })} className="cursor-pointer active:scale-95 transition-transform flex-1 min-w-[280px] md:min-w-[400px] xl:w-1/3 flex-shrink-0 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-3xl p-6 text-white shadow-lg shadow-blue-500/20 relative overflow-hidden snap-center">
-               <div className="relative z-10">
-                 <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded-lg mb-3 inline-flex items-center gap-1">احجز مطروح فوراً <ChevronLeft className="w-3 h-3"/></span>
-                 <h4 className="font-black text-2xl mb-1">فورمة الساحل 🏖️</h4>
-                 <p className="text-sm font-medium text-blue-50">صيفنا أحلى في مطروح بأسعار زمان</p>
-               </div>
-               <Sun className="w-32 h-32 absolute -left-6 -bottom-6 text-white opacity-20 transform rotate-45" />
-            </div>
+      <section className="space-y-4">
+        <SectionHeader title="إيه اللي هيحصل بعد الحجز؟" subtitle="ثلاث نقاط مهمين لأي مستخدم جديد." />
+        <div className="grid gap-4 md:grid-cols-3">
+          {HELPER_CARDS.map((card) => (
+            <AppSurface key={card.title} className="p-5">
+              <span className="grid h-12 w-12 place-items-center rounded-[22px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+                <card.icon className="h-5 w-5" />
+              </span>
+              <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">{card.title}</h3>
+              <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">{card.text}</p>
+            </AppSurface>
+          ))}
+        </div>
+      </section>
 
-            <div onClick={()=>copyPromo('SA3EED15')} className="cursor-pointer active:scale-95 transition-transform flex-1 min-w-[280px] md:min-w-[400px] xl:w-1/3 flex-shrink-0 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-3xl p-6 text-white shadow-lg shadow-emerald-500/20 relative overflow-hidden snap-center">
-               <div className="relative z-10">
-                 <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded-lg mb-3 inline-flex items-center gap-1"><Copy className="w-3 h-3"/> انسخ: SA3EED15</span>
-                 <h4 className="font-black text-2xl mb-1">أهالي الصعيد 🌴</h4>
-                 <p className="text-sm font-medium text-emerald-50">خصم 15% على رحلات الصعيد</p>
-               </div>
-               <Star className="w-32 h-32 absolute -left-6 -bottom-6 text-white opacity-20 transform rotate-45" />
-            </div>
-         </div>
-      </div>
+      <section className="space-y-4">
+        <SectionHeader title="خدمات السفر" subtitle="مدخل واضح للخدمات المكملة بدل ما تبقى مستخبية." />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {SERVICES.map((service) => (
+            <button
+              key={service.title}
+              type="button"
+              onClick={() => {
+                if (service.action === 'coming') {
+                  showToast('الخدمة دي مرتبطة بخطوة الدفع وبتظهر وقتها تلقائيًا', 'success');
+                  return;
+                }
+                openModal(service.action);
+              }}
+              className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800"
+            >
+              <span className={`grid h-14 w-14 place-items-center rounded-[24px] ${service.tone}`}>
+                <service.icon className="h-6 w-6" />
+              </span>
+              <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">{service.title}</h3>
+              <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">{service.subtitle}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <SectionHeader title="عروض مفيدة" subtitle="عروض واضحة وسهلة الاستخدام من غير زحمة بصرية." />
+        <div className="grid gap-4 lg:grid-cols-3">
+          {OFFERS.map((offer) => (
+            <button
+              key={offer.title}
+              type="button"
+              onClick={() => {
+                if (offer.action === 'copy') {
+                  copyPromo(offer.code);
+                  return;
+                }
+
+                onPromoSearch({
+                  ...offer.params,
+                  date: searchParams.date || todayDate,
+                  passengers: 1,
+                });
+              }}
+              className={`overflow-hidden rounded-[30px] bg-gradient-to-br ${offer.tone} p-5 text-right text-white shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] transition hover:-translate-y-0.5`}
+            >
+              <p className="text-xs font-black tracking-[0.16em] text-white/70">
+                {offer.action === 'copy' ? `استخدم ${offer.code}` : 'افتح المسار'
+                }
+              </p>
+              <h3 className="mt-3 text-2xl font-black">{offer.title}</h3>
+              <p className="mt-2 text-sm font-bold leading-6 text-white/85">{offer.text}</p>
+              <div className="mt-5 inline-flex rounded-full bg-white/14 px-3 py-2 text-xs font-black">
+                {offer.action === 'copy' ? <Copy className="ml-2 h-4 w-4" /> : <BusFront className="ml-2 h-4 w-4" />}
+                {offer.action === 'copy' ? 'انسخ الكود' : 'ابدأ البحث'}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

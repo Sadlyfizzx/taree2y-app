@@ -1,13 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  BusFront,
   CheckCircle2,
   Clock,
   Ticket,
-  X,
 } from 'lucide-react';
+import ModalShell from '../components/ui/ModalShell';
+import RouteTimeline from '../components/ui/RouteTimeline';
+import {
+  AppSurface,
+  MetaChip,
+  PageHeading,
+  PrimaryButton,
+  SecondaryButton,
+  StatusBadge,
+} from '../components/ui/AppPrimitives';
+import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
+import { formatCurrency, formatSeatsText } from '../utils/formatting';
 import { getCancellationPolicy, getTripLifecycleStatus } from '../utils/travel';
+import { withStationNames } from '../utils/stations';
 
 function TripsView({
   trips,
@@ -20,14 +31,31 @@ function TripsView({
   const [activeTab, setActiveTab] = useState('upcoming');
   const [cancelingTrip, setCancelingTrip] = useState(null);
 
-  const computedTrips = useMemo(() => {
-    return trips.map((trip) => {
-      if (trip.status !== 'upcoming') return trip;
-      const lifecycle = getTripLifecycleStatus(trip);
-      if (lifecycle.key === 'arrived') return { ...trip, status: 'past' };
-      return trip;
-    });
-  }, [trips]);
+  const computedTrips = useMemo(
+    () =>
+      trips.map((trip) => {
+        if (trip.status !== 'upcoming') return withStationNames(trip);
+        const lifecycle = getTripLifecycleStatus(trip);
+        if (lifecycle.key === 'arrived') return withStationNames({ ...trip, status: 'past' });
+        return withStationNames(trip);
+      }),
+    [trips],
+  );
+
+  const counts = useMemo(
+    () => ({
+      upcoming: computedTrips.filter((trip) => ['upcoming', 'refund_pending'].includes(trip.status)).length,
+      past: computedTrips.filter((trip) => trip.status === 'past').length,
+      cancelled: computedTrips.filter((trip) => trip.status === 'cancelled').length,
+    }),
+    [computedTrips],
+  );
+
+  const filteredTrips = computedTrips.filter((trip) => {
+    if (activeTab === 'upcoming') return ['upcoming', 'refund_pending'].includes(trip.status);
+    if (activeTab === 'past') return trip.status === 'past';
+    return trip.status === 'cancelled';
+  });
 
   const confirmCancel = () => {
     if (!cancelingTrip) return;
@@ -37,127 +65,122 @@ function TripsView({
 
   const cancelPolicy = cancelingTrip ? getCancellationPolicy(cancelingTrip) : null;
 
-  const filteredTrips = computedTrips.filter((trip) =>
-    activeTab === 'upcoming'
-      ? ['upcoming', 'refund_pending'].includes(trip.status)
-      : ['cancelled', 'past'].includes(trip.status),
-  );
-
   return (
-    <div className="p-5 lg:px-16 space-y-5 flex-1 w-full">
-      <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">
-        تذاكري 🎫
-      </h2>
+    <div className="space-y-5">
+      <PageHeading
+        eyebrow="رحلاتي"
+        title="كل حجوزاتك في مكان واحد"
+        subtitle="هتلاقي الرحلات الجاية، اللي خلصت، والملغية مع حالة كل واحدة وإجراءات الإلغاء والاسترداد بشكل واضح."
+      />
 
-      <div className="bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-2xl flex max-w-md mx-auto mb-8">
-        <button
-          onClick={() => setActiveTab('upcoming')}
-          className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-            activeTab === 'upcoming'
-              ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
-              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-          }`}
-        >
-          تذاكر جاية
-        </button>
-        <button
-          onClick={() => setActiveTab('past')}
-          className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-            activeTab === 'past'
-              ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-sm'
-              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-          }`}
-        >
-          سابقة وملغية
-        </button>
+      {pendingCancellationBookingIds.length > 0 ? (
+        <InlineNotice
+          tone="warning"
+          title="فيه طلب استرداد شغال حالياً"
+          text='لحد ما العملية تخلص هتلاقي الرحلة بحالة "استرداد جاري" والمبلغ هينزل في المحفظة أول ما يتم التأكيد.'
+          icon={Clock}
+        />
+      ) : null}
+
+      <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
+        {[
+          { key: 'upcoming', label: `الجاية (${counts.upcoming})` },
+          { key: 'past', label: `السابقة (${counts.past})` },
+          { key: 'cancelled', label: `الملغية (${counts.cancelled})` },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setActiveTab(tab.key)}
+            className={`rounded-full border px-4 py-2 text-sm font-black transition-all ${
+              activeTab === tab.key
+                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
+                : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {filteredTrips.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center py-24 max-w-2xl mx-auto w-full">
-          <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4">
-            <Ticket className="w-10 h-10 text-slate-300 dark:text-slate-600" />
-          </div>
-          <h3 className="font-black text-lg text-slate-800 dark:text-slate-100 mb-1">
-            مفيش تذاكر هنا
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            احجز أول رحلة ليك وعيش المغامرة يا بطل!
-          </p>
-        </div>
+        <EmptyStateCard
+          icon={Ticket}
+          title={
+            activeTab === 'upcoming'
+              ? 'مفيش رحلات جاية حالياً'
+              : activeTab === 'past'
+              ? 'مفيش رحلات سابقة محفوظة'
+              : 'مفيش رحلات ملغية'
+          }
+          text={
+            activeTab === 'upcoming'
+              ? 'أول ما تحجز رحلة جديدة هتظهر هنا بكل تفاصيلها والتذكرة هتبقى جاهزة كمان.'
+              : activeTab === 'past'
+              ? 'بعد ما أي رحلة تنتهي، هتتنقل تلقائيًا للقائمة دي.'
+              : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد وسجل العملية.'
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6">
+        <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
           {filteredTrips.map((trip) => {
             const policy = getCancellationPolicy(trip);
             const bookingId = trip.bookingId || trip.id || null;
             const isPendingCancellation =
               trip.status === 'refund_pending' ||
               (bookingId && pendingCancellationBookingIds.includes(bookingId));
+            const showTrackAction = trip.status === 'upcoming' && !isPendingCancellation;
 
             return (
-              <div
-                key={trip.pnr}
-                onClick={() =>
-                  ['upcoming', 'past'].includes(trip.status) && onViewTicket(trip)
-                }
-                className={`bg-white dark:bg-slate-800 rounded-3xl p-5 shadow-sm border ${
-                  ['cancelled', 'refund_pending'].includes(trip.status)
-                    ? 'border-rose-100 dark:border-rose-900/30 opacity-80'
-                    : 'border-slate-100 dark:border-slate-700 cursor-pointer hover:shadow-md transition-shadow'
-                }`}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <span className="font-mono font-bold text-slate-500 dark:text-slate-300 text-xs bg-slate-50 dark:bg-slate-900 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-700">
-                    PNR: {trip.pnr?.replace('TRQ-', '') || ''}
-                  </span>
-
-                  {trip.status === 'cancelled' ? (
-                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-3 py-1.5 rounded-lg">
-                      ملغية
-                    </span>
-                  ) : isPendingCancellation ? (
-                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 rounded-lg flex items-center gap-1">
-                      <Clock className="w-3 h-3 animate-spin" /> جاري الإلغاء
-                    </span>
+              <AppSurface key={trip.pnr || trip.id} className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black tracking-[0.16em] text-slate-400 dark:text-slate-500">PNR</p>
+                    <p className="mt-1 font-mono text-sm font-black text-slate-900 dark:text-white">
+                      {trip.pnr || trip.id}
+                    </p>
+                  </div>
+                  {trip.status === 'refund_pending' || isPendingCancellation ? (
+                    <StatusBadge label="استرداد جاري" tone="warning" />
+                  ) : trip.status === 'cancelled' ? (
+                    <StatusBadge label="ملغية" tone="danger" />
                   ) : trip.status === 'past' ? (
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> انتهت
-                    </span>
+                    <StatusBadge label="منتهية" tone="neutral" />
                   ) : (
-                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> مؤكدة
-                    </span>
+                    <StatusBadge label="مؤكدة" tone="success" />
                   )}
                 </div>
 
-                <div className="flex justify-between items-center font-black text-lg text-slate-800 dark:text-slate-100 mb-1">
-                  <span>{trip.from}</span>
-                  <div className="flex-1 border-t-2 border-dashed border-slate-200 dark:border-slate-700 mx-4 relative">
-                    <BusFront className="w-4 h-4 text-slate-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-slate-800 px-0.5" />
+                <div className="mt-4">
+                  <RouteTimeline trip={trip} />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <MetaChip label={`المقاعد: ${formatSeatsText(trip.selectedSeats)}`} tone="neutral" />
+                  <MetaChip label={formatCurrency(trip.finalTotal || trip.price)} tone="brand" />
+                  <MetaChip label={trip.class || 'درجة الرحلة'} tone="neutral" />
+                </div>
+
+                {trip.status === 'upcoming' ? (
+                  <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+                    <p className="text-sm font-black text-slate-900 dark:text-white">الإلغاء قبل التحرك</p>
+                    <p className="mt-1 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
+                      {policy.allowed
+                        ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)} بعد خصم الرسوم.`
+                        : policy.message}
+                    </p>
                   </div>
-                  <span>{trip.to}</span>
-                </div>
-                <div
-                  className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-4 text-left"
-                  dir="ltr"
-                >
-                  {trip.date} • {trip.departureTime}
-                </div>
+                ) : null}
 
-                {trip.status === 'upcoming' && (
-                  <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onViewTicket(trip);
-                      }}
-                      className="flex-1 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 font-bold py-2.5 rounded-xl text-sm transition-colors"
-                    >
-                      التذكرة
-                    </button>
-
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <PrimaryButton className="flex-1" onClick={() => onViewTicket(trip)}>
+                    {showTrackAction ? 'افتح التذكرة' : trip.status === 'cancelled' ? 'عرض التفاصيل' : 'عرض الرحلة'}
+                  </PrimaryButton>
+                  {trip.status === 'upcoming' ? (
+                    <SecondaryButton
+                      className="flex-1"
+                      disabled={!policy.allowed || isPendingCancellation}
+                      onClick={() => {
                         if (isPendingCancellation) return;
                         if (!policy.allowed) {
                           showToast(policy.message, 'error');
@@ -165,85 +188,66 @@ function TripsView({
                         }
                         setCancelingTrip(trip);
                       }}
-                      disabled={!policy.allowed || isPendingCancellation}
-                      className={`flex-1 font-bold py-2.5 rounded-xl text-sm transition-colors ${
-                        policy.allowed && !isPendingCancellation
-                          ? 'bg-slate-50 dark:bg-slate-700 hover:bg-rose-50 dark:hover:bg-rose-900/30 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                      }`}
                     >
-                      {isPendingCancellation
-                        ? 'جاري الإلغاء'
-                        : policy.allowed
-                        ? 'إلغاء'
-                        : 'فات وقت الإلغاء'}
-                    </button>
-                  </div>
-                )}
-              </div>
+                      {isPendingCancellation ? 'جاري الإلغاء' : 'إلغاء الرحلة'}
+                    </SecondaryButton>
+                  ) : null}
+                </div>
+              </AppSurface>
             );
           })}
         </div>
       )}
 
-      {cancelingTrip && cancelPolicy && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in-down">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-[428px] rounded-[2rem] p-6 shadow-2xl relative">
-            <button
-              onClick={() => setCancelingTrip(null)}
-              className="absolute top-4 right-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:text-slate-800 dark:hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="w-14 h-14 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center mb-4">
-              <AlertTriangle className="w-7 h-7" />
-            </div>
-            <h3 className="text-xl font-black text-slate-800 dark:text-white mb-2">
-              متأكد إنك عايز تلغي؟
-            </h3>
-            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-6">
-              {cancelPolicy.label} • {cancelingTrip.company}
-            </p>
-
-            <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl mb-6 space-y-3 text-sm font-bold">
-              <div className="flex justify-between text-slate-600 dark:text-slate-300">
-                <span>قيمة التذكرة:</span>
-                <span dir="ltr">{cancelingTrip.finalTotal} ج.م</span>
-              </div>
-              <div className="flex justify-between text-rose-600 dark:text-rose-400">
-                <span>رسوم الإلغاء ({(cancelPolicy.feeRatio * 100).toFixed(0)}%):</span>
-                <span dir="ltr">
-                  -{Math.round(cancelingTrip.finalTotal * cancelPolicy.feeRatio)} ج.م
-                </span>
-              </div>
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between font-black text-lg text-emerald-600 dark:text-emerald-400">
-                <span>المبلغ المسترد:</span>
-                <span dir="ltr">{cancelPolicy.refundAmount} ج.م</span>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setCancelingTrip(null)}
-                className="flex-1 py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-              >
-                لا، خليها
-              </button>
-              <button
+      {cancelingTrip && cancelPolicy ? (
+        <ModalShell
+          onClose={() => setCancelingTrip(null)}
+          title="تأكيد إلغاء الرحلة"
+          subtitle="قبل ما نكمل، راجع الرسوم والمبلغ المتوقع يرجع للمحفظة."
+          icon={<AlertTriangle className="h-6 w-6" />}
+          maxWidth="max-w-lg"
+          footer={
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <SecondaryButton onClick={() => setCancelingTrip(null)}>رجوع</SecondaryButton>
+              <PrimaryButton
                 onClick={confirmCancel}
                 disabled={!cancelPolicy.allowed}
-                className={`flex-1 py-4 rounded-2xl font-black transition shadow-lg ${
-                  cancelPolicy.allowed
-                    ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-rose-600/30'
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
-                }`}
+                className="bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
               >
                 أكد الإلغاء
-              </button>
+              </PrimaryButton>
             </div>
+          }
+        >
+          <div className="space-y-4">
+            <RouteTimeline trip={cancelingTrip} />
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+              <div className="space-y-3">
+                <div className="flex items-start justify-between gap-3 text-sm font-bold">
+                  <span className="text-slate-500 dark:text-slate-400">قيمة الحجز الحالية</span>
+                  <span className="text-slate-900 dark:text-white">{formatCurrency(cancelingTrip.finalTotal)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-3 text-sm font-bold text-rose-700 dark:text-rose-300">
+                  <span>رسوم الإلغاء ({Math.round(cancelPolicy.feeRatio * 100)}%)</span>
+                  <span>- {formatCurrency(Math.round(cancelingTrip.finalTotal * cancelPolicy.feeRatio))}</span>
+                </div>
+                <div className="border-t border-slate-200 pt-3 dark:border-slate-800">
+                  <div className="flex items-start justify-between gap-3 text-base font-black text-emerald-700 dark:text-emerald-300">
+                    <span>المبلغ المتوقع يرجع</span>
+                    <span>{formatCurrency(cancelPolicy.refundAmount)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <InlineNotice
+              tone="warning"
+              title="ملحوظة"
+              text="بعد التأكيد، الرحلة هتتحول لحالة استرداد جاري لحد ما المعالجة تكتمل وتظهر الحركة في المحفظة."
+              icon={CheckCircle2}
+            />
           </div>
-        </div>
-      )}
+        </ModalShell>
+      ) : null}
     </div>
   );
 }

@@ -8,10 +8,7 @@ import {
   User,
   Wallet as WalletIcon,
 } from 'lucide-react';
-import {
-  createLogger,
-  isMissingRpcError,
-} from '../../lib/logger';
+import { createLogger, isMissingRpcError } from '../../lib/logger';
 import { supabase } from '../../lib/supabase';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import {
@@ -26,7 +23,9 @@ import {
   hydrateTripWithSeats,
   searchTripInventory,
 } from '../../lib/tripInventory';
-import { BottomNavItem, DesktopNavItem } from './ui/AppPrimitives';
+import { useOnboardingGuide } from '../hooks/useOnboardingGuide';
+import { BottomNavItem, DesktopNavItem, MetaChip } from './ui/AppPrimitives';
+import OnboardingGuide from './ui/OnboardingGuide';
 import ToastStack from './ToastStack';
 import HomeView from '../screens/HomeView';
 import SearchResultsView from '../screens/SearchResultsView';
@@ -57,7 +56,7 @@ const buildInvoiceItems = ({
 }) => [
   { name: `تذاكر (${passengers})`, price: baseTotal },
   ...(luggageFee > 0 ? [{ name: 'وزن إضافي', price: luggageFee }] : []),
-  ...(rideFee > 0 ? [{ name: 'أوبر للمحطة', price: rideFee }] : []),
+  ...(rideFee > 0 ? [{ name: 'توصيلة للمحطة', price: rideFee }] : []),
   ...(autoDiscount > 0 ? [{ name: 'خصم الباقة', price: -autoDiscount }] : []),
   ...(promoDiscount > 0 ? [{ name: 'كود خصم', price: -promoDiscount }] : []),
 ];
@@ -74,14 +73,27 @@ const getPromoDiscount = (promoCode, baseTotal) => {
 
 const formatCancellationErrorMessage = (result) => {
   if (!result) {
-    return 'تعذر إلغاء الحجز حالياً';
+    return 'تعذر إلغاء الحجز حالياً.';
   }
 
   if (result.errorClass === 'missing_rpc' || isMissingRpcError(result)) {
-    return 'ميزة الإلغاء غير مفعلة على السيرفر حالياً. تم إيقاف العملية بدون أي تعديل على الحجز أو المحفظة. طبّق آخر migration ثم أعد المحاولة.';
+    return 'ميزة الإلغاء غير مفعلة على السيرفر حالياً. تم إيقاف العملية بدون أي تعديل على الحجز أو المحفظة.';
   }
 
-  return result.message || 'تعذر إلغاء الحجز حالياً';
+  return result.message || 'تعذر إلغاء الحجز حالياً.';
+};
+
+const getHeaderContent = (activeView, activeTab) => {
+  if (activeView === 'search') return { title: 'اختيار الرحلة', subtitle: 'قارن بين الميعاد والمحطة والسعر' };
+  if (activeView === 'seats') return { title: 'اختيار المقاعد', subtitle: 'حدد المقاعد قبل مراجعة الدفع' };
+  if (activeView === 'checkout') return { title: 'الدفع والتأكيد', subtitle: 'راجع كل شيء قبل الحجز النهائي' };
+  if (activeView === 'invoice') return { title: 'تم الحجز', subtitle: 'التذكرة جاهزة دلوقتي' };
+  if (activeView === 'ticket') return { title: 'التذكرة', subtitle: 'كل التفاصيل في شاشة واحدة' };
+  if (activeView === 'tracking') return { title: 'متابعة الرحلة', subtitle: 'اعرف حالة الرحلة بسهولة' };
+  if (activeTab === 'trips') return { title: 'رحلاتي', subtitle: 'الجاية والسابقة والملغية' };
+  if (activeTab === 'wallet') return { title: 'المحفظة', subtitle: 'الرصيد والحركات' };
+  if (activeTab === 'profile') return { title: 'حسابي', subtitle: 'الإعدادات والمزايا' };
+  return { title: 'طريقي', subtitle: 'رحلات مصر بشكل أوضح وأسهل' };
 };
 
 export default function UserApp({
@@ -134,6 +146,8 @@ export default function UserApp({
   const [activeModal, setActiveModal] = useState(null);
   const [pendingCancellationBookingIds, setPendingCancellationBookingIds] = useState([]);
 
+  const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide();
+
   const qaStateRef = useRef({});
   qaStateRef.current = {
     wallet,
@@ -185,11 +199,11 @@ export default function UserApp({
     const params = predefinedParams || searchParams;
 
     if (!params.from || !params.to || !params.date) {
-      return showToast('حدد مكان التحرك والوصول وتاريخ الرحلة الأول 📍', 'error');
+      return showToast('حدد مكان التحرك والوصول وتاريخ الرحلة الأول.', 'error');
     }
 
     if (params.from === params.to) {
-      return showToast('مكان الانطلاق هو هو مكان الوصول!', 'error');
+      return showToast('محافظة التحرك هي نفس محافظة الوصول.', 'error');
     }
 
     if (predefinedParams) setSearchParams(params);
@@ -208,10 +222,7 @@ export default function UserApp({
       setSearchResults(results);
 
       if (results.source === 'fallback') {
-        showToast(
-          'شغّلنا البحث الاحتياطي لأن جداول الرحلات لسه ما اتطبقتش بالكامل',
-          'error',
-        );
+        showToast('شغّلنا البحث الاحتياطي لأن جداول الرحلات لسه ما اتطبقتش بالكامل.', 'error');
       }
     } catch (error) {
       log.error('search_failed', {
@@ -245,10 +256,7 @@ export default function UserApp({
     const promoDiscount = getPromoDiscount(promoCode, baseTotal);
     const luggageFee = hasLuggage ? 50 * passengers : 0;
     const rideFee = rideToStation ? 80 : 0;
-    const finalTotal = Math.max(
-      0,
-      baseTotal + luggageFee + rideFee - autoDiscount - promoDiscount,
-    );
+    const finalTotal = Math.max(0, baseTotal + luggageFee + rideFee - autoDiscount - promoDiscount);
     const pointsToAwardLater = Math.max(
       0,
       Math.floor(Math.max(0, baseTotal - autoDiscount - promoDiscount) / 5),
@@ -374,10 +382,7 @@ export default function UserApp({
     return result;
   };
 
-  const commitSeatSelection = async (
-    tripArg = selectedTrip,
-    seatNumbersArg = selectedSeats,
-  ) => {
+  const commitSeatSelection = async (tripArg = selectedTrip, seatNumbersArg = selectedSeats) => {
     if (!tripArg) {
       return { ok: false, message: 'No trip selected' };
     }
@@ -393,7 +398,7 @@ export default function UserApp({
     });
 
     if (!holdResult?.ok) {
-      showToast(holdResult?.message || 'بعض المقاعد لم تعد متاحة', 'error');
+      showToast(holdResult?.message || 'بعض المقاعد لم تعد متاحة.', 'error');
 
       try {
         setSelectedTrip(await hydrateTripWithSeats(tripArg));
@@ -462,7 +467,7 @@ export default function UserApp({
         });
 
         showToast(
-          `تم الإلغاء! رجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة 💸`,
+          `تم الإلغاء، ورجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة.`,
           'success',
         );
         await refreshCloudState({ silent: true, force: true });
@@ -484,9 +489,7 @@ export default function UserApp({
           });
         }
       } finally {
-        setPendingCancellationBookingIds((prev) =>
-          prev.filter((id) => id !== bookingId),
-        );
+        setPendingCancellationBookingIds((prev) => prev.filter((id) => id !== bookingId));
       }
       return;
     }
@@ -502,7 +505,7 @@ export default function UserApp({
       ),
     );
 
-    showToast('جاري الإلغاء ومعالجة طلب الاسترداد ⏳', 'success');
+    showToast('جاري الإلغاء ومعالجة طلب الاسترداد.', 'success');
 
     window.setTimeout(() => {
       setMyTrips((currentTrips) => {
@@ -528,13 +531,11 @@ export default function UserApp({
         );
       });
 
-      showToast(`تم الإلغاء! رجعلك ${refundAmount} ج.م للمحفظة 💸`, 'success');
+      showToast(`تم الإلغاء، ورجعلك ${refundAmount} ج.م للمحفظة.`, 'success');
     }, 800);
   };
 
-  // DEV helper intentionally exposes a stable inspection surface without
-  // re-wrapping every action in useCallback.
-    useEffect(() => {
+  useEffect(() => {
     if (!import.meta.env.DEV) return undefined;
 
     const wait = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -543,7 +544,6 @@ export default function UserApp({
       snapshot() {
         return JSON.parse(JSON.stringify(qaStateRef.current));
       },
-
       async seedWallet(amount = 500, desc = 'شحن رصيد تجريبي (QA)') {
         const numericAmount = Math.max(0, Number(amount) || 0);
         if (!numericAmount) return 0;
@@ -561,7 +561,6 @@ export default function UserApp({
         await wait();
         return numericAmount;
       },
-
       async resetDemoState() {
         setWallet(0);
         setTransactions([]);
@@ -576,44 +575,36 @@ export default function UserApp({
         await wait();
         return true;
       },
-
       async goHome() {
         navigateTo('main', 'home');
         await wait();
         return 'home';
       },
-
       async goWallet() {
         navigateTo('main', 'wallet');
         await wait();
         return 'wallet';
       },
-
       async goTrips() {
         navigateTo('main', 'trips');
         await wait();
         return 'trips';
       },
-
       async search(params = {}) {
         const next = {
           from: params.from || qaStateRef.current.searchParams?.from || 'القاهرة',
           to: params.to || qaStateRef.current.searchParams?.to || 'الإسكندرية',
           date: params.date || getLocalDateInputValue(),
-          passengers: Number(
-            params.passengers || qaStateRef.current.searchParams?.passengers || 1,
-          ),
+          passengers: Number(params.passengers || qaStateRef.current.searchParams?.passengers || 1),
         };
         await handleSearch(next);
         await wait(250);
         return this.snapshot().searchResults;
       },
-
       async openTrip(index = 0) {
         const trips = qaStateRef.current.searchResults?.trips || [];
         const trip = trips[index];
         if (!trip) return null;
-
         try {
           const hydrated = await hydrateTripWithSeats(trip);
           setSelectedTrip(hydrated);
@@ -626,11 +617,9 @@ export default function UserApp({
           throw error;
         }
       },
-
       async selectSeats(seatsOrCount = 1, tripOverride = null) {
         const trip = tripOverride || qaStateRef.current.selectedTrip;
         if (!trip?.seats?.length) return [];
-
         let chosen = [];
         if (Array.isArray(seatsOrCount)) {
           chosen = seatsOrCount;
@@ -639,18 +628,15 @@ export default function UserApp({
           chosen = trip.seats
             .filter(
               (seat) =>
-                seat.status === 'available' ||
-                (seat.status === 'held' && seat.heldByCurrentUser),
+                seat.status === 'available' || (seat.status === 'held' && seat.heldByCurrentUser),
             )
             .slice(0, count)
             .map((seat) => seat.number);
         }
-
         setSelectedSeats(chosen);
         await wait();
         return chosen;
       },
-
       async goCheckout(tripOverride = null, seatsOverride = null) {
         const result = await commitSeatSelection(
           tripOverride || qaStateRef.current.selectedTrip,
@@ -659,18 +645,11 @@ export default function UserApp({
         await wait(150);
         return result;
       },
-
       async book(options = {}) {
         const state = qaStateRef.current;
         const trip = options.trip || state.selectedTrip;
         const seatNumbers = options.seatNumbers || state.selectedSeats;
-        const passengers = Number(
-          options.passengers ||
-            state.searchParams?.passengers ||
-            seatNumbers?.length ||
-            1,
-        );
-
+        const passengers = Number(options.passengers || state.searchParams?.passengers || seatNumbers?.length || 1);
         const result = await createBookingForTrip({
           trip,
           seatNumbers,
@@ -680,37 +659,25 @@ export default function UserApp({
           rideToStation: Boolean(options.rideToStation),
           needsAccess: Boolean(options.needsAccess),
         });
-
         if (result?.ok) {
           finalizeBookingSuccess(result.booking, result.invoice);
           await wait(150);
         }
-
         return result;
       },
-
       async continueToTicket() {
         navigateTo('ticket');
         await wait();
         return 'ticket';
       },
-
-      async smoke({
-        from = 'القاهرة',
-        to = 'الإسكندرية',
-        passengers = 1,
-        walletAmount = 1200,
-      } = {}) {
+      async smoke({ from = 'القاهرة', to = 'الإسكندرية', passengers = 1, walletAmount = 1200 } = {}) {
         await this.seedWallet(walletAmount);
         await this.search({ from, to, passengers, date: getLocalDateInputValue() });
-
         const trip = await this.openTrip(0);
         if (!trip) return { ok: false, message: 'No trip found in smoke flow' };
-
         const seats = await this.selectSeats(passengers, trip);
         const holdResult = await this.goCheckout(trip, seats);
         if (!holdResult?.ok) return holdResult;
-
         const bookingResult = await this.book({ trip, seatNumbers: seats, passengers });
         if (bookingResult?.ok) {
           await this.continueToTicket();
@@ -725,7 +692,7 @@ export default function UserApp({
         delete window.taree2yDev;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab,
     activeView,
@@ -745,132 +712,139 @@ export default function UserApp({
 
   if (backendLoading) {
     return (
-      <div className="flex-1 grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-200">
-        جاري تحميل بياناتك من السحابة...
+      <div className="flex-1 grid place-items-center bg-[var(--bg)] text-slate-700 dark:bg-slate-950 dark:text-slate-200">
+        جاري تجهيز بيانات حسابك…
       </div>
     );
   }
+
+  const headerContent = getHeaderContent(activeView, activeTab);
 
   return (
     <>
       <ToastStack toasts={toasts} />
 
-      {runtimeMode === 'local-demo' && (
-        <div className="absolute top-14 md:top-0 inset-x-0 z-40 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200 dark:border-indigo-800/50 text-indigo-700 dark:text-indigo-300 text-[11px] font-black">
-          بعض الميزات تعمل حالياً في وضع محلي تجريبي بدون مصادقة أو مزامنة سحابية.
+      {runtimeMode === 'local-demo' ? (
+        <div className="absolute inset-x-0 top-0 z-50 px-4 py-2">
+          <div className="mx-auto max-w-[1200px] rounded-b-[22px] border border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-black text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
+            بعض الميزات حالياً شغالة في وضع محلي تجريبي بدون مزامنة كاملة.
+          </div>
         </div>
-      )}
+      ) : null}
 
       <aside
-        className={`hidden md:flex bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 flex-col h-full sticky top-0 z-40 shadow-sm transition-all duration-300 ${
-          isSidebarOpen ? 'w-72' : 'w-24'
+        className={`hidden h-full flex-col border-l border-slate-200 bg-slate-50/80 px-4 py-5 dark:border-slate-800 dark:bg-slate-950/80 md:flex ${
+          isSidebarOpen ? 'w-[300px]' : 'w-[104px]'
         }`}
       >
-        <div
-          className={`p-6 flex items-center ${
-            isSidebarOpen ? 'justify-between gap-3' : 'justify-center'
-          } cursor-pointer transition-all`}
-        >
-          <div
-            className={`flex items-center ${
-              isSidebarOpen ? 'justify-start gap-3' : 'justify-center'
-            }`}
+        <div className={`flex items-center ${isSidebarOpen ? 'justify-between gap-3' : 'justify-center'}`}>
+          <button
+            type="button"
             onClick={() => navigateTo('main', 'home')}
+            className={`flex items-center ${isSidebarOpen ? 'gap-3' : 'justify-center'} text-right`}
           >
-            <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/30 shrink-0">
-              <BusFront className="w-7 h-7" />
-            </div>
-            {isSidebarOpen && (
-              <div>
-                <h1 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">
-                  طريقي
-                </h1>
-                <p className="text-indigo-600 dark:text-indigo-400 text-xs font-bold whitespace-nowrap">
-                  رحلتك بتبدأ من هنا
-                </p>
-              </div>
-            )}
-          </div>
+            <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-lg shadow-indigo-600/25">
+              <BusFront className="h-7 w-7" />
+            </span>
+            {isSidebarOpen ? (
+              <span>
+                <span className="block text-2xl font-black text-slate-900 dark:text-white">طريقي</span>
+                <span className="mt-1 block text-xs font-black text-slate-400 dark:text-slate-500">رحلتك واضحة من أول خطوة</span>
+              </span>
+            ) : null}
+          </button>
+          {isSidebarOpen ? (
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen((value) => !value)}
+              className="grid h-11 w-11 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          ) : null}
+        </div>
 
+        {!isSidebarOpen ? (
           <button
             type="button"
             onClick={() => setIsSidebarOpen((value) => !value)}
-            className="h-10 w-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 grid place-items-center"
-            aria-label="toggle-sidebar"
+            className="mt-4 grid h-11 w-full place-items-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="h-5 w-5" />
           </button>
-        </div>
+        ) : null}
 
-        <nav className="flex-1 px-4 space-y-2 mt-4">
-          <DesktopNavItem
-            icon={<Home />}
-            label="الرئيسية"
-            active={activeTab === 'home'}
-            onClick={() => navigateTo('main', 'home')}
-            collapsed={!isSidebarOpen}
-          />
-          <DesktopNavItem
-            icon={<Ticket />}
-            label="تذاكري"
-            active={activeTab === 'trips'}
-            onClick={() => navigateTo('main', 'trips')}
-            collapsed={!isSidebarOpen}
-          />
-          <DesktopNavItem
-            icon={<WalletIcon />}
-            label="المحفظة"
-            active={activeTab === 'wallet'}
-            onClick={() => navigateTo('main', 'wallet')}
-            collapsed={!isSidebarOpen}
-          />
-          <DesktopNavItem
-            icon={<User />}
-            label="حسابي"
-            active={activeTab === 'profile'}
-            onClick={() => navigateTo('main', 'profile')}
-            collapsed={!isSidebarOpen}
-          />
+        <nav className="mt-6 flex-1 space-y-2">
+          <DesktopNavItem icon={<Home />} label="الرئيسية" active={activeTab === 'home'} onClick={() => navigateTo('main', 'home')} collapsed={!isSidebarOpen} />
+          <DesktopNavItem icon={<Ticket />} label="رحلاتي" active={activeTab === 'trips'} onClick={() => navigateTo('main', 'trips')} collapsed={!isSidebarOpen} />
+          <DesktopNavItem icon={<WalletIcon />} label="المحفظة" active={activeTab === 'wallet'} onClick={() => navigateTo('main', 'wallet')} collapsed={!isSidebarOpen} />
+          <DesktopNavItem icon={<User />} label="حسابي" active={activeTab === 'profile'} onClick={() => navigateTo('main', 'profile')} collapsed={!isSidebarOpen} />
         </nav>
+
+        {isSidebarOpen ? (
+          <div className="space-y-3 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-sm font-black text-slate-900 dark:text-white">ملخص سريع</p>
+            <div className="flex flex-wrap gap-2">
+              <MetaChip label={`الرصيد ${wallet} ج.م`} tone="brand" />
+              <MetaChip label={`النقاط ${points}`} tone="success" />
+            </div>
+            <button type="button" onClick={openGuide} className="text-sm font-black text-indigo-700 dark:text-indigo-300">
+              افتح دليل الاستخدام
+            </button>
+          </div>
+        ) : null}
       </aside>
 
-      <div className="flex-1 flex flex-col relative h-full bg-slate-50 dark:bg-slate-950 overflow-hidden">
-        <header className="md:hidden px-5 pt-10 pb-4 z-10 flex justify-between items-center transition-colors bg-indigo-600 dark:bg-slate-900 text-white border-none shadow-md shrink-0">
-          {activeView !== 'main' ? (
-            <button
-              onClick={goBack}
-              className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl transition text-white font-bold text-sm"
-            >
-              <ChevronRight className="w-5 h-5" />
-              رجوع
-            </button>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 dark:bg-indigo-600/50 rounded-2xl flex items-center justify-center">
-                <BusFront className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-black tracking-tight text-white">طريقي</h1>
-                <p className="text-white/80 text-[10px] font-bold">الـ Super App 🇪🇬</p>
-              </div>
-            </div>
-          )}
+      <div className="relative flex min-w-0 flex-1 flex-col bg-[var(--bg)] dark:bg-slate-950">
+        <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(33,86,217,0.10), transparent 24%), radial-gradient(circle at bottom left, rgba(15,159,138,0.08), transparent 20%), linear-gradient(rgba(15,23,42,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.03) 1px, transparent 1px)', backgroundSize: 'auto, auto, 24px 24px, 24px 24px' }} />
 
-          {activeView === 'main' && (
-            <div
-              onClick={() => navigateTo('main', 'wallet')}
-              className="bg-white/10 dark:bg-slate-800/50 px-3 py-2 rounded-xl flex items-center gap-2 cursor-pointer border border-white/20 hover:bg-white/20 transition"
-              dir="ltr"
-            >
-              <WalletIcon className="w-4 h-4 text-emerald-300" />
-              <span className="font-bold text-sm text-white">{wallet} ج</span>
+        <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/90 px-4 py-4 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/88 md:px-6">
+          <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {activeView !== 'main' ? (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="inline-flex h-11 items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                  رجوع
+                </button>
+              ) : (
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-lg shadow-indigo-600/20 md:hidden">
+                  <BusFront className="h-5 w-5" />
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-lg font-black text-slate-900 dark:text-white">{headerContent.title}</p>
+                <p className="truncate text-sm font-bold text-slate-500 dark:text-slate-400">{headerContent.subtitle}</p>
+              </div>
             </div>
-          )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openGuide}
+                className="hidden rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-800 dark:hover:text-indigo-300 md:inline-flex"
+              >
+                الدليل
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateTo('main', 'wallet')}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300"
+                dir="ltr"
+              >
+                <WalletIcon className="h-4 w-4 text-emerald-500" />
+                {wallet} ج
+              </button>
+            </div>
+          </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto relative hide-scrollbar scroll-smooth flex flex-col w-full">
-          <div className="w-full mx-auto max-w-[1800px] flex-1 flex flex-col pb-32 md:pb-8 px-0 lg:px-8">
-            {activeView === 'main' && activeTab === 'home' && (
+        <main className="relative flex-1 overflow-y-auto">
+          <div className="mx-auto flex min-h-full w-full max-w-[1800px] flex-col px-4 pb-28 pt-4 md:px-6 md:pb-8 md:pt-6 xl:px-8">
+            {activeView === 'main' && activeTab === 'home' ? (
               <HomeView
                 searchParams={searchParams}
                 setSearchParams={setSearchParams}
@@ -878,10 +852,11 @@ export default function UserApp({
                 showToast={showToast}
                 onPromoSearch={handleSearch}
                 openModal={setActiveModal}
+                openGuide={openGuide}
               />
-            )}
+            ) : null}
 
-            {activeView === 'search' && (
+            {activeView === 'search' ? (
               <SearchResultsView
                 searchParams={searchParams}
                 searchResults={searchResults}
@@ -897,14 +872,14 @@ export default function UserApp({
                       tripInstanceId: trip?.instanceId || null,
                       error,
                     });
-                    showToast('تعذر تحميل المقاعد من السيرفر', 'error');
+                    showToast('تعذر تحميل المقاعد من السيرفر.', 'error');
                   }
                 }}
                 showToast={showToast}
               />
-            )}
+            ) : null}
 
-            {activeView === 'seats' && selectedTrip && (
+            {activeView === 'seats' && selectedTrip ? (
               <SeatSelectionView
                 trip={selectedTrip}
                 passengers={searchParams.passengers}
@@ -915,9 +890,9 @@ export default function UserApp({
                 }}
                 showToast={showToast}
               />
-            )}
+            ) : null}
 
-            {activeView === 'checkout' && selectedTrip && (
+            {activeView === 'checkout' && selectedTrip ? (
               <CheckoutView
                 trip={selectedTrip}
                 seats={selectedSeats}
@@ -929,13 +904,13 @@ export default function UserApp({
                 showToast={showToast}
                 openModal={setActiveModal}
               />
-            )}
+            ) : null}
 
-            {activeView === 'invoice' && currentInvoice && (
-              <InvoiceView invoice={currentInvoice} onContinue={() => navigateTo('ticket')} />
-            )}
+            {activeView === 'invoice' && currentInvoice ? (
+              <InvoiceView invoice={currentInvoice} ticket={viewedTicket} onContinue={() => navigateTo('ticket')} />
+            ) : null}
 
-            {activeView === 'main' && activeTab === 'trips' && (
+            {activeView === 'main' && activeTab === 'trips' ? (
               <TripsView
                 trips={myTrips}
                 setMyTrips={setMyTrips}
@@ -947,26 +922,17 @@ export default function UserApp({
                 }}
                 showToast={showToast}
               />
-            )}
+            ) : null}
 
-            {activeView === 'ticket' && viewedTicket && (
-              <TicketView
-                ticket={viewedTicket}
-                user={user}
-                onTrack={() => navigateTo('tracking')}
-                showToast={showToast}
-              />
-            )}
+            {activeView === 'ticket' && viewedTicket ? (
+              <TicketView ticket={viewedTicket} user={user} onTrack={() => navigateTo('tracking')} showToast={showToast} />
+            ) : null}
 
-            {activeView === 'tracking' && viewedTicket && (
-              <TrackingView
-                ticket={viewedTicket}
-                showToast={showToast}
-                openModal={setActiveModal}
-              />
-            )}
+            {activeView === 'tracking' && viewedTicket ? (
+              <TrackingView ticket={viewedTicket} showToast={showToast} openModal={setActiveModal} />
+            ) : null}
 
-            {activeView === 'main' && activeTab === 'wallet' && (
+            {activeView === 'main' && activeTab === 'wallet' ? (
               <WalletView
                 wallet={wallet}
                 setWallet={setWallet}
@@ -975,9 +941,9 @@ export default function UserApp({
                 showToast={showToast}
                 openTopUp={() => setActiveModal('topup')}
               />
-            )}
+            ) : null}
 
-            {activeView === 'main' && activeTab === 'profile' && (
+            {activeView === 'main' && activeTab === 'profile' ? (
               <ProfileView
                 user={user}
                 points={points}
@@ -988,52 +954,32 @@ export default function UserApp({
                   const { error } = await supabase.auth.signOut();
                   if (error) {
                     log.error('logout_failed', { error });
-                    showToast('تعذر تسجيل الخروج حالياً', 'error');
+                    showToast('تعذر تسجيل الخروج حالياً.', 'error');
                     return;
                   }
-
                   log.info('logout_succeeded');
                 }}
                 showToast={showToast}
                 openModal={setActiveModal}
+                openGuide={openGuide}
               />
-            )}
+            ) : null}
           </div>
         </main>
 
-        {activeView === 'main' && (
-          <div className="md:hidden fixed bottom-4 w-[calc(100%-32px)] left-4 z-40">
-            <nav className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl border border-slate-200/50 dark:border-slate-700/50 rounded-3xl flex justify-around items-center p-2 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)]">
-              <BottomNavItem
-                icon={<Home />}
-                label="الرئيسية"
-                active={activeTab === 'home'}
-                onClick={() => navigateTo('main', 'home')}
-              />
-              <BottomNavItem
-                icon={<Ticket />}
-                label="تذاكري"
-                active={activeTab === 'trips'}
-                onClick={() => navigateTo('main', 'trips')}
-              />
-              <BottomNavItem
-                icon={<WalletIcon />}
-                label="المحفظة"
-                active={activeTab === 'wallet'}
-                onClick={() => navigateTo('main', 'wallet')}
-              />
-              <BottomNavItem
-                icon={<User />}
-                label="حسابي"
-                active={activeTab === 'profile'}
-                onClick={() => navigateTo('main', 'profile')}
-              />
+        {activeView === 'main' ? (
+          <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] md:hidden">
+            <nav className="mx-auto flex max-w-[420px] items-center justify-around rounded-[28px] border border-slate-200/80 bg-white/95 p-2 shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/92">
+              <BottomNavItem icon={<Home />} label="الرئيسية" active={activeTab === 'home'} onClick={() => navigateTo('main', 'home')} />
+              <BottomNavItem icon={<Ticket />} label="رحلاتي" active={activeTab === 'trips'} onClick={() => navigateTo('main', 'trips')} />
+              <BottomNavItem icon={<WalletIcon />} label="المحفظة" active={activeTab === 'wallet'} onClick={() => navigateTo('main', 'wallet')} />
+              <BottomNavItem icon={<User />} label="حسابي" active={activeTab === 'profile'} onClick={() => navigateTo('main', 'profile')} />
             </nav>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {activeModal === 'courier' && (
+      {activeModal === 'courier' ? (
         <CourierModal
           closeModal={() => setActiveModal(null)}
           wallet={wallet}
@@ -1041,13 +987,11 @@ export default function UserApp({
           setTransactions={setTransactions}
           showToast={showToast}
         />
-      )}
+      ) : null}
 
-      {activeModal === 'bot' && (
-        <ChatbotModal closeModal={() => setActiveModal(null)} user={user} />
-      )}
+      {activeModal === 'bot' ? <ChatbotModal closeModal={() => setActiveModal(null)} user={user} /> : null}
 
-      {activeModal === 'subs' && (
+      {activeModal === 'subs' ? (
         <SubscriptionsModal
           closeModal={() => setActiveModal(null)}
           wallet={wallet}
@@ -1057,9 +1001,9 @@ export default function UserApp({
           setSubscription={setSubscription}
           showToast={showToast}
         />
-      )}
+      ) : null}
 
-      {activeModal === 'food' && (
+      {activeModal === 'food' ? (
         <FoodOrderModal
           closeModal={() => setActiveModal(null)}
           wallet={wallet}
@@ -1067,9 +1011,9 @@ export default function UserApp({
           setTransactions={setTransactions}
           showToast={showToast}
         />
-      )}
+      ) : null}
 
-      {activeModal === 'points' && (
+      {activeModal === 'points' ? (
         <PointsModal
           closeModal={() => setActiveModal(null)}
           wallet={wallet}
@@ -1079,9 +1023,9 @@ export default function UserApp({
           setPoints={setPoints}
           showToast={showToast}
         />
-      )}
+      ) : null}
 
-      {activeModal === 'topup' && (
+      {activeModal === 'topup' ? (
         <TopUpFlowModal
           closeModal={() => setActiveModal(null)}
           wallet={wallet}
@@ -1089,7 +1033,13 @@ export default function UserApp({
           setTransactions={setTransactions}
           showToast={showToast}
         />
-      )}
+      ) : null}
+
+      <OnboardingGuide
+        isOpen={isGuideOpen}
+        onClose={closeGuide}
+        onComplete={completeGuide}
+      />
     </>
   );
 }

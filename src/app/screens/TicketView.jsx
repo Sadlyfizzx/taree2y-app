@@ -1,69 +1,139 @@
 import React from 'react';
-import { BusFront, CheckCircle2, Download, Map, MapPin, QrCode, Users } from 'lucide-react';
+import {
+  Download,
+  Map,
+  QrCode,
+  Ticket,
+} from 'lucide-react';
+import RouteTimeline from '../components/ui/RouteTimeline';
+import {
+  AppSurface,
+  KeyValueRow,
+  MetaChip,
+  PageHeading,
+  PrimaryButton,
+  SecondaryButton,
+  StickyActionBar,
+  StatusBadge,
+} from '../components/ui/AppPrimitives';
+import { InlineNotice } from '../components/ui/StateBlocks';
+import { formatCurrency, formatSeatsText } from '../utils/formatting';
+import { withStationNames } from '../utils/stations';
 
 function TicketView({ ticket, user, onTrack, showToast }) {
   if (!ticket) return null;
 
-  const downloadTicket = () => showToast('نزلنا نسخة تجريبية من التذكرة عندك يا غالي 🖼️', 'success');
-  const shareFare = () => showToast('الميزة دي هتكون متاحة لما نظام الأصدقاء والمحفظة يبقوا حقيقيين', 'error');
+  const data = withStationNames(ticket);
+  const isPast = data.status === 'past';
+  const isCancelled = data.status === 'cancelled';
+  const isRefundPending = data.status === 'refund_pending';
+
+  const downloadTicket = () => {
+    showToast('اتحفظت نسخة تجريبية من التذكرة.', 'success');
+  };
 
   return (
-    <div className="flex flex-col flex-1 p-5 pt-8 items-center w-full max-w-2xl mx-auto">
-       <div className="w-full max-w-sm bg-white dark:bg-slate-800 rounded-[2rem] shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden relative border border-slate-200 dark:border-slate-700 shrink-0 mb-6">
-          <div className="bg-indigo-600 p-6 text-white flex justify-between items-center relative">
-             <div className="absolute -bottom-4 -right-4 w-8 h-8 bg-slate-50 dark:bg-slate-950 rounded-full border-t border-l border-slate-200 dark:border-slate-700"></div>
-             <div className="absolute -bottom-4 -left-4 w-8 h-8 bg-slate-50 dark:bg-slate-950 rounded-full border-t border-r border-slate-200 dark:border-slate-700"></div>
-             <div><span className="text-[10px] text-indigo-200 font-bold tracking-widest uppercase block mb-1">Booking Ref (PNR)</span><h2 className="text-2xl font-black font-mono tracking-widest" dir="ltr">{ticket.pnr?.replace('TRQ-','') || ''}</h2></div>
-             <div className="text-left">
-               <span className={`px-2 py-1 rounded text-[10px] font-bold inline-flex items-center gap-1 ${ticket.status === 'past' ? 'bg-slate-800 text-slate-300' : 'bg-white/20 text-white'}`}>
-                 {ticket.status === 'past' ? 'رحلة منتهية' : <><CheckCircle2 className="w-3 h-3"/> صالحة للركوب</>}
-               </span>
-             </div>
+    <div className="space-y-5">
+      <PageHeading
+        eyebrow="التذكرة"
+        title="كل تفاصيل الرحلة قدامك"
+        subtitle="اسم المحطة، وقت التحرك، المقاعد، والـ QR كلهم في شاشة واحدة سهلة وقت السفر."
+        actions={
+          <div className="flex gap-2">
+            {isRefundPending ? <StatusBadge label="استرداد جاري" tone="warning" /> : null}
+            {isCancelled ? <StatusBadge label="ملغية" tone="danger" /> : null}
+            {isPast ? <StatusBadge label="منتهية" tone="neutral" /> : null}
+            {!isPast && !isCancelled && !isRefundPending ? <StatusBadge label="صالحة للصعود" tone="success" /> : null}
+          </div>
+        }
+      />
+
+      {(isCancelled || isRefundPending) ? (
+        <InlineNotice
+          tone={isCancelled ? 'danger' : 'warning'}
+          title={isCancelled ? 'التذكرة دي اتلغت' : 'التذكرة في انتظار تأكيد الاسترداد'}
+          text={
+            isCancelled
+              ? 'تم إلغاء الرحلة، ولو فيه مبلغ مسترد هتلاقيه في المحفظة وحركات الرصيد.'
+              : 'الرحلة مازالت ظاهرة عشان تراجع التفاصيل لحد ما معالجة الاسترداد تخلص.'
+          }
+        />
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <AppSurface className="ticket-shell overflow-hidden p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black tracking-[0.16em] text-slate-400 dark:text-slate-500">رقم الحجز</p>
+              <p className="mt-1 font-mono text-2xl font-black text-slate-900 dark:text-white">{data.pnr || data.id}</p>
+            </div>
+            <MetaChip label={`التاريخ ${data.date}`} tone="brand" />
           </div>
 
-          <div className="p-6 relative border-b-2 border-dashed border-slate-200 dark:border-slate-700">
-             <div className="flex justify-between items-center mb-6">
-                <div className="text-center w-1/3"><span className="text-3xl font-black text-slate-800 dark:text-white block leading-none mb-1">{ticket.from.substring(0,3)}</span><span className="text-xs font-bold text-slate-500 dark:text-slate-400">{ticket.from}</span></div>
-                <div className="flex-1 flex justify-center"><div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 rounded-full flex items-center justify-center"><BusFront className="w-6 h-6 text-indigo-600 dark:text-indigo-400" /></div></div>
-                <div className="text-center w-1/3"><span className="text-3xl font-black text-slate-800 dark:text-white block leading-none mb-1">{ticket.to.substring(0,3)}</span><span className="text-xs font-bold text-slate-500 dark:text-slate-400">{ticket.to}</span></div>
-             </div>
-
-             {(ticket.fromStationName || ticket.toStationName) && (
-               <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700 mb-4 text-xs font-bold text-slate-600 dark:text-slate-300 space-y-2">
-                 <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-indigo-500" /> محطة القيام: <span className="text-slate-800 dark:text-slate-100">{ticket.fromStationName || ticket.from}</span></div>
-                 <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-emerald-500" /> محطة الوصول: <span className="text-slate-800 dark:text-slate-100">{ticket.toStationName || ticket.to}</span></div>
-               </div>
-             )}
-
-             <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                <div><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">الراكب</span><span className="font-bold text-slate-800 dark:text-slate-200">{user.name}</span></div>
-                <div className="text-left"><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">التاريخ</span><span className="font-bold text-slate-800 dark:text-slate-200" dir="ltr">{ticket.date}</span></div>
-                <div><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">التحرك</span><span className="font-black text-indigo-600 dark:text-indigo-400 text-lg" dir="ltr">{ticket.departureTime}</span></div>
-                <div className="text-left"><span className="block text-[10px] text-slate-400 font-bold uppercase mb-0.5">كراسي</span><span className="font-black text-slate-800 dark:text-slate-200 text-lg" dir="ltr">{ticket.selectedSeats?.join(', ') || ''}</span></div>
-             </div>
-             
-             <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700 flex justify-between items-center text-xs font-bold">
-                <span className="text-slate-500">الشركة: <span className="text-slate-800 dark:text-slate-200">{ticket.company}</span></span>
-                <span className="text-slate-500">الدرجة: <span className="text-slate-800 dark:text-slate-200">{ticket.class}</span></span>
-             </div>
+          <div className="mt-4">
+            <RouteTimeline trip={data} />
           </div>
 
-          <div className={`p-6 bg-white dark:bg-slate-800 flex flex-col items-center ${ticket.status === 'past' ? 'opacity-50' : ''}`}>
-             <p className="text-[10px] font-bold text-slate-400 mb-3 text-center">ده رمز صعود تجريبي لعرض شكل التذكرة فقط</p>
-             <div className="p-2 border-2 border-slate-100 dark:border-slate-700 rounded-2xl bg-white"><QrCode className="w-28 h-28 text-slate-800" /></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <KeyValueRow label="اسم الراكب" value={user.name} />
+            <KeyValueRow label="المقاعد" value={formatSeatsText(data.selectedSeats)} valueClassName="font-black text-indigo-700 dark:text-indigo-300" />
+            <KeyValueRow label="الشركة" value={data.company} />
+            <KeyValueRow label="الدرجة" value={data.class} />
+            <KeyValueRow label="الدفع" value={data.paymentMethod === 'wallet' ? 'محفظة طريقي' : data.paymentMethod} />
+            <KeyValueRow label="إجمالي العملية" value={formatCurrency(data.finalTotal || data.price)} />
           </div>
-       </div>
 
-       {ticket.selectedSeats?.length > 1 && ticket.status !== 'past' && (
-         <button onClick={shareFare} className="w-full max-w-sm bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 mb-4 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition active:scale-95 border border-emerald-200 dark:border-emerald-800">
-            <Users className="w-5 h-5"/> الميزة دي هتتوفر لاحقاً مع الأصدقاء
-         </button>
-       )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <MetaChip label={data.luggage ? 'فيه وزن إضافي' : 'شنطة 20 كجم مشمولة'} tone={data.luggage ? 'warning' : 'neutral'} />
+            {data.ride ? <MetaChip label="توصيلة للمحطة مضافة" tone="brand" /> : null}
+            {data.access ? <MetaChip label="مساعدة وقت الصعود" tone="success" /> : null}
+          </div>
+        </AppSurface>
 
-       <div className="sticky bottom-0 mt-auto w-full max-w-[400px] flex gap-3 py-4 pb-8 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent dark:from-slate-950 dark:via-slate-950 pointer-events-none z-20">
-          <button onClick={onTrack} className="flex-1 pointer-events-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition active:scale-95"><Map className="w-5 h-5"/> تتبع الحافلة</button>
-          <button onClick={downloadTicket} className="flex-1 pointer-events-auto bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition active:scale-95"><Download className="w-5 h-5"/> حفظ كصورة</button>
-       </div>
+        <AppSurface className="p-5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+              <QrCode className="h-6 w-6" />
+            </span>
+            <div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white">رمز الصعود</h3>
+              <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">اعرضه وقت الركوب مع رقم الحجز لو الموظف طلبه.</p>
+            </div>
+          </div>
+
+          <div className={`mt-5 rounded-[28px] border border-dashed border-slate-200 bg-white p-5 text-center dark:border-slate-700 dark:bg-slate-950 ${isPast || isCancelled ? 'opacity-60' : ''}`}>
+            <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-[28px] border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+              <QrCode className="h-24 w-24 text-slate-900 dark:text-white" />
+            </div>
+            <p className="mt-4 text-sm font-black text-slate-900 dark:text-white">{data.ticketToken || 'رمز تجريبي للتذكرة'}</p>
+            <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">لو الشبكة ضعفت، رقم الحجز يفضل ظاهر معاك في أعلى الشاشة.</p>
+          </div>
+
+          <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+            <p className="text-sm font-black text-slate-900 dark:text-white">ملحوظة قبل التحرك</p>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
+              حاول توصل المحطة قبل التحرك بـ 20 دقيقة على الأقل عشان الصعود يبقى هادي وواضح.
+            </p>
+          </div>
+        </AppSurface>
+      </div>
+
+      <StickyActionBar>
+        <AppSurface className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-black text-slate-900 dark:text-white">لو الرحلة قربت تتحرك افتح التتبع</p>
+            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">هتشوف حالة الرحلة والمستجدات من نفس التطبيق.</p>
+          </div>
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[280px] sm:flex-row">
+            <PrimaryButton onClick={onTrack} disabled={isPast || isCancelled} icon={<Map className="h-5 w-5" />} className="flex-1">
+              متابعة الرحلة
+            </PrimaryButton>
+            <SecondaryButton onClick={downloadTicket} icon={<Download className="h-5 w-5" />} className="flex-1">
+              حفظ نسخة
+            </SecondaryButton>
+          </div>
+        </AppSurface>
+      </StickyActionBar>
     </div>
   );
 }

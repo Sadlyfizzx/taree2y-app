@@ -1,8 +1,110 @@
 @import "tailwindcss";
-html, body, #root {
-  height: 100%;
+
+:root {
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --surface-soft: #eef4ff;
+  --ink: #10233f;
+  --muted: #64748b;
+  --line: rgba(15, 23, 42, 0.08);
+  --line-strong: rgba(15, 23, 42, 0.16);
+  --brand: #2156d9;
+  --brand-strong: #163c98;
+  --accent: #0f9f8a;
+  --warning: #b45309;
+  --danger: #be123c;
+  --success: #047857;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
   margin: 0;
 }
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
 body {
-  font-family: sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", Tahoma, Arial, system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+::selection {
+  background: rgba(33, 86, 217, 0.16);
+}
+
+:focus-visible {
+  outline: 3px solid rgba(33, 86, 217, 0.34);
+  outline-offset: 3px;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.ticket-shell {
+  position: relative;
+}
+
+.ticket-shell::before,
+.ticket-shell::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.ticket-shell::before {
+  inset-inline-start: -10px;
+}
+
+.ticket-shell::after {
+  inset-inline-end: -10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

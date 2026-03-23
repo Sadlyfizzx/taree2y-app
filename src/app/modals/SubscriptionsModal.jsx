@@ -1,45 +1,100 @@
 import React from 'react';
-import { Crown, X } from 'lucide-react';
+import { Crown } from 'lucide-react';
+import ModalShell from '../components/ui/ModalShell';
+import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { getLocalDateInputValue } from '../utils/travel';
+import { formatCurrency } from '../utils/formatting';
 
-function SubscriptionsModal({ closeModal, wallet, setWallet, setTransactions, subscription, setSubscription, showToast }) {
+function SubscriptionsModal({
+  closeModal,
+  wallet,
+  setWallet,
+  setTransactions,
+  subscription,
+  setSubscription,
+  showToast,
+}) {
   const handleBuy = (subType, price) => {
-    if(wallet < price) return showToast('رصيدك مش مكفي، اشحن الأول.', 'error');
-    setWallet(p => p - price);
-    setTransactions(p => [{ id: `TXN-${Math.random().toString(36).substr(2,6).toUpperCase()}`, type: 'debit', amount: price, date: getLocalDateInputValue(), desc: `اشتراك باقة ${subType==='student'?'الطالب':'VIP'}` }, ...p]);
+    if (wallet < price) {
+      showToast('الرصيد الحالي مش مكفي لتفعيل الباقة.', 'error');
+      return;
+    }
+
+    setWallet((currentValue) => currentValue - price);
+    setTransactions((currentValue) => [
+      {
+        id: `SUB-${Date.now()}`,
+        type: 'debit',
+        amount: price,
+        date: getLocalDateInputValue(),
+        desc: `اشتراك باقة ${subType === 'student' ? 'الطالب' : 'VIP'}`,
+      },
+      ...currentValue,
+    ]);
     setSubscription(subType);
-    showToast('تم تفعيل الباقة بنجاح! استمتع بالخصم الثابت 🎉', 'success');
+    showToast('تم تفعيل الباقة بنجاح.', 'success');
     closeModal();
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in-down">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-[400px] rounded-[2.5rem] p-8 shadow-2xl relative">
-        <button onClick={closeModal} className="absolute top-6 left-6 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500"><X className="w-5 h-5"/></button>
-        <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-2 flex items-center gap-2"><Crown className="w-8 h-8 text-amber-500"/> باقات التوفير</h3>
-        <p className="text-sm font-bold text-slate-500 mb-8">اشترك دلوقتي ووفر على كل رحلاتك خلال الشهر.</p>
-        
-        <div className="space-y-4">
-           {/* Student Pass */}
-           <div className={`p-5 rounded-2xl border-2 ${subscription === 'student' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800'}`}>
-              <div className="flex justify-between items-start mb-4">
-                 <div><h4 className="font-black text-slate-800 dark:text-white text-lg">باقة الطالب 🎓</h4><p className="text-xs text-slate-500 mt-1">خصم 15% على كل رحلاتك</p></div>
-                 <div className="text-xl font-black text-indigo-600 dark:text-indigo-400" dir="ltr">100 ج.م</div>
-              </div>
-              {subscription === 'student' ? <span className="text-sm font-black text-indigo-600 bg-indigo-100 px-4 py-2 rounded-xl block text-center">باقة مفعلة 🟢</span> : <button onClick={()=>handleBuy('student', 100)} className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold py-3 rounded-xl text-sm transition active:scale-95">اشترك الآن</button>}
-           </div>
+  const plans = [
+    {
+      key: 'student',
+      title: 'باقة الطالب',
+      price: 100,
+      tone: 'border-indigo-300 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-900/20',
+      chips: ['خصم 15%', 'للرحلات المتكررة'],
+      points: ['خصم ثابت على كل رحلة', 'مناسبة للتنقل الأسبوعي'],
+    },
+    {
+      key: 'vip',
+      title: 'باقة VIP',
+      price: 300,
+      tone: 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20',
+      chips: ['خصم 25%', 'أولوية أكبر'],
+      points: ['خصم أعلى على كل الحجز', 'أنسب للمستخدم النشط جدًا'],
+    },
+  ];
 
-           {/* VIP Pass */}
-           <div className={`p-5 rounded-2xl border-2 ${subscription === 'vip' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'border-amber-100 dark:border-amber-900/40 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10'}`}>
-              <div className="flex justify-between items-start mb-4">
-                 <div><h4 className="font-black text-amber-900 dark:text-amber-400 text-lg">باقة كبار الزوار 👑</h4><p className="text-xs text-amber-700/70 dark:text-amber-500/70 mt-1">خصم 25% + تعديل مجاني</p></div>
-                 <div className="text-xl font-black text-amber-600" dir="ltr">300 ج.م</div>
+  return (
+    <ModalShell
+      onClose={closeModal}
+      title="باقات التوفير"
+      subtitle="خطط بسيطة تقلل التكلفة على الرحلات المتكررة من غير ما تعقد تجربة الحجز."
+      icon={<Crown className="h-6 w-6" />}
+      maxWidth="max-w-3xl"
+    >
+      <div className="grid gap-4 md:grid-cols-2">
+        {plans.map((plan) => {
+          const isActive = subscription === plan.key;
+          return (
+            <div key={plan.key} className={`rounded-[28px] border p-5 ${plan.tone}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-xl font-black text-slate-900 dark:text-white">{plan.title}</h4>
+                  <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{formatCurrency(plan.price)} / شهريًا</p>
+                </div>
+                {isActive ? <MetaChip label="مفعلة حالياً" tone="success" /> : null}
               </div>
-              {subscription === 'vip' ? <span className="text-sm font-black text-amber-600 bg-amber-100 px-4 py-2 rounded-xl block text-center">باقة مفعلة 🟢</span> : <button onClick={()=>handleBuy('vip', 300)} className="w-full bg-amber-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-amber-500/30 transition active:scale-95">اشترك الآن</button>}
-           </div>
-        </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {plan.chips.map((chip) => <MetaChip key={chip} label={chip} tone="brand" />)}
+              </div>
+              <ul className="mt-4 space-y-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                {plan.points.map((point) => (
+                  <li key={point}>• {point}</li>
+                ))}
+              </ul>
+              <div className="mt-5">
+                {isActive ? (
+                  <SecondaryButton className="w-full" onClick={closeModal}>تمام</SecondaryButton>
+                ) : (
+                  <PrimaryButton className="w-full" onClick={() => handleBuy(plan.key, plan.price)}>فعّل الباقة</PrimaryButton>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 

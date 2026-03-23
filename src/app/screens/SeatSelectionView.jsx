@@ -1,78 +1,175 @@
 import React from 'react';
 import { Check, Clock } from 'lucide-react';
+import BookingProgress from '../components/ui/BookingProgress';
+import RouteTimeline from '../components/ui/RouteTimeline';
+import {
+  AppSurface,
+  MetaChip,
+  PageHeading,
+  PrimaryButton,
+  StickyActionBar,
+} from '../components/ui/AppPrimitives';
+import { InlineNotice } from '../components/ui/StateBlocks';
 import { getTripBookability } from '../utils/travel';
+import { withStationNames } from '../utils/stations';
 
-function SeatSelectionView({ trip, passengers, selectedSeats, setSelectedSeats, onConfirm, showToast }) {
+function SeatSelectionView({
+  trip,
+  passengers,
+  selectedSeats,
+  setSelectedSeats,
+  onConfirm,
+  showToast,
+}) {
   if (!trip || !trip.seats) return null;
-  const bookability = getTripBookability(trip);
+
+  const data = withStationNames(trip);
+  const bookability = getTripBookability(data);
+  const rows = Array.from(
+    { length: Math.ceil(data.seats.length / 4) },
+    (_, rowIndex) => data.seats.slice(rowIndex * 4, rowIndex * 4 + 4),
+  );
+
+  const remainingSeats = Math.max(0, passengers - selectedSeats.length);
+  const isReady = selectedSeats.length === passengers;
 
   const toggleSeat = (seat) => {
-    if (!bookability.canBook) return showToast(bookability.reason, 'error');
-    const heldByOther = seat.status === 'held' && !seat.heldByCurrentUser;
-    const unavailable = seat.status === 'booked' || heldByOther;
-    if (unavailable) return showToast(heldByOther ? 'الكرسي ده متثبت مؤقتاً لراكب تاني' : 'الكرسي ده محجوز يا ريس 😔', 'error');
-
-    if (selectedSeats.includes(seat.number)) {
-      setSelectedSeats((prev) => prev.filter((s) => s !== seat.number));
+    if (!bookability.canBook) {
+      showToast(bookability.reason, 'error');
       return;
     }
-    if (selectedSeats.length >= passengers) return showToast(`أنت طالب تحجز ${passengers} مقاعد بس ✌️`, 'error');
-    setSelectedSeats((prev) => [...prev, seat.number]);
+
+    const heldByOther = seat.status === 'held' && !seat.heldByCurrentUser;
+    const unavailable = seat.status === 'booked' || heldByOther;
+
+    if (unavailable) {
+      showToast(heldByOther ? 'الكرسي ده متثبت مؤقتًا لراكب تاني.' : 'الكرسي ده محجوز بالفعل.', 'error');
+      return;
+    }
+
+    if (selectedSeats.includes(seat.number)) {
+      setSelectedSeats((currentValue) => currentValue.filter((item) => item !== seat.number));
+      return;
+    }
+
+    if (selectedSeats.length >= passengers) {
+      showToast(`مطلوب ${passengers} مقاعد فقط في الحجز ده.`, 'error');
+      return;
+    }
+
+    setSelectedSeats((currentValue) => [...currentValue, seat.number]);
   };
 
-  const isReady = selectedSeats.length === passengers;
-  const rows = Array.from({ length: Math.ceil(trip.seats.length / 4) }, (_, rowIndex) => trip.seats.slice(rowIndex * 4, rowIndex * 4 + 4));
-
   return (
-    <div className="flex flex-col flex-1 pt-4 w-full h-full">
-      <div className="text-center mb-6 px-5 shrink-0">
-        <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-1">اختار كرسيك 💺</h2>
-        <p className="text-sm font-bold text-slate-500 dark:text-slate-400">مطلوب اختيار <span className="text-indigo-600 dark:text-indigo-400">{passengers}</span> مقاعد</p>
-        {!bookability.canBook && <div className="mt-3 inline-flex items-center gap-2 rounded-xl bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 px-3 py-2 text-xs font-black border border-rose-200 dark:border-rose-800/50"><Clock className="w-4 h-4" /> {bookability.reason}</div>}
-      </div>
+    <div className="space-y-5">
+      <PageHeading
+        eyebrow="الخطوة ٢ من ٤"
+        title="اختار المقاعد"
+        subtitle="اختيار المقاعد هنا واضح جدًا: الفاضي، المحجوز، والمتثبت مؤقتًا كل واحد ليه شكل مختلف."
+      />
 
-      <div className="flex justify-center gap-6 mb-8 text-xs font-bold text-slate-600 dark:text-slate-300 shrink-0 flex-wrap">
-        <div className="flex items-center gap-2"><div className="w-5 h-5 rounded-lg bg-indigo-600 shadow-md"></div> مختار</div>
-        <div className="flex items-center gap-2"><div className="w-5 h-5 rounded-lg bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700"></div> فاضي</div>
-        <div className="flex items-center gap-2"><div className="w-5 h-5 rounded-lg bg-orange-200 dark:bg-orange-900/40"></div> متثبت مؤقتاً</div>
-        <div className="flex items-center gap-2"><div className="w-5 h-5 rounded-lg bg-slate-200 dark:bg-slate-700"></div> محجوز</div>
-      </div>
+      <AppSurface className="p-4 sm:p-5">
+        <BookingProgress current="seats" />
+        <div className="mt-4">
+          <RouteTimeline trip={data} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <MetaChip label={`مطلوب ${passengers} ${passengers === 1 ? 'مقعد' : 'مقاعد'}`} tone="brand" />
+          <MetaChip label={`المختار ${selectedSeats.length}`} tone={isReady ? 'success' : 'neutral'} />
+          <MetaChip label={data.class} tone="neutral" />
+        </div>
+      </AppSurface>
 
-      <div className="flex-1 overflow-y-auto px-5 hide-scrollbar shrink-0 flex items-center justify-center">
-        <div className="bg-white dark:bg-slate-800 rounded-[3rem] p-6 max-w-[320px] mx-auto border-4 border-slate-200 dark:border-slate-700 relative shadow-sm mb-6">
-          <div className="w-16 h-5 bg-slate-200 dark:bg-slate-700 rounded-full mx-auto mb-10 relative"><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-2 bg-slate-300 dark:bg-slate-600 rounded-full"></div></div>
-          <div className="space-y-3" dir="ltr">
+      {!bookability.canBook ? (
+        <InlineNotice tone="danger" title="الحجز مش متاح على الرحلة دي" text={bookability.reason} icon={Clock} />
+      ) : null}
+
+      <AppSurface className="p-5">
+        <div className="flex flex-wrap gap-2">
+          <MetaChip label="مختار" tone="brand" />
+          <MetaChip label="فاضي" tone="neutral" />
+          <MetaChip label="متثبت لراكب تاني" tone="warning" />
+          <MetaChip label="محجوز" tone="danger" />
+        </div>
+
+        <div className="mt-5 rounded-[32px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+          <div className="mx-auto mb-8 flex h-8 w-28 items-center justify-center rounded-full bg-slate-200 text-xs font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            مقدمة الباص
+          </div>
+
+          <div className="mx-auto max-w-[330px] space-y-3" dir="ltr">
             {rows.map((row, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-[1fr_1fr_24px_1fr_1fr] gap-3 items-center">
+              <div key={rowIndex} className="grid grid-cols-[1fr_1fr_24px_1fr_1fr] items-center gap-3">
                 {row.map((seat, seatIndex) => {
                   const isSelected = selectedSeats.includes(seat.number);
                   const heldByOther = seat.status === 'held' && !seat.heldByCurrentUser;
                   const isBooked = seat.status === 'booked';
                   const disabled = isBooked || heldByOther;
-                  const element = (
+                  const toneClassName = isSelected
+                    ? 'border-transparent bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 scale-[1.04]'
+                    : heldByOther
+                    ? 'border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+                    : isBooked
+                    ? 'border-slate-200 bg-slate-200 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-700 dark:hover:bg-indigo-900/20';
+
+                  const seatButton = (
                     <button
                       key={seat.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      aria-label={`الكرسي ${seat.number}`}
                       onClick={() => toggleSeat(seat)}
                       disabled={disabled}
-                      className={`w-12 h-12 flex items-center justify-center rounded-xl text-base font-bold transition-all duration-200
-                        ${isSelected ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/40 scale-110 border-none' : heldByOther ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300 cursor-not-allowed border-none' : isBooked ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-300 dark:text-slate-600 cursor-not-allowed border-none' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-400 border-2 border-slate-200 dark:border-slate-700 shadow-sm'}`}
-                    >{isSelected ? <Check className="w-5 h-5" /> : seat.number}</button>
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl border text-sm font-black transition-all ${toneClassName}`}
+                    >
+                      {isSelected ? <Check className="h-5 w-5" /> : seat.number}
+                    </button>
                   );
-                  if (seatIndex === 2) return <React.Fragment key={`gap-${seat.id}`}><div />{element}</React.Fragment>;
-                  return element;
+
+                  if (seatIndex === 2) {
+                    return (
+                      <React.Fragment key={`gap-${seat.id}`}>
+                        <div />
+                        {seatButton}
+                      </React.Fragment>
+                    );
+                  }
+
+                  return seatButton;
                 })}
               </div>
             ))}
           </div>
         </div>
-      </div>
 
-      <div className="sticky bottom-0 mt-auto p-5 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent dark:from-slate-950 dark:via-slate-950 pb-8 z-20 pointer-events-none">
-        <button onClick={() => { if (!bookability.canBook) return showToast(bookability.reason, 'error'); onConfirm(); }} disabled={!isReady || !bookability.canBook} className={`w-full max-w-[400px] mx-auto font-black text-lg py-4 rounded-2xl transition-all shadow-lg flex justify-between items-center px-6 pointer-events-auto ${isReady && bookability.canBook ? 'bg-indigo-600 text-white shadow-indigo-600/30 active:scale-95' : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'}`}>
-          <span>تأكيد الحجز</span>
-          <span className={`px-3 py-1 rounded-lg text-sm ${isReady ? 'bg-white/20' : 'bg-slate-300/50 dark:bg-slate-700'}`}>{selectedSeats.length} / {passengers}</span>
-        </button>
-      </div>
+        <div className="mt-5 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/60">
+          <p className="text-sm font-black text-slate-900 dark:text-white">المقاعد المختارة</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedSeats.length ? (
+              selectedSeats.map((seat) => <MetaChip key={seat} label={seat} tone="brand" />)
+            ) : (
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">لسه ما اخترتش أي مقعد.</p>
+            )}
+          </div>
+        </div>
+      </AppSurface>
+
+      <StickyActionBar>
+        <AppSurface className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-black text-slate-900 dark:text-white">
+              {isReady ? 'تمام، المقاعد جاهزة للمراجعة والدفع' : `اختار ${remainingSeats} ${remainingSeats === 1 ? 'مقعد كمان' : 'مقاعد كمان'}`}
+            </p>
+            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">
+              لو غيرت رأيك، تقدر تشيل أي كرسي قبل ما تكمل.
+            </p>
+          </div>
+          <PrimaryButton onClick={onConfirm} disabled={!isReady || !bookability.canBook} className="w-full sm:w-auto sm:min-w-[200px]">
+            كمّل للدفع
+          </PrimaryButton>
+        </AppSurface>
+      </StickyActionBar>
     </div>
   );
 }

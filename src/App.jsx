@@ -3,16 +3,24 @@ import { useAuthSession } from './app/hooks/useAuthSession';
 import { useDarkMode } from './app/hooks/useDarkMode';
 import LoginScreen from './app/screens/LoginScreen';
 
+function SplashScreen({ text }) {
+  return (
+    <div className="grid min-h-screen place-items-center bg-[var(--bg)] px-4 dark:bg-slate-950">
+      <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-8 text-center shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto mb-4 h-12 w-12 animate-pulse rounded-2xl bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)]" />
+        <p className="text-base font-black text-slate-900 dark:text-white">{text}</p>
+        <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">طريقي بيجهز التجربة المناسبة ليك.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { session, profile, authLoading } = useAuthSession();
   const { isDark, setIsDark } = useDarkMode();
 
   if (authLoading) {
-    return (
-      <div className="min-h-screen grid place-items-center bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-white">
-        جاري تحميل الحساب...
-      </div>
-    );
+    return <SplashScreen text="جاري تحميل الحساب…" />;
   }
 
   if (!session || !profile) {
@@ -21,12 +29,10 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-[100dvh] font-sans transition-colors duration-300 flex justify-center w-full ${
-        isDark ? 'dark bg-slate-900 text-slate-50' : 'bg-slate-200 text-slate-900'
-      }`}
+      className={`min-h-[100dvh] w-full transition-colors duration-300 ${isDark ? 'dark bg-slate-950 text-slate-50' : 'bg-[var(--bg)] text-slate-900'}`}
       dir="rtl"
     >
-      <div className="w-full bg-white dark:bg-slate-950 shadow-2xl relative flex flex-col md:flex-row h-[100dvh] overflow-hidden">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1800px] overflow-hidden">
         <UserApp userId={session.user.id} profile={profile} isDark={isDark} setIsDark={setIsDark} />
       </div>
     </div>

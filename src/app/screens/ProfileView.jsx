@@ -1,67 +1,141 @@
 import React from 'react';
-import { Award, CheckCircle2, ChevronRight, Crown, Languages, LogOut, Moon } from 'lucide-react';
+import {
+  Award,
+  CheckCircle2,
+  Crown,
+  Languages,
+  LogOut,
+  Moon,
+  Sun,
+  Bot,
+  BookOpen,
+} from 'lucide-react';
+import {
+  AppSurface,
+  MetaChip,
+  PageHeading,
+  PrimaryButton,
+  SecondaryButton,
+  SectionHeader,
+} from '../components/ui/AppPrimitives';
 
-function ProfileView({ user, points, subscription, isDark, setIsDark, onLogout, showToast, openModal }) {
+function ProfileView({
+  user,
+  points,
+  subscription,
+  isDark,
+  setIsDark,
+  onLogout,
+  showToast,
+  openModal,
+  openGuide,
+}) {
   const isGold = points >= 1000;
-  
+
   return (
-    <div className="p-5 lg:px-16 space-y-6 flex-1 max-w-[1800px] mx-auto w-full">
-       <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">حسابي 👤</h2>
-       
-       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-         <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-8 flex items-center gap-6 shadow-sm border border-slate-100 dark:border-slate-700">
-            <div className="w-24 h-24 bg-gradient-to-tr from-indigo-500 to-violet-500 text-white rounded-[1.5rem] flex items-center justify-center text-4xl font-black shadow-lg shadow-indigo-500/30">{user.name.charAt(0)}</div>
+    <div className="space-y-5">
+      <PageHeading
+        eyebrow="حسابي"
+        title="إعداداتك ومزاياك في مكان واحد"
+        subtitle="من هنا تراجع نقاطك، الباقات، المساعدة، وإعدادات العرض من غير ما تدور في أكتر من مكان."
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <AppSurface className="p-6">
+          <div className="flex items-center gap-4">
+            <span className="grid h-20 w-20 place-items-center rounded-[28px] bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-3xl font-black text-white shadow-lg shadow-indigo-600/25">
+              {user.name.charAt(0)}
+            </span>
             <div>
-              <h3 className="font-black text-2xl text-slate-800 dark:text-white mb-1">{user.name}</h3>
-              <p className="text-sm font-mono text-slate-400 mb-3" dir="ltr">{user.phone}</p>
-              <span className={`text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 w-max ${isGold ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400'}`}>
-                 {isGold ? <Crown className="w-4 h-4"/> : <CheckCircle2 className="w-4 h-4"/>}
-                 {isGold ? 'عضو ذهبي' : 'عضو أساسي'}
-              </span>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">{user.name}</h2>
+              <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400" dir="ltr">{user.phone || 'مفيش رقم موبايل مسجل'}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <MetaChip label={isGold ? 'عضو ذهبي' : 'عضو أساسي'} tone={isGold ? 'warning' : 'brand'} />
+                {subscription !== 'none' ? <MetaChip label={`باقة ${subscription === 'vip' ? 'VIP' : 'طالب'}`} tone="success" /> : null}
+              </div>
             </div>
-         </div>
-
-         <div onClick={()=>openModal('points')} className="bg-white dark:bg-slate-800 rounded-[2rem] p-8 shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-center cursor-pointer hover:border-indigo-300 transition group">
-            <div className="flex justify-between items-center mb-4">
-               <h4 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-lg"><Award className="w-6 h-6 text-indigo-500 group-hover:scale-110 transition-transform"/> نقاط ولاء طريقي</h4>
-               <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-colors rotate-180" />
-            </div>
-            <div className="flex items-end justify-between">
-               <p className="text-sm font-bold text-slate-500">جمع {1000 - points > 0 ? 1000 - points : 0} نقطة للترقية للذهبي</p>
-               <div className="text-4xl font-black text-indigo-600 dark:text-indigo-400" dir="ltr">{points}</div>
-            </div>
-            <div className="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full mt-4 overflow-hidden">
-               <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${Math.min(100, (points/1000)*100)}%` }}></div>
-            </div>
-         </div>
-       </div>
-
-       <div className="space-y-3 pt-4 max-w-4xl">
-          <h4 className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase px-2">إعدادات التطبيق</h4>
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-             
-             <div onClick={()=>openModal('subs')} className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                <div className="flex items-center gap-4"><div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center"><Crown className="w-5 h-5 text-purple-600 dark:text-purple-400"/></div><span className="font-bold text-base dark:text-slate-200">باقات التوفير</span></div>
-                {subscription !== 'none' ? <span className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg font-bold">باقة مفعلة</span> : <ChevronRight className="w-5 h-5 text-slate-400 rotate-180"/>}
-             </div>
-             <div className="h-px bg-slate-100 dark:bg-slate-700 mx-5"></div>
-             
-             <div onClick={()=>setIsDark(!isDark)} className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                <div className="flex items-center gap-4"><div className="w-10 h-10 bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center"><Moon className="w-5 h-5 text-slate-600 dark:text-slate-400"/></div><span className="font-bold text-base dark:text-slate-200">الوضع الليلي (Dark Mode)</span></div>
-                <div className={`w-14 h-7 rounded-full relative transition-colors ${isDark ? 'bg-indigo-600' : 'bg-slate-300'}`}><div className={`w-6 h-6 bg-white rounded-full absolute top-0.5 transition-transform ${isDark ? 'right-0.5 -translate-x-7' : 'left-0.5'}`}></div></div>
-             </div>
-             <div className="h-px bg-slate-100 dark:bg-slate-700 mx-5"></div>
-             
-             <div onClick={()=>showToast('اللغة الإنجليزية هتنزل في التحديث اللي جاي 🔜', 'success')} className="flex justify-between items-center p-5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                <div className="flex items-center gap-4"><div className="w-10 h-10 bg-slate-100 dark:bg-slate-900 rounded-xl flex items-center justify-center"><Languages className="w-5 h-5 text-slate-600 dark:text-slate-400"/></div><span className="font-bold text-base dark:text-slate-200">لغة التطبيق</span></div>
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-900 px-3 py-1.5 rounded-lg">عربي 🇪🇬</span>
-             </div>
           </div>
-       </div>
+        </AppSurface>
 
-       <button onClick={onLogout} className="w-full md:max-w-md bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-bold text-lg py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition active:scale-95 mt-8">
-          <LogOut className="w-5 h-5"/> تسجيل الخروج
-       </button>
+        <AppSurface className="p-6">
+          <SectionHeader title="نقاط الولاء" subtitle="كل رحلة منتهية بتضيف نقاط حسب قيمة الحجز بعد الخصومات." />
+          <div className="mt-5 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-4xl font-black text-indigo-700 dark:text-indigo-300">{points}</p>
+              <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">نقطة متاحة حاليًا</p>
+            </div>
+            <SecondaryButton onClick={() => openModal('points')} icon={<Award className="h-4 w-4" />}>
+              إدارة النقاط
+            </SecondaryButton>
+          </div>
+          <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            <div className="h-full rounded-full bg-[linear-gradient(90deg,#2156d9_0%,#0f9f8a_100%)]" style={{ width: `${Math.min(100, (points / 1000) * 100)}%` }} />
+          </div>
+          <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+            {isGold ? 'أنت وصلت للعضوية الذهبية بالفعل.' : `فاضلك ${Math.max(0, 1000 - points)} نقطة عشان توصل للذهبي.`}
+          </p>
+        </AppSurface>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <button type="button" onClick={() => openModal('subs')} className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
+          <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300">
+            <Crown className="h-6 w-6" />
+          </span>
+          <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">باقات التوفير</h3>
+          <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">فعّل باقة ووفّر على كل رحلة جاية.</p>
+        </button>
+
+        <button type="button" onClick={() => openModal('bot')} className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
+          <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
+            <Bot className="h-6 w-6" />
+          </span>
+          <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">الدعم والمساعدة</h3>
+          <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">اسأل عن الإلغاء، التتبع، أو العروض في ثواني.</p>
+        </button>
+
+        <button type="button" onClick={openGuide} className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
+          <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <BookOpen className="h-6 w-6" />
+          </span>
+          <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">دليل الاستخدام</h3>
+          <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">افتح الشرح السريع في أي وقت لو عايز تراجع الخطوات.</p>
+        </button>
+
+        <button type="button" onClick={() => showToast('اللغة الحالية هي العربي المصري فقط.', 'success')} className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
+          <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+            <Languages className="h-6 w-6" />
+          </span>
+          <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">لغة التطبيق</h3>
+          <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">النسخة الحالية معمولة بالكامل بالمصري وبتخدم RTL.</p>
+        </button>
+      </div>
+
+      <AppSurface className="p-5">
+        <SectionHeader title="إعدادات العرض" subtitle="اختار الشكل الأنسب ليك أثناء الاستخدام." />
+        <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-black text-slate-900 dark:text-white">الوضع الليلي</p>
+            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">ينفع في السفر بالليل أو لو بتحب الواجهة الهادية.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDark((currentValue) => !currentValue)}
+            className={`flex min-h-12 min-w-[140px] items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black transition-all ${
+              isDark
+                ? 'border-indigo-700 bg-indigo-900/30 text-indigo-200'
+                : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+            }`}
+          >
+            {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            {isDark ? 'مفعل حالياً' : 'تفعيل الوضع الليلي'}
+          </button>
+        </div>
+      </AppSurface>
+
+      <PrimaryButton onClick={onLogout} icon={<LogOut className="h-5 w-5" />} className="w-full bg-rose-600 hover:bg-rose-700 shadow-rose-600/25 md:max-w-sm">
+        تسجيل الخروج
+      </PrimaryButton>
     </div>
   );
 }
