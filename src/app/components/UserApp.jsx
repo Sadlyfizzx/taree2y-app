@@ -46,6 +46,9 @@ import FoodOrderModal from '../modals/FoodOrderModal';
 
 const log = createLogger('user-app');
 
+const ALLOW_DEMO_FALLBACK =
+  String(import.meta.env?.VITE_ENABLE_DEMO_FALLBACK || '').toLowerCase() === 'true';
+
 const buildInvoiceItems = ({
   passengers,
   baseTotal,
@@ -233,8 +236,13 @@ export default function UserApp({
         error,
       });
 
-      setSearchResults(generateTrips(params.from, params.to, params.date));
-      showToast('تعذر تحميل الرحلات من السيرفر. رجعنا للوضع التجريبي.', 'error');
+      if (ALLOW_DEMO_FALLBACK) {
+        setSearchResults(generateTrips(params.from, params.to, params.date));
+        showToast('تعذر تحميل الرحلات من السيرفر. رجعنا للوضع التجريبي.', 'error');
+      } else {
+        setSearchResults({ trips: [], isDirect: true, source: 'error' });
+        showToast('تعذر تحميل الرحلات من السيرفر. حاول تاني بعد شوية.', 'error');
+      }
     } finally {
       setIsSearching(false);
     }
@@ -354,6 +362,10 @@ export default function UserApp({
     needsAccess,
   }) => {
     if (!trip?.instanceId) {
+      if (!ALLOW_DEMO_FALLBACK) {
+        return { ok: false, message: 'الرحلة دي غير جاهزة للحجز الحقيقي حالياً.' };
+      }
+
       return createDemoBookingResult({
         trip,
         seatNumbers,
@@ -388,6 +400,11 @@ export default function UserApp({
     }
 
     if (!tripArg?.instanceId) {
+      if (!ALLOW_DEMO_FALLBACK) {
+        showToast('الرحلة دي غير جاهزة للحجز الحقيقي حالياً.', 'error');
+        return { ok: false, message: 'Trip instance missing' };
+      }
+
       navigateTo('checkout');
       return { ok: true, source: 'demo' };
     }
