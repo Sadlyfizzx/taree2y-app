@@ -1,3 +1,4 @@
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import UserApp from './app/components/UserApp';
 import { useAuthSession } from './app/hooks/useAuthSession';
 import { useDarkMode } from './app/hooks/useDarkMode';
@@ -22,15 +23,30 @@ export default function App() {
   const { isDark, setIsDark } = useDarkMode();
 
   if (isPublicPortalPath(pathname)) {
-    return <PublicPortalRouter />;
+    return (
+      <>
+        <PublicPortalRouter />
+        <SpeedInsights />
+      </>
+    );
   }
 
   if (authLoading) {
-    return <SplashScreen text="جاري تحميل الحساب…" />;
+    return (
+      <>
+        <SplashScreen text="جاري تحميل الحساب…" />
+        <SpeedInsights />
+      </>
+    );
   }
 
   if (!session || !profile) {
-    return <LoginScreen isDark={isDark} setIsDark={setIsDark} />;
+    return (
+      <>
+        <LoginScreen isDark={isDark} setIsDark={setIsDark} />
+        <SpeedInsights />
+      </>
+    );
   }
 
   return (
@@ -41,6 +57,7 @@ export default function App() {
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1800px] overflow-hidden">
         <UserApp userId={session.user.id} profile={profile} isDark={isDark} setIsDark={setIsDark} />
       </div>
+      <SpeedInsights />
     </div>
   );
 }
