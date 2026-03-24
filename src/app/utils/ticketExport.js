@@ -6,23 +6,34 @@ import { buildTripPublicTrackingUrl } from './share';
 function normalizeCode(value, fallbackPrefix = 'TRQ') {
   const raw = String(value || '').trim();
   if (!raw) return `${fallbackPrefix}-PENDING`;
-  if (raw.length <= 34) return raw;
-  return `${raw.slice(0, 12)}…${raw.slice(-8)}`;
+  if (raw.length <= 20) return raw;
+  return `${raw.slice(0, 8)}…${raw.slice(-6)}`;
 }
 
+function hasRenderableTrackingUrl(value) {
+  return /^https?:\/\//i.test(String(value || '').trim());
+}
+
+function shortenTrackingUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length <= 54) return raw;
+  return `${raw.slice(0, 36)}…${raw.slice(-12)}`;
+}
 
 async function ensureCairoFontReady() {
   if (typeof document === 'undefined' || !document.fonts?.load) return;
 
   try {
     await Promise.all([
-      document.fonts.load("400 16px Cairo"),
-      document.fonts.load("600 16px Cairo"),
-      document.fonts.load("700 16px Cairo"),
-      document.fonts.load("800 16px Cairo"),
+      document.fonts.load('400 16px Cairo'),
+      document.fonts.load('600 16px Cairo'),
+      document.fonts.load('700 16px Cairo'),
+      document.fonts.load('800 16px Cairo'),
+      document.fonts.load('900 16px Cairo'),
     ]);
   } catch {
-    // fall back silently if the web font is unavailable
+    // silent fallback
   }
 }
 
@@ -40,8 +51,16 @@ async function buildQrDataUrl(value) {
 
 function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
   const pnr = normalizeCode(ticket?.pnr, 'TRQ');
-  const driverCode = normalizeCode(ticket?.driverTripCode || ticket?.tripPublicCode || ticket?.tripCode || ticket?.ticketToken, 'DRV');
+  const driverCode = normalizeCode(
+    ticket?.driverTripCode ||
+      ticket?.tripPublicCode ||
+      ticket?.tripCode ||
+      ticket?.ticketToken,
+    'DRV',
+  );
   const travelTips = 'وصل المحطة قبل التحرك بـ 20 دقيقة على الأقل.';
+  const hasTrackingUrl = hasRenderableTrackingUrl(trackingUrl);
+  const trackingUrlText = hasTrackingUrl ? shortenTrackingUrl(trackingUrl) : '';
 
   return `
     <div style="width:100%;background:#eef4ff;padding:24px;font-family:'Cairo','Segoe UI',Tahoma,Arial,system-ui,sans-serif;direction:rtl;box-sizing:border-box;">
@@ -49,12 +68,12 @@ function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
         <div style="background:linear-gradient(135deg,#10233f 0%,#163c98 48%,#2156d9 100%);color:#fff;padding:28px 28px 24px;">
           <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
             <div>
-              <div style="font-size:12px;font-weight:800;opacity:.72;">اسم الراكب</div>
+              <div style="font-size:12px;font-weight:800;opacity:.78;">اسم الراكب</div>
               <div style="margin-top:8px;font-size:28px;font-weight:900;line-height:1.2;">${user?.name || 'راكب طريقي'}</div>
             </div>
             <div style="text-align:left;">
               <div style="font-size:34px;font-weight:900;line-height:1;">طريقي</div>
-              <div style="margin-top:8px;font-size:13px;font-weight:700;opacity:.8;">تذكرة سفر رقمية حديثة وواضحة</div>
+              <div style="margin-top:8px;font-size:13px;font-weight:700;opacity:.84;">تذكرة سفر رقمية حديثة وواضحة</div>
             </div>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">
@@ -66,9 +85,9 @@ function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
         <div style="padding:22px;">
           <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:22px;border:1px solid rgba(15,23,42,.08);border-radius:24px;background:#fbfdff;">
             <div style="text-align:right;">
-              <div style="font-size:13px;font-weight:800;color:#64748b;">من</div>
+              <div style="font-size:13px;font-weight:800;color:#475569;">من</div>
               <div style="margin-top:6px;font-size:36px;font-weight:900;color:#10233f;line-height:1.1;">${ticket?.from || '—'}</div>
-              <div style="margin-top:6px;font-size:14px;font-weight:700;color:#475569;">${ticket?.fromStationName || 'المحطة الرئيسية'}</div>
+              <div style="margin-top:6px;font-size:14px;font-weight:700;color:#334155;">${ticket?.fromStationName || 'المحطة الرئيسية'}</div>
             </div>
             <div style="display:flex;align-items:center;justify-content:center;">
               <div style="display:flex;align-items:center;gap:12px;min-width:120px;justify-content:center;">
@@ -78,9 +97,9 @@ function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
               </div>
             </div>
             <div style="text-align:left;">
-              <div style="font-size:13px;font-weight:800;color:#64748b;">إلى</div>
+              <div style="font-size:13px;font-weight:800;color:#475569;">إلى</div>
               <div style="margin-top:6px;font-size:36px;font-weight:900;color:#10233f;line-height:1.1;">${ticket?.to || '—'}</div>
-              <div style="margin-top:6px;font-size:14px;font-weight:700;color:#475569;">${ticket?.toStationName || 'المحطة الرئيسية'}</div>
+              <div style="margin-top:6px;font-size:14px;font-weight:700;color:#334155;">${ticket?.toStationName || 'المحطة الرئيسية'}</div>
             </div>
           </div>
 
@@ -95,18 +114,22 @@ function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
               ['الدرجة', ticket?.class || '—'],
               ['الشركة', ticket?.company || '—'],
               ['اسم الراكب', user?.name || '—'],
-            ].map(([label, value]) => `
+            ]
+              .map(
+                ([label, value]) => `
               <div style="border:1px solid rgba(15,23,42,.08);border-radius:20px;background:#fff;padding:16px;min-height:94px;box-sizing:border-box;">
-                <div style="font-size:12px;font-weight:800;color:#64748b;">${label}</div>
+                <div style="font-size:12px;font-weight:800;color:#475569;">${label}</div>
                 <div style="margin-top:10px;font-size:30px;font-weight:900;color:#10233f;line-height:1.2;word-break:break-word;overflow-wrap:anywhere;">${value}</div>
               </div>
-            `).join('')}
+            `,
+              )
+              .join('')}
           </div>
 
-          <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;margin-top:18px;align-items:stretch;">
+          <div style="display:grid;grid-template-columns:minmax(0,1.1fr) 292px;gap:16px;margin-top:18px;align-items:stretch;">
             <div style="display:grid;gap:14px;align-content:start;">
               <div style="border:1px solid rgba(15,23,42,.08);border-radius:24px;background:#fff;padding:18px;">
-                <div style="font-size:24px;font-weight:900;color:#10233f;">ملاحظة مهمة</div>
+                <div style="font-size:26px;font-weight:900;color:#10233f;">ملاحظة مهمة</div>
                 <div style="margin-top:12px;font-size:16px;font-weight:800;line-height:1.85;color:#334155;">${travelTips}</div>
               </div>
 
@@ -114,26 +137,30 @@ function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
                 <div style="font-size:18px;font-weight:900;color:#10233f;">أكواد الرحلة</div>
                 <div style="margin-top:12px;display:grid;gap:10px;">
                   <div style="padding:12px 14px;border-radius:18px;background:#f7faff;font-size:13px;font-weight:800;color:#10233f;word-break:break-word;overflow-wrap:anywhere;">كود التذكرة: ${pnr}</div>
-                  <div style="padding:12px 14px;border-radius:18px;background:#f7faff;font-size:13px;font-weight:800;color:#10233f;word-break:break-word;overflow-wrap:anywhere;">كود تشغيل السائق: ${driverCode}</div>
+                  <div style="padding:12px 14px;border-radius:18px;background:#f7faff;font-size:13px;font-weight:800;color:#10233f;word-break:break-word;overflow-wrap:anywhere;">كود تشغيل الرحلة: ${driverCode}</div>
                 </div>
               </div>
             </div>
 
-            <div style="border-radius:28px;overflow:hidden;background:linear-gradient(160deg,#163c98 0%,#2156d9 56%,#0f9f8a 140%);color:#fff;padding:18px;box-sizing:border-box;min-height:100%;">
-              <div style="font-size:34px;font-weight:900;line-height:1.1;">QR متابعة الرحلة</div>
-              <div style="margin-top:8px;font-size:14px;font-weight:700;line-height:1.7;color:rgba(255,255,255,.86);">امسح الكود لفتح رابط المتابعة مباشرة.</div>
+            <div style="border-radius:28px;overflow:hidden;background:linear-gradient(160deg,#163c98 0%,#2156d9 56%,#0f9f8a 140%);color:#fff;padding:16px;box-sizing:border-box;min-height:100%;">
+              <div style="font-size:32px;font-weight:900;line-height:1.15;">QR متابعة الرحلة</div>
+              <div style="margin-top:8px;font-size:14px;font-weight:700;line-height:1.7;color:rgba(255,255,255,.88);">امسح الكود لفتح رابط المتابعة مباشرة.</div>
               <div style="margin-top:14px;display:inline-flex;align-items:center;padding:9px 13px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;font-weight:900;">${driverCode}</div>
-              <div style="margin-top:18px;border-radius:28px;background:#fff;padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.7);">
+              <div style="margin-top:16px;border-radius:28px;background:#fff;padding:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.7);">
                 <div style="border-radius:24px;background:radial-gradient(circle at top right,rgba(33,86,217,.10),transparent 28%),linear-gradient(180deg,#fff 0%,#f4f8ff 100%);padding:14px;">
-                  <div style="margin:0 auto;max-width:240px;padding:10px;border-radius:22px;background:#fff;box-shadow:0 18px 40px -26px rgba(16,35,63,.28);">
+                  <div style="margin:0 auto;max-width:224px;padding:10px;border-radius:22px;background:#fff;box-shadow:0 18px 40px -26px rgba(16,35,63,.28);">
                     <img src="${qrDataUrl}" alt="QR" style="display:block;width:100%;border-radius:16px;background:#f8fbff;" />
                   </div>
                 </div>
               </div>
-              <div style="margin-top:14px;padding:14px;border-radius:20px;background:rgba(255,255,255,.10);word-break:break-word;overflow-wrap:anywhere;">
-                <div style="font-size:12px;font-weight:900;opacity:.72;">رابط المتابعة</div>
-                <div style="margin-top:8px;font-size:12px;font-weight:800;line-height:1.9;">${trackingUrl}</div>
-              </div>
+              ${
+                hasTrackingUrl
+                  ? `<div style="margin-top:14px;padding:14px;border-radius:20px;background:rgba(255,255,255,.10);word-break:break-word;overflow-wrap:anywhere;">
+                <div style="font-size:12px;font-weight:900;opacity:.76;">رابط المتابعة</div>
+                <div style="margin-top:8px;font-size:12px;font-weight:800;line-height:1.9;">${trackingUrlText}</div>
+              </div>`
+                  : ''
+              }
             </div>
           </div>
         </div>
@@ -173,8 +200,15 @@ async function renderMarkupToCanvas(markup) {
 export async function exportTicketPng({ ticket, user }) {
   await ensureCairoFontReady();
   const trackingUrl = buildTripPublicTrackingUrl(ticket);
-  const qrDataUrl = await buildQrDataUrl(trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '');
-  const markup = buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl: trackingUrl || '—' });
+  const qrDataUrl = await buildQrDataUrl(
+    trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '',
+  );
+  const markup = buildTicketMarkup({
+    ticket,
+    user,
+    qrDataUrl,
+    trackingUrl: trackingUrl || '',
+  });
   const pngDataUrl = await renderMarkupToCanvas(markup);
   const anchor = document.createElement('a');
   anchor.href = pngDataUrl;
@@ -185,13 +219,44 @@ export async function exportTicketPng({ ticket, user }) {
 export async function exportTicketPdf({ ticket, user }) {
   await ensureCairoFontReady();
   const trackingUrl = buildTripPublicTrackingUrl(ticket);
-  const qrDataUrl = await buildQrDataUrl(trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '');
-  const markup = buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl: trackingUrl || '—' });
+  const qrDataUrl = await buildQrDataUrl(
+    trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '',
+  );
+  const markup = buildTicketMarkup({
+    ticket,
+    user,
+    qrDataUrl,
+    trackingUrl: trackingUrl || '',
+  });
   const pngDataUrl = await renderMarkupToCanvas(markup);
+
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 18;
-  pdf.addImage(pngDataUrl, 'PNG', margin, margin, pageWidth - margin * 2, pageHeight - margin * 2, undefined, 'FAST');
+  const imageWidth = pageWidth - margin * 2;
+  const imageHeight = pageHeight - margin * 2 - 18;
+
+  pdf.addImage(
+    pngDataUrl,
+    'PNG',
+    margin,
+    margin,
+    imageWidth,
+    imageHeight,
+    undefined,
+    'FAST',
+  );
+
+  if (hasRenderableTrackingUrl(trackingUrl)) {
+    const displayUrl = shortenTrackingUrl(trackingUrl);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(33, 86, 217);
+    pdf.textWithLink(displayUrl, margin + 2, pageHeight - 10, {
+      url: trackingUrl,
+    });
+  }
+
   pdf.save(`${ticket?.pnr || 'taree2y-ticket'}.pdf`);
 }
