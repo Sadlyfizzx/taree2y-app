@@ -4,6 +4,22 @@ export const WALLET_TOPUP_FIXED_FEE = 3;
 export const WALLET_TOPUP_PERCENT_FEE = 0.025;
 
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+const CLIENT_ID_STORAGE_KEY = 'taree2y_public_client_id_v1';
+
+export function getOrCreatePublicClientId() {
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing && String(existing).trim()) {
+      return String(existing).trim();
+    }
+
+    const nextId = `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(CLIENT_ID_STORAGE_KEY, nextId);
+    return nextId;
+  } catch {
+    return `web-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
 
 export function getAppOrigin() {
   if (typeof window === 'undefined') return '';
@@ -65,46 +81,6 @@ export function createWalletRequestId() {
 
   const random = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `TOP-${stamp}-${random}`;
-}
-
-export function buildWalletTopupClientId(requestId) {
-  const safe = String(requestId || '').trim();
-  if (!safe) return `topup-${Date.now()}`;
-  return `topup-${safe}`;
-}
-
-export function getWalletTopupPaidStorageKey(requestId) {
-  return `taree2y_topup_paid_${String(requestId || '').trim()}`;
-}
-
-export function readWalletTopupPaidState(requestId) {
-  const key = getWalletTopupPaidStorageKey(requestId);
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function markWalletTopupPaid(requestId, payload = {}) {
-  const key = getWalletTopupPaidStorageKey(requestId);
-
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        paid: true,
-        paidAt: Date.now(),
-        requestId: String(requestId || ''),
-        ...payload,
-      }),
-    );
-  } catch {
-    // ignore storage failures
-  }
 }
 
 export async function copyTextWithFallback(text, label = 'الرابط') {
@@ -183,13 +159,12 @@ export async function publicTopupWallet({
   paymentChannel = 'public_qr',
   clientId,
 }) {
-  const safeRequestId = String(requestId || '').trim();
-  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
+  const safeClientId = String(clientId || getOrCreatePublicClientId()).trim();
 
   const { data, error } = await supabase.rpc('public_topup_wallet', {
     p_user_id: userId,
     p_amount: Number(amount),
-    p_request_id: safeRequestId,
+    p_request_id: requestId,
     p_payment_channel: paymentChannel,
     p_client_id: safeClientId,
   });

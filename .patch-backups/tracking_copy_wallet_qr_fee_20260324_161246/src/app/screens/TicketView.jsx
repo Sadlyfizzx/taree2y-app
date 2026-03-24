@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React from 'react';
 import { Download, Map, Link2 } from 'lucide-react';
 import RouteTimeline from '../components/ui/RouteTimeline';
 import PrettyQrCard from '../components/ui/PrettyQrCard';
@@ -15,8 +15,8 @@ import {
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency, formatSeatsText } from '../utils/formatting';
 import { withStationNames } from '../utils/stations';
-import { createPublicTripShare, copyTextWithFallback } from '../public/publicPortal';
 import { buildTripPublicTrackingUrl } from '../utils/share';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { exportTicketPdf, exportTicketPng } from '../utils/ticketExport';
 
 function TicketView({ ticket, user, onTrack, showToast }) {
@@ -26,82 +26,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
   const isPast = data.status === 'past';
   const isCancelled = data.status === 'cancelled';
   const isRefundPending = data.status === 'refund_pending';
-
-  const ticketKey =
-    data.bookingId ||
-    data.id ||
-    data.pnr ||
-    data.publicTripCode ||
-    data.ticketToken ||
-    'ticket';
-
-  const [shareState, setShareState] = useState({ key: '', url: '' });
-
-  const persistedTrackingUrl = buildTripPublicTrackingUrl(data);
-  const cachedTrackingUrl =
-    shareState.key === ticketKey && shareState.url ? shareState.url : '';
-  const trackingUrl = cachedTrackingUrl || persistedTrackingUrl;
-
-  const sharePayload = useMemo(
-    () => ({
-      v: 2,
-      publicTripCode: data.publicTripCode || data.tripCode || data.id || data.pnr || null,
-      driverRunCode: data.driverRunCode || null,
-      pnr: data.pnr || null,
-      from: data.from,
-      to: data.to,
-      fromStationName: data.fromStationName,
-      toStationName: data.toStationName,
-      date: data.date,
-      departureTime: data.departureTime,
-      arrivalTime: data.arrivalTime,
-      durationHour: data.durationHour,
-      company: data.company,
-      class: data.class,
-      driver: data.driver || null,
-      hasRestStop: Boolean(data.hasRestStop),
-      luggage: Boolean(data.luggage),
-      access: Boolean(data.access),
-      issuedAt: Date.now(),
-    }),
-    [
-      data.access,
-      data.arrivalTime,
-      data.class,
-      data.company,
-      data.date,
-      data.departureTime,
-      data.driver,
-      data.driverRunCode,
-      data.durationHour,
-      data.from,
-      data.fromStationName,
-      data.hasRestStop,
-      data.id,
-      data.luggage,
-      data.pnr,
-      data.publicTripCode,
-      data.to,
-      data.toStationName,
-      data.tripCode,
-    ],
-  );
-
-  const qrValue = trackingUrl || data.qrPayload || data.ticketToken || data.pnr || '';
-
-  const ensureTrackingUrl = async () => {
-    if (trackingUrl) return trackingUrl;
-
-    const share = await createPublicTripShare(sharePayload);
-    const nextUrl = String(share?.url || '').trim();
-
-    if (!nextUrl) {
-      throw new Error('missing_tracking_url');
-    }
-
-    setShareState({ key: ticketKey, url: nextUrl });
-    return nextUrl;
-  };
+  const trackingUrl = buildTripPublicTrackingUrl(data);
 
   const saveTicket = async (kind) => {
     try {
@@ -111,20 +36,16 @@ function TicketView({ ticket, user, onTrack, showToast }) {
         await exportTicketPng({ ticket: data, user });
       }
       showToast(kind === 'pdf' ? 'تم حفظ التذكرة PDF.' : 'تم حفظ التذكرة PNG.', 'success');
-    } catch (_error) {
+    } catch (error) {
       showToast('تعذر حفظ التذكرة حالياً.', 'error');
     }
   };
 
   const copyTrackingLink = async () => {
     try {
-      const url = await ensureTrackingUrl();
-      const copied = await copyTextWithFallback(url, 'رابط المتابعة');
-      showToast(
-        copied ? 'تم نسخ رابط المتابعة.' : 'تعذر نسخ رابط المتابعة حالياً.',
-        copied ? 'success' : 'error',
-      );
-    } catch (_error) {
+      await copyTextToClipboard(trackingUrl);
+      showToast('تم نسخ رابط المتابعة.', 'success');
+    } catch {
       showToast('تعذر نسخ رابط المتابعة حالياً.', 'error');
     }
   };
@@ -182,6 +103,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <MetaChip label={data.luggage ? 'فيه وزن إضافي' : 'شنطة 20 كجم مشمولة'} tone={data.luggage ? 'warning' : 'neutral'} />
+            {data.ride ? <MetaChip label="توصيلة للمحطة مضافة" tone="brand" /> : null}
             {data.access ? <MetaChip label="مساعدة وقت الصعود" tone="success" /> : null}
           </div>
 
@@ -193,10 +115,10 @@ function TicketView({ ticket, user, onTrack, showToast }) {
 
         <div className="space-y-5">
           <PrettyQrCard
-            value={qrValue}
+            value={trackingUrl || data.qrPayload || data.ticketToken || data.pnr || ''}
             title="QR متابعة الرحلة"
             subtitle="امسح الكود أو افتح الرابط مباشرة."
-            chipLabel={data.driverRunCode || data.publicTripCode || 'رحلة طريقي'}
+            chipLabel={data.driverTripCode || data.tripPublicCode || 'رحلة طريقي'}
             codeLabel="رابط المتابعة"
           />
 

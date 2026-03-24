@@ -18,15 +18,6 @@ import {
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency } from '../utils/formatting';
 
-function getTransactionLabel(transaction) {
-  return (
-    transaction?.description ||
-    transaction?.desc ||
-    transaction?.title ||
-    'حركة على المحفظة'
-  );
-}
-
 function WalletView({
   wallet,
   setWallet: _setWallet,
@@ -113,7 +104,7 @@ function WalletView({
                       {isCredit ? <ArrowDown className="h-5 w-5" /> : <Ticket className="h-5 w-5" />}
                     </span>
                     <div>
-                      <p className="text-sm font-black text-slate-900 dark:text-white">{getTransactionLabel(transaction)}</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">{transaction.desc}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <MetaChip label={transaction.date} tone="neutral" />
                       </div>

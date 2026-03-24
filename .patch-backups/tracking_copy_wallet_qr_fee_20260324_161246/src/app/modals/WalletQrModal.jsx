@@ -1,15 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { ExternalLink, QrCode } from 'lucide-react';
+import { QrCode } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
-import {
-  buildWalletTopupUrl,
-  calculateWalletTopupBreakdown,
-  copyTextWithFallback,
-  createWalletRequestId,
-} from '../public/publicPortal';
+import { buildWalletTopupUrl, copyTextWithFallback, createWalletRequestId } from '../public/publicPortal';
 
 const QUICK_AMOUNTS = [50, 100, 200, 500];
 
@@ -18,26 +13,22 @@ export default function WalletQrModal({ closeModal, userId, showToast }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
 
   const numericAmount = Math.max(0, Number(amount) || 0);
-  const { grossAmount, feeAmount, netAmount } = useMemo(
-    () => calculateWalletTopupBreakdown(numericAmount),
-    [numericAmount],
-  );
   const requestId = useMemo(() => createWalletRequestId(), []);
   const payUrl = useMemo(
-    () => buildWalletTopupUrl({ userId, amount: grossAmount, requestId }),
-    [grossAmount, requestId, userId],
+    () => buildWalletTopupUrl({ userId, amount: numericAmount, requestId }),
+    [amount, numericAmount, requestId, userId],
   );
 
   useEffect(() => {
     let active = true;
 
-    if (!grossAmount || !userId) {
+    if (!numericAmount || !userId) {
       setQrDataUrl('');
       return undefined;
     }
 
     QRCode.toDataURL(payUrl, {
-      errorCorrectionLevel: 'H',
+      errorCorrectionLevel: 'M',
       margin: 2,
       width: 320,
       color: {
@@ -55,11 +46,11 @@ export default function WalletQrModal({ closeModal, userId, showToast }) {
     return () => {
       active = false;
     };
-  }, [grossAmount, payUrl, userId]);
+  }, [numericAmount, payUrl, userId]);
 
   const handleCopy = async () => {
-    const copied = await copyTextWithFallback(payUrl, 'رابط الشحن');
-    showToast(copied ? 'تم تجهيز رابط الشحن.' : 'تعذر تجهيز رابط الشحن حالياً.', copied ? 'success' : 'error');
+    const copied = await copyTextWithFallback(payUrl);
+    showToast(copied ? 'تم نسخ رابط الشحن.' : 'تعذر نسخ رابط الشحن حالياً.', copied ? 'success' : 'error');
   };
 
   return (
@@ -72,16 +63,13 @@ export default function WalletQrModal({ closeModal, userId, showToast }) {
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>إغلاق</SecondaryButton>
-          <SecondaryButton onClick={handleCopy}>نسخ رابط الشحن</SecondaryButton>
-          <PrimaryButton onClick={() => window.open(payUrl, '_blank', 'noopener,noreferrer')} icon={<ExternalLink className="h-4 w-4" />}>
-            افتح صفحة الدفع
-          </PrimaryButton>
+          <PrimaryButton onClick={handleCopy}>نسخ رابط الشحن</PrimaryButton>
         </div>
       }
     >
       <div className="space-y-5">
         <label className="flex flex-col gap-2">
-          <span className="text-sm font-black text-slate-900 dark:text-white">المبلغ المدفوع</span>
+          <span className="text-sm font-black text-slate-900 dark:text-white">المبلغ</span>
           <input
             type="number"
             min="10"
@@ -121,21 +109,7 @@ export default function WalletQrModal({ closeModal, userId, showToast }) {
             )}
           </div>
 
-          <div className="mt-5 space-y-2 rounded-[24px] border border-dashed border-slate-200 bg-white px-4 py-4 text-right dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center justify-between gap-3 text-sm font-black text-slate-700 dark:text-slate-200">
-              <span>المبلغ المدفوع</span>
-              <span>{formatCurrency(grossAmount)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 text-sm font-black text-amber-700 dark:text-amber-300">
-              <span>رسوم التشغيل</span>
-              <span>- {formatCurrency(feeAmount)}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-black text-emerald-700 dark:border-slate-700 dark:text-emerald-300">
-              <span>الصافي الذي سيُضاف</span>
-              <span>{formatCurrency(netAmount)}</span>
-            </div>
-          </div>
-
+          <p className="mt-4 text-2xl font-black text-indigo-700 dark:text-indigo-300">{formatCurrency(numericAmount)}</p>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
             <MetaChip label="ينفتح من أي جهاز" tone="brand" />
             <MetaChip label="ينزل على نفس الحساب" tone="success" />

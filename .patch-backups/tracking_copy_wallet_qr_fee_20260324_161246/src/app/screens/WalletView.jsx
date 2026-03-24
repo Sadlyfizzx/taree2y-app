@@ -18,15 +18,6 @@ import {
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency } from '../utils/formatting';
 
-function getTransactionLabel(transaction) {
-  return (
-    transaction?.description ||
-    transaction?.desc ||
-    transaction?.title ||
-    'حركة على المحفظة'
-  );
-}
-
 function WalletView({
   wallet,
   setWallet: _setWallet,
@@ -72,8 +63,8 @@ function WalletView({
       <div className="grid gap-4 sm:grid-cols-3">
         {[
           { icon: CreditCard, label: 'بطاقة بنكية', hint: 'شحن مباشر للمحفظة', onClick: openTopUp },
-          { icon: QrCode, label: 'QR الشحن', hint: 'افتح نافذة الكود والرابط لنفس الحساب', onClick: openWalletQr },
-          { icon: Send, label: 'رابط سريع', hint: 'انسخ أو افتح رابط الشحن من أي جهاز', onClick: openWalletQr },
+          { icon: QrCode, label: 'QR الشحن', hint: 'افتح كود ورابط مرتبطين بنفس الحساب', onClick: openWalletQr },
+          { icon: Send, label: 'رابط سريع', hint: 'انسخ الرابط وافتحه من أي جهاز', onClick: openWalletQr },
         ].map((method) => (
           <button
             key={method.label}
@@ -113,7 +104,7 @@ function WalletView({
                       {isCredit ? <ArrowDown className="h-5 w-5" /> : <Ticket className="h-5 w-5" />}
                     </span>
                     <div>
-                      <p className="text-sm font-black text-slate-900 dark:text-white">{getTransactionLabel(transaction)}</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">{transaction.desc}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <MetaChip label={transaction.date} tone="neutral" />
                       </div>

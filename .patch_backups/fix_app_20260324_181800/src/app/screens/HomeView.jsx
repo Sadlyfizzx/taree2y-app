@@ -1,12 +1,14 @@
 import React from 'react';
 import {
   ArrowRightLeft,
-  BookOpen,
+  Bot,
+  BusFront,
   Calendar,
+  Car,
   Copy,
   Crown,
-  HelpCircle,
   MapPin,
+  Package,
   Search,
   Ticket,
   Users,
@@ -24,6 +26,7 @@ import {
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { CITIES, getLocalDateInputValue } from '../utils/travel';
 import { getPrimaryStationName } from '../utils/stations';
+import InlineArrow from '../components/ui/InlineArrow';
 
 const QUICK_ROUTES = [
   { from: 'القاهرة', to: 'الإسكندرية' },
@@ -34,25 +37,57 @@ const QUICK_ROUTES = [
 
 const SERVICES = [
   {
+    icon: Package,
+    title: 'إرسال طرد',
+    subtitle: 'بين المحافظات بتسعير واضح',
+    action: 'courier',
+    tone: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+  },
+  {
     icon: Crown,
     title: 'باقات التوفير',
-    subtitle: 'خصومات ثابتة للمستخدمين المتكررين',
+    subtitle: 'خصومات ثابتة للمسافرين الكتير',
     action: 'subs',
     tone: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300',
   },
   {
-    icon: HelpCircle,
-    title: 'مركز المساعدة',
-    subtitle: 'شرح الحجز، الإلغاء، والمحفظة بشكل مباشر',
-    action: 'help',
+    icon: Bot,
+    title: 'الدعم والمساعدة',
+    subtitle: 'اسأل بسرعة عن الحجز والإلغاء',
+    action: 'bot',
     tone: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300',
   },
   {
-    icon: BookOpen,
-    title: 'دليل الاستخدام',
-    subtitle: 'شرح مرتب لو دي أول مرة تستخدم التطبيق',
-    action: 'guide',
-    tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
+    icon: Car,
+    title: 'توصيل للمحطة',
+    subtitle: 'بيتفعل وقت الدفع حسب رحلتك',
+    action: 'coming',
+    tone: 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300',
+  },
+];
+
+const OFFERS = [
+  {
+    code: 'AHLAN50',
+    title: 'خصم 50 جنيه',
+    text: 'على أول رحلة ليك على طريقي',
+    tone: 'from-amber-400 via-orange-500 to-orange-600',
+    action: 'copy',
+  },
+  {
+    code: 'SA3EED15',
+    title: 'خصم رحلات الصعيد',
+    text: 'خصم 15% على الرحلات الطويلة',
+    tone: 'from-emerald-500 via-teal-500 to-cyan-600',
+    action: 'copy',
+  },
+  {
+    code: 'مطروح',
+    title: 'رحلات الساحل السريعة',
+    text: 'ادخل على القاهرة → مرسى مطروح فورًا',
+    tone: 'from-sky-500 via-blue-500 to-indigo-600',
+    action: 'route',
+    params: { from: 'القاهرة', to: 'مرسى مطروح' },
   },
 ];
 
@@ -82,8 +117,6 @@ function HomeView({
   onPromoSearch,
   openModal,
   openGuide,
-  isFirstTimeUser = false,
-  promoHighlights = [],
 }) {
   const todayDate = getLocalDateInputValue();
 
@@ -95,11 +128,9 @@ function HomeView({
     }));
   };
 
-  const copyPromo = async (code) => {
-    if (!code) return;
-
+  const copyPromo = (code) => {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(code);
+      navigator.clipboard.writeText(code);
     } else {
       const textArea = document.createElement('textarea');
       textArea.value = code;
@@ -107,13 +138,11 @@ function HomeView({
       document.body.appendChild(textArea);
       textArea.focus();
       textArea.select();
-
       try {
         document.execCommand('copy');
       } catch {
         // ignore fallback copy error
       }
-
       document.body.removeChild(textArea);
     }
 
@@ -149,24 +178,16 @@ function HomeView({
                 onClick={openGuide}
                 className="rounded-[26px] border border-white/15 bg-white/10 p-4 text-right transition hover:bg-white/14"
               >
-                <p className="text-sm font-black">
-                  {isFirstTimeUser ? 'أول مرة تستخدم طريقي؟' : 'عايز تراجع الخطوات؟'}
-                </p>
-                <p className="mt-1 text-sm font-bold text-white/75">
-                  {isFirstTimeUser
-                    ? 'ابدأ بدليل سريع يشرح البحث، الكرسي، الدفع، التذكرة، والتتبع.'
-                    : 'افتح الدليل في أي وقت لو حابب تراجع طريقة الحجز أو الإلغاء.'}
-                </p>
+                <p className="text-sm font-black">أول مرة تستخدم طريقي؟</p>
+                <p className="mt-1 text-sm font-bold text-white/75">دليل سريع يشرح البحث، الكرسي، الدفع، التذكرة، والتتبع.</p>
               </button>
               <button
                 type="button"
-                onClick={() => openModal('help')}
+                onClick={() => openModal('bot')}
                 className="rounded-[26px] border border-white/15 bg-white/10 p-4 text-right transition hover:bg-white/14"
               >
                 <p className="text-sm font-black">محتاج مساعدة؟</p>
-                <p className="mt-1 text-sm font-bold text-white/75">
-                  افتح مركز المساعدة وشوف الإجابات الأساسية من غير واجهة وهمية.
-                </p>
+                <p className="mt-1 text-sm font-bold text-white/75">افتح الدعم واسأل عن الإلغاء، الرصيد، أو العروض المتاحة.</p>
               </button>
             </div>
           </div>
@@ -265,7 +286,7 @@ function HomeView({
       </section>
 
       <InlineNotice
-        title={isFirstTimeUser ? 'أول حجز لازم يبقى مطمّن' : 'الحجز لازم يبقى مطمّن'}
+        title="الحجز لأول مرة لازم يبقى مطمّن"
         text="كل خطوة في طريقي بتوضح إنت فين، حصل إيه، وإيه اللي جاي بعده. ولو في مشكلة هتلاقي تصرف واضح بدل شاشة مبهمة."
         actionLabel="شوف الدليل"
         onAction={openGuide}
@@ -318,18 +339,17 @@ function HomeView({
       </section>
 
       <section className="space-y-4">
-        <SectionHeader title="خدمات واضحة فعلاً" subtitle="الخدمات اللي هنا يا شغالة، يا بتوجّهك لخطوة حقيقية داخل التطبيق." />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <SectionHeader title="خدمات السفر" subtitle="مدخل واضح للخدمات المكملة بدل ما تبقى مستخبية." />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {SERVICES.map((service) => (
             <button
               key={service.title}
               type="button"
               onClick={() => {
-                if (service.action === 'guide') {
-                  openGuide();
+                if (service.action === 'coming') {
+                  showToast('الخدمة دي مرتبطة بخطوة الدفع وبتظهر وقتها تلقائيًا', 'success');
                   return;
                 }
-
                 openModal(service.action);
               }}
               className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800"
@@ -344,46 +364,41 @@ function HomeView({
         </div>
       </section>
 
-      {promoHighlights.length > 0 ? (
-        <section className="space-y-4">
-          <SectionHeader title="عروض مفيدة" subtitle="العروض دي جاية من نظام الخصومات الفعلي ومش ثابتة على الكل." />
-          <div className="grid gap-4 lg:grid-cols-3">
-            {promoHighlights.map((offer) => (
-              <button
-                key={offer.code || offer.title}
-                type="button"
-                onClick={() => {
-                  if (offer.code) {
-                    copyPromo(offer.code);
-                    return;
-                  }
+      <section className="space-y-4">
+        <SectionHeader title="عروض مفيدة" subtitle="عروض واضحة وسهلة الاستخدام من غير زحمة بصرية." />
+        <div className="grid gap-4 lg:grid-cols-3">
+          {OFFERS.map((offer) => (
+            <button
+              key={offer.title}
+              type="button"
+              onClick={() => {
+                if (offer.action === 'copy') {
+                  copyPromo(offer.code);
+                  return;
+                }
 
-                  if (offer.routeParams) {
-                    onPromoSearch({
-                      ...offer.routeParams,
-                      date: searchParams.date || todayDate,
-                      passengers: searchParams.passengers || 1,
-                    });
-                  }
-                }}
-                className="overflow-hidden rounded-[30px] bg-[linear-gradient(135deg,#163c98_0%,#2156d9_64%,#0f9f8a_140%)] p-5 text-right text-white shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] transition hover:-translate-y-0.5"
-              >
-                <p className="text-xs font-black tracking-[0.16em] text-white/70">
-                  {offer.code ? `استخدم ${offer.code}` : 'عرض متاح'}
-                </p>
-                <h3 className="mt-3 text-2xl font-black">{offer.title}</h3>
-                <p className="mt-2 text-sm font-bold leading-6 text-white/85">
-                  {offer.description || offer.message || 'عرض نشط حالياً داخل التطبيق.'}
-                </p>
-                <div className="mt-5 inline-flex rounded-full bg-white/14 px-3 py-2 text-xs font-black">
-                  <Copy className="ml-2 h-4 w-4" />
-                  {offer.code ? 'انسخ الكود' : 'افتح العرض'}
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
+                onPromoSearch({
+                  ...offer.params,
+                  date: searchParams.date || todayDate,
+                  passengers: 1,
+                });
+              }}
+              className={`overflow-hidden rounded-[30px] bg-gradient-to-br ${offer.tone} p-5 text-right text-white shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] transition hover:-translate-y-0.5`}
+            >
+              <p className="text-xs font-black tracking-[0.16em] text-white/70">
+                {offer.action === 'copy' ? `استخدم ${offer.code}` : 'افتح المسار'
+                }
+              </p>
+              <h3 className="mt-3 text-2xl font-black">{offer.title}</h3>
+              <p className="mt-2 text-sm font-bold leading-6 text-white/85">{offer.text}</p>
+              <div className="mt-5 inline-flex rounded-full bg-white/14 px-3 py-2 text-xs font-black">
+                {offer.action === 'copy' ? <Copy className="ml-2 h-4 w-4" /> : <BusFront className="ml-2 h-4 w-4" />}
+                {offer.action === 'copy' ? 'انسخ الكود' : 'ابدأ البحث'}
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

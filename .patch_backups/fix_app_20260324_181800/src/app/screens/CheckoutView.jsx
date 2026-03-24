@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Accessibility,
+  Car,
   Check,
   Clock,
   CreditCard,
   Tag,
 } from 'lucide-react';
 import { createLogger } from '../../lib/logger';
-import { validatePromoCode } from '../../lib/promoEngine';
 import BookingProgress from '../components/ui/BookingProgress';
 import RouteTimeline from '../components/ui/RouteTimeline';
 import {
@@ -26,17 +26,6 @@ import { withStationNames } from '../utils/stations';
 
 const log = createLogger('checkout');
 
-const defaultPromoState = {
-  status: 'idle',
-  applied: false,
-  code: '',
-  title: '',
-  description: '',
-  message: '',
-  discountAmount: 0,
-  unavailable: false,
-};
-
 function getRemainingHoldMs(holdExpiresAt) {
   if (!holdExpiresAt) return null;
   const expiresAtMs = new Date(holdExpiresAt).getTime();
@@ -45,7 +34,6 @@ function getRemainingHoldMs(holdExpiresAt) {
 }
 
 function CheckoutView({
-  userId,
   trip,
   seats,
   passengers,
@@ -56,15 +44,13 @@ function CheckoutView({
   showToast,
   openModal,
 }) {
-  const [promoInput, setPromoInput] = useState('');
-  const [promoState, setPromoState] = useState(defaultPromoState);
-  const [promoLoading, setPromoLoading] = useState(false);
+  const [promo, setPromo] = useState('');
+  const [discount, setDiscount] = useState(0);
   const [hasLuggage, setHasLuggage] = useState(false);
+  const [rideToStation, setRideToStation] = useState(false);
   const [needsAccess, setNeedsAccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [remainingHoldMs, setRemainingHoldMs] = useState(() =>
-    getRemainingHoldMs(trip?.holdExpiresAt),
-  );
+  const [remainingHoldMs, setRemainingHoldMs] = useState(() => getRemainingHoldMs(trip?.holdExpiresAt));
 
   const data = withStationNames(trip) || {
     from: '',
@@ -78,21 +64,14 @@ function CheckoutView({
     class: 'اقتصادي مميز',
     status: 'upcoming',
   };
-  const subDiscountRate =
-    subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
+  const subDiscountRate = subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
   const baseTotal = data.price * passengers;
   const autoDiscount = Math.floor(baseTotal * subDiscountRate);
   const luggageFee = hasLuggage ? 50 * passengers : 0;
-  const discount = promoState.applied ? promoState.discountAmount : 0;
-  const finalTotalPreview = Math.max(
-    0,
-    baseTotal + luggageFee - discount - autoDiscount,
-  );
+  const rideFee = rideToStation ? 80 : 0;
+  const finalTotalPreview = Math.max(0, baseTotal + luggageFee + rideFee - discount - autoDiscount);
   const isWalletSufficient = wallet >= finalTotalPreview;
-  const pointsToAwardLater = Math.max(
-    0,
-    Math.floor(Math.max(0, baseTotal - autoDiscount - discount) / 5),
-  );
+  const pointsToAwardLater = Math.max(0, Math.floor(Math.max(0, baseTotal - autoDiscount - discount) / 5));
   const tripBookability = getTripBookability(data);
   const holdExpired = remainingHoldMs !== null && remainingHoldMs <= 0;
 
@@ -116,95 +95,37 @@ function CheckoutView({
     return () => window.clearInterval(intervalId);
   }, [trip?.holdExpiresAt]);
 
-  useEffect(() => {
-    const normalizedInput = String(promoInput || '').trim().toUpperCase();
+  if (!trip) return null;
 
-    if (!normalizedInput && promoState.status !== 'idle') {
-      setPromoState(defaultPromoState);
+  const applyPromo = () => {
+    if (!promo) return;
+
+    if (promo.toUpperCase() === 'AHLAN50') {
+      setDiscount(50);
+      showToast('تم تفعيل خصم AHLAN50 بنجاح.', 'success');
       return;
     }
 
-    if (promoState.applied && normalizedInput !== promoState.code) {
-      setPromoState(defaultPromoState);
-    }
-  }, [promoInput, promoState]);
-
-  if (!trip) return null;
-
-  const applyPromo = async ({ silent = false } = {}) => {
-    const normalizedCode = String(promoInput || '').trim().toUpperCase();
-
-    if (!normalizedCode) {
-      setPromoState(defaultPromoState);
-      if (!silent) showToast('اكتب الكود الأول.', 'error');
-      return defaultPromoState;
+    if (promo.toUpperCase() === 'EID26') {
+      setDiscount(Math.floor(baseTotal * 0.2));
+      showToast('خصم EID26 اتفعل على الحجز.', 'success');
+      return;
     }
 
-    setPromoLoading(true);
-
-    try {
-      const result = await validatePromoCode({
-        userId,
-        code: normalizedCode,
-        bookingAmount: baseTotal,
-        tripMeta: {
-          from: data.from,
-          to: data.to,
-          date: data.date,
-          company: data.company,
-          travel_class: data.class,
-          passengers,
-        },
-      });
-
-      const nextState = {
-        status: result.applied
-          ? 'applied'
-          : result.unavailable
-          ? 'unavailable'
-          : 'rejected',
-        applied: Boolean(result.applied),
-        code: result.code || normalizedCode,
-        title: result.title || '',
-        description: result.description || '',
-        message: result.message || '',
-        discountAmount: Number(result.discountAmount || 0),
-        unavailable: Boolean(result.unavailable),
-      };
-
-      setPromoState(nextState);
-
-      if (!silent) {
-        showToast(
-          nextState.applied
-            ? nextState.message || 'تم تفعيل الكود بنجاح.'
-            : nextState.message || 'الكود غير متاح حالياً.',
-          nextState.applied ? 'success' : 'error',
-        );
-      }
-
-      return nextState;
-    } catch (error) {
-      log.error('promo_validation_failed', {
-        userId,
-        code: normalizedCode,
-        error,
-      });
-
-      const failedState = {
-        ...defaultPromoState,
-        status: 'rejected',
-        code: normalizedCode,
-        message: 'تعذر مراجعة الكود حالياً.',
-      };
-
-      setPromoState(failedState);
-
-      if (!silent) showToast(failedState.message, 'error');
-      return failedState;
-    } finally {
-      setPromoLoading(false);
+    if (promo.toUpperCase() === 'SA3EED15') {
+      setDiscount(Math.floor(baseTotal * 0.15));
+      showToast('خصم رحلات الصعيد اتفعل.', 'success');
+      return;
     }
+
+    if (promo.toUpperCase() === 'STUDENT20') {
+      setDiscount(Math.floor(baseTotal * 0.2));
+      showToast('خصم الطلبة اتفعل.', 'success');
+      return;
+    }
+
+    setDiscount(0);
+    showToast('الكود ده غير متاح حالياً.', 'error');
   };
 
   const handlePayment = async () => {
@@ -227,33 +148,15 @@ function CheckoutView({
       return;
     }
 
-    const typedPromoCode = String(promoInput || '').trim().toUpperCase();
-    let latestPromoState = promoState;
-
-    if (typedPromoCode && (!promoState.applied || promoState.code !== typedPromoCode)) {
-      latestPromoState = await applyPromo({ silent: true });
-
-      if (!latestPromoState.applied) {
-        showToast(
-          latestPromoState.message || 'راجع كود الخصم قبل التأكيد النهائي.',
-          'error',
-        );
-        return;
-      }
-    }
-
     setIsProcessing(true);
-
     try {
       const result = await onCreateBooking({
         trip: data,
         seatNumbers: seats,
         passengers,
-        promoCode: latestPromoState.applied ? latestPromoState.code : '',
-        promoDiscountAmount: latestPromoState.applied
-          ? latestPromoState.discountAmount
-          : 0,
+        promoCode: promo,
         hasLuggage,
+        rideToStation,
         needsAccess,
       });
 
@@ -351,6 +254,26 @@ function CheckoutView({
 
               <button
                 type="button"
+                onClick={() => setRideToStation((currentValue) => !currentValue)}
+                className={`flex w-full items-start justify-between gap-3 rounded-[24px] border p-4 text-right transition ${optionCardClassName(rideToStation)}`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={`mt-0.5 grid h-6 w-6 place-items-center rounded-lg border ${rideToStation ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-transparent dark:border-slate-700 dark:bg-slate-900'}`}>
+                    <Check className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
+                      توصيلة للمحطة
+                      <Car className="h-4 w-4 text-slate-400" />
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">لو عايز تبقى الرحلة كلها في خطوة واحدة، فعّل التوصيلة من دلوقتي.</p>
+                  </div>
+                </div>
+                <span className="shrink-0 text-sm font-black text-indigo-700 dark:text-indigo-300">+80 ج.م</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setNeedsAccess((currentValue) => !currentValue)}
                 className={`flex w-full items-start justify-between gap-3 rounded-[24px] border p-4 text-right transition ${optionCardClassName(needsAccess, 'emerald')}`}
               >
@@ -379,41 +302,16 @@ function CheckoutView({
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
               <input
                 type="text"
-                value={promoInput}
-                onChange={(event) => setPromoInput(event.target.value)}
+                value={promo}
+                onChange={(event) => setPromo(event.target.value)}
                 placeholder="اكتب الكود لو عندك"
                 className="h-14 w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 text-base font-black text-slate-800 outline-none transition focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               />
-              <SecondaryButton
-                className="sm:min-w-[120px]"
-                onClick={() => {
-                  applyPromo();
-                }}
-                disabled={promoLoading}
-              >
-                {promoLoading ? 'جاري التفعيل…' : 'تفعيل الكود'}
+              <SecondaryButton className="sm:min-w-[120px]" onClick={applyPromo}>
+                تفعيل الكود
               </SecondaryButton>
             </div>
-            <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">
-              الكود بيتراجع مرة أخيرة من السيرفر وقت التأكيد النهائي.
-            </p>
-
-            {promoState.status !== 'idle' ? (
-              <div className={`mt-4 rounded-[24px] border px-4 py-4 text-sm font-bold ${
-                promoState.applied
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
-                  : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
-              }`}>
-                <p className="font-black">
-                  {promoState.applied
-                    ? promoState.title || `تم قبول الكود ${promoState.code}`
-                    : promoState.message || 'الكود غير متاح حالياً.'}
-                </p>
-                {promoState.applied && promoState.description ? (
-                  <p className="mt-2 leading-6">{promoState.description}</p>
-                ) : null}
-              </div>
-            ) : null}
+            <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">الكود بيتراجع مرة أخيرة من السيرفر وقت التأكيد النهائي.</p>
           </AppSurface>
         </div>
 
@@ -426,6 +324,7 @@ function CheckoutView({
             <div className="mt-4 space-y-3">
               <KeyValueRow label={`تذاكر × ${passengers}`} value={formatCurrency(baseTotal)} />
               {luggageFee > 0 ? <KeyValueRow label="وزن إضافي" value={formatCurrency(luggageFee)} /> : null}
+              {rideFee > 0 ? <KeyValueRow label="توصيلة للمحطة" value={formatCurrency(rideFee)} /> : null}
               {autoDiscount > 0 ? (
                 <KeyValueRow label="خصم الباقة" value={`- ${formatCurrency(autoDiscount)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
               ) : null}
@@ -480,7 +379,7 @@ function CheckoutView({
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[240px]">
             <PrimaryButton
               onClick={handlePayment}
-              disabled={!isWalletSufficient || isProcessing || !tripBookability.canBook || holdExpired || promoLoading}
+              disabled={!isWalletSufficient || isProcessing || !tripBookability.canBook || holdExpired}
               className="w-full"
             >
               {isProcessing ? 'جاري تأكيد الحجز…' : 'ادفع وأكد الحجز'}

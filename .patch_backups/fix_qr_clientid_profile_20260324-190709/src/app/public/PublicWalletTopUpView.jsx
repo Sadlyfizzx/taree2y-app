@@ -1,37 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CheckCircle2, CreditCard, ShieldCheck } from 'lucide-react';
 import { AppSurface, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
-import {
-  buildWalletTopupClientId,
-  markWalletTopupPaid,
-  publicTopupWallet,
-  readWalletTopupPaidState,
-} from './publicPortal';
+import { publicTopupWallet } from './publicPortal';
 
 function Shell({ children }) {
   return (
     <div className="min-h-[100dvh] bg-[var(--bg)] px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-50" dir="rtl">
       <div className="mx-auto max-w-xl space-y-5">{children}</div>
     </div>
-  );
-}
-
-function isDuplicatePaidError(error) {
-  const text = JSON.stringify({
-    message: error?.message || '',
-    details: error?.details || '',
-    hint: error?.hint || '',
-    code: error?.code || '',
-  }).toLowerCase();
-
-  return (
-    text.includes('duplicate key') &&
-    (
-      text.includes('app_wallet_transactions_client_id_key') ||
-      text.includes('client_id') ||
-      text.includes('reference_id')
-    )
   );
 }
 
@@ -47,72 +24,27 @@ export default function PublicWalletTopUpView() {
   const [message, setMessage] = useState('');
 
   const isReady = Boolean(userId && requestId && creditAmount > 0);
-  const clientId = useMemo(() => buildWalletTopupClientId(requestId), [requestId]);
-
-  useEffect(() => {
-    const paidState = readWalletTopupPaidState(requestId);
-    if (paidState?.paid) {
-      setStatus('success');
-      setMessage('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
-    }
-  }, [requestId]);
-
-  const markAsPaid = (text) => {
-    markWalletTopupPaid(requestId, {
-      userId,
-      grossAmount,
-      creditAmount,
-      feeAmount,
-      clientId,
-    });
-    setStatus('success');
-    setMessage(text);
-  };
 
   const handleConfirm = async () => {
-    if (!isReady || status === 'loading' || status === 'success') return;
-
-    const alreadyPaid = readWalletTopupPaidState(requestId);
-    if (alreadyPaid?.paid) {
-      markAsPaid('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
-      return;
-    }
+    if (!isReady || status === 'loading') return;
 
     setStatus('loading');
     setMessage('');
 
     try {
-      const result = await publicTopupWallet({
+      await publicTopupWallet({
         userId,
         amount: creditAmount,
         requestId,
         paymentChannel: 'public_qr_net',
-        clientId,
       });
-
-      if (result?.already_processed) {
-        markAsPaid('العملية دي كانت متأكدة بالفعل، وتم اعتبارها مدفوعة بدون تكرار.');
-        return;
-      }
-
-      markAsPaid('تم تأكيد الشحن بنجاح. ارجع للتطبيق وستجد صافي المبلغ مضافاً لنفس الحساب.');
+      setStatus('success');
+      setMessage('تم تأكيد الشحن بنجاح. ارجع للتطبيق وستجد صافي المبلغ مضافاً لنفس الحساب.');
     } catch (error) {
-      if (isDuplicatePaidError(error)) {
-        markAsPaid('تم دفع العملية دي بالفعل. منعنا تكرار الخصم أو التسجيل مرة تانية.');
-        return;
-      }
-
       setStatus('error');
       setMessage(error?.message || 'تعذر تأكيد عملية الشحن حالياً.');
     }
   };
-
-  const actionLabel =
-    status === 'loading'
-      ? 'جاري التأكيد…'
-      : status === 'success'
-      ? 'تم الدفع بالفعل'
-      : 'تأكيد الشحن';
 
   return (
     <Shell>
@@ -159,7 +91,7 @@ export default function PublicWalletTopUpView() {
               <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
               <p className="text-sm font-black text-slate-900 dark:text-white">العملية مرتبطة بنفس الحساب</p>
             </div>
-            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">لو العملية دي اتدفعت قبل كده، الصفحة هتمنع تكرار التأكيد وتوضح لك إنها مدفوعة بالفعل.</p>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">يمكنك فتح الصفحة من أي جهاز، وسيتم إضافة الشحن إلى محفظة نفس المستخدم فقط.</p>
           </div>
 
           {message ? (
@@ -172,8 +104,8 @@ export default function PublicWalletTopUpView() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={() => window.close()}>إغلاق</SecondaryButton>
-          <PrimaryButton onClick={handleConfirm} disabled={!isReady || status === 'loading' || status === 'success'}>
-            {actionLabel}
+          <PrimaryButton onClick={handleConfirm} disabled={!isReady || status === 'loading'}>
+            {status === 'loading' ? 'جاري التأكيد…' : 'تأكيد الشحن'}
           </PrimaryButton>
         </div>
       </AppSurface>

@@ -1,59 +1,78 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createLogger } from '../../lib/logger';
+import { markOnboardingComplete } from '../../lib/account';
 
-const ONBOARDING_KEY = 'taree2y_onboarding_seen_v2';
+const log = createLogger('onboarding-guide');
+const SESSION_PREFIX = 'taree2y_onboarding_seen_';
 
-function readSeenFlag() {
+function readSessionFlag(key) {
   try {
-    return localStorage.getItem(ONBOARDING_KEY) === 'done';
+    return sessionStorage.getItem(key) === 'done';
   } catch {
     return false;
   }
 }
 
-function persistSeenFlag(nextValue) {
+function persistSessionFlag(key) {
   try {
-    if (nextValue) {
-      localStorage.setItem(ONBOARDING_KEY, 'done');
-    } else {
-      localStorage.removeItem(ONBOARDING_KEY);
-    }
+    sessionStorage.setItem(key, 'done');
   } catch {
-    // ignore storage errors in private mode
+    // ignore storage failures
   }
 }
 
-export function useOnboardingGuide() {
-  const [hasSeenGuide, setHasSeenGuide] = useState(readSeenFlag);
+export function useOnboardingGuide({ userId, profile, onProfileUpdated }) {
+  const sessionKey = useMemo(
+    () => `${SESSION_PREFIX}${userId || 'guest'}`,
+    [userId],
+  );
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isGuideSaving, setIsGuideSaving] = useState(false);
 
   useEffect(() => {
-    if (!hasSeenGuide) {
-      setIsGuideOpen(true);
-    }
-  }, [hasSeenGuide]);
+    if (!userId || profile?.onboarding_completed_at) return;
+    if (readSessionFlag(sessionKey)) return;
+    setIsGuideOpen(true);
+  }, [profile?.onboarding_completed_at, sessionKey, userId]);
 
   const openGuide = () => setIsGuideOpen(true);
-  const closeGuide = () => setIsGuideOpen(false);
 
-  const completeGuide = () => {
-    persistSeenFlag(true);
-    setHasSeenGuide(true);
+  const closeGuide = () => {
+    persistSessionFlag(sessionKey);
     setIsGuideOpen(false);
   };
 
-  const resetGuide = () => {
-    persistSeenFlag(false);
-    setHasSeenGuide(false);
-    setIsGuideOpen(true);
+  const completeGuide = async () => {
+    if (!userId) {
+      closeGuide();
+      return;
+    }
+
+    setIsGuideSaving(true);
+
+    try {
+      const { data, error } = await markOnboardingComplete(userId);
+
+      if (error) {
+        log.warn('onboarding_complete_failed', {
+          userId,
+          error,
+        });
+      } else {
+        onProfileUpdated?.(data);
+      }
+    } finally {
+      setIsGuideSaving(false);
+      closeGuide();
+    }
   };
 
   return {
-    hasSeenGuide,
+    hasSeenGuide: Boolean(profile?.onboarding_completed_at),
     isGuideOpen,
+    isGuideSaving,
     openGuide,
     closeGuide,
     completeGuide,
-    resetGuide,
   };
 }

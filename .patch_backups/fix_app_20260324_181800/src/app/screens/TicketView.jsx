@@ -61,6 +61,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
       driver: data.driver || null,
       hasRestStop: Boolean(data.hasRestStop),
       luggage: Boolean(data.luggage),
+      ride: Boolean(data.ride),
       access: Boolean(data.access),
       issuedAt: Date.now(),
     }),
@@ -81,6 +82,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
       data.luggage,
       data.pnr,
       data.publicTripCode,
+      data.ride,
       data.to,
       data.toStationName,
       data.tripCode,
@@ -182,6 +184,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
 
           <div className="mt-4 flex flex-wrap gap-2">
             <MetaChip label={data.luggage ? 'فيه وزن إضافي' : 'شنطة 20 كجم مشمولة'} tone={data.luggage ? 'warning' : 'neutral'} />
+            {data.ride ? <MetaChip label="توصيلة للمحطة مضافة" tone="brand" /> : null}
             {data.access ? <MetaChip label="مساعدة وقت الصعود" tone="success" /> : null}
           </div>
 
@@ -196,7 +199,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
             value={qrValue}
             title="QR متابعة الرحلة"
             subtitle="امسح الكود أو افتح الرابط مباشرة."
-            chipLabel={data.driverRunCode || data.publicTripCode || 'رحلة طريقي'}
+            chipLabel={data.driverTripCode || data.tripPublicCode || 'رحلة طريقي'}
             codeLabel="رابط المتابعة"
           />
 

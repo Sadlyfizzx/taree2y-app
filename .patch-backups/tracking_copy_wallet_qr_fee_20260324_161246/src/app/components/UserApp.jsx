@@ -10,8 +10,6 @@ import {
   Wallet as WalletIcon,
 } from 'lucide-react';
 import { createLogger, isMissingRpcError } from '../../lib/logger';
-import { markOfferPopupSeen } from '../../lib/account';
-import { getPromoPopupOffer } from '../../lib/promoEngine';
 import { supabase } from '../../lib/supabase';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
@@ -43,12 +41,14 @@ import TrackingView from '../screens/TrackingView';
 import WalletView from '../screens/WalletView';
 import ProfileView from '../screens/ProfileView';
 import TopUpFlowModal from '../modals/TopUpFlowModal';
+import WalletQrTopUpModal from '../modals/WalletQrTopUpModal';
 import PointsModal from '../modals/PointsModal';
+import CourierModal from '../modals/CourierModal';
 import SubscriptionsModal from '../modals/SubscriptionsModal';
 import ChatbotModal from '../modals/ChatbotModal';
+import FoodOrderModal from '../modals/FoodOrderModal';
 import WalletQrModal from '../modals/WalletQrModal';
 import NotificationsModal from '../modals/NotificationsModal';
-import PromoOfferModal from '../modals/PromoOfferModal';
 
 const log = createLogger('user-app');
 
@@ -56,14 +56,26 @@ const buildInvoiceItems = ({
   passengers,
   baseTotal,
   luggageFee,
+  rideFee,
   autoDiscount,
   promoDiscount,
 }) => [
   { name: `تذاكر (${passengers})`, price: baseTotal },
   ...(luggageFee > 0 ? [{ name: 'وزن إضافي', price: luggageFee }] : []),
+  ...(rideFee > 0 ? [{ name: 'توصيلة للمحطة', price: rideFee }] : []),
   ...(autoDiscount > 0 ? [{ name: 'خصم الباقة', price: -autoDiscount }] : []),
   ...(promoDiscount > 0 ? [{ name: 'كود خصم', price: -promoDiscount }] : []),
 ];
+
+const getPromoDiscount = (promoCode, baseTotal) => {
+  const normalized = String(promoCode || '').trim().toUpperCase();
+  if (!normalized) return 0;
+  if (normalized === 'AHLAN50') return 50;
+  if (normalized === 'EID26') return Math.floor(baseTotal * 0.2);
+  if (normalized === 'SA3EED15') return Math.floor(baseTotal * 0.15);
+  if (normalized === 'STUDENT20') return Math.floor(baseTotal * 0.2);
+  return 0;
+};
 
 const formatCancellationErrorMessage = (result) => {
   if (!result) {
@@ -86,14 +98,13 @@ const getHeaderContent = (activeView, activeTab) => {
   if (activeView === 'tracking') return { title: 'متابعة الرحلة', subtitle: 'شارك الحالة عبر رابط عام حقيقي' };
   if (activeTab === 'trips') return { title: 'رحلاتي', subtitle: 'الجاية والسابقة والملغية' };
   if (activeTab === 'wallet') return { title: 'المحفظة', subtitle: 'الرصيد والحركات' };
-  if (activeTab === 'profile') return { title: 'حسابي', subtitle: 'الملف الشخصي والإعدادات' };
+  if (activeTab === 'profile') return { title: 'حسابي', subtitle: 'الإعدادات والمزايا' };
   return { title: 'طريقي', subtitle: 'رحلات مصر بشكل أوضح وأسهل' };
 };
 
 export default function UserApp({
   userId,
   profile,
-  refreshProfile,
   isDark,
   setIsDark,
   runtimeMode = 'supabase',
@@ -103,8 +114,6 @@ export default function UserApp({
     () => ({
       name: profile?.display_name || 'مستخدم',
       phone: profile?.phone || '',
-      email: profile?.email || '',
-      address: profile?.address_line1 || '',
     }),
     [profile],
   );
@@ -142,16 +151,8 @@ export default function UserApp({
   const [toasts, setToasts] = useState([]);
   const [activeModal, setActiveModal] = useState(null);
   const [pendingCancellationBookingIds, setPendingCancellationBookingIds] = useState([]);
-  const [promoPopupOffer, setPromoPopupOffer] = useState(null);
-  const [promoHighlights, setPromoHighlights] = useState([]);
 
-  const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide({
-    userId,
-    profile,
-    onProfileUpdated: async () => {
-      await refreshProfile?.();
-    },
-  });
+  const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide();
 
   const qaStateRef = useRef({});
   qaStateRef.current = {
@@ -188,63 +189,6 @@ export default function UserApp({
     trips: myTrips,
     onNotify: (entry) => showToast(entry.title, 'success'),
   });
-
-  useEffect(() => {
-    let active = true;
-
-    const sessionKey = `taree2y_promo_offer_seen_${userId}`;
-
-    const loadOffer = async () => {
-      if (!userId || !profile?.onboarding_completed_at) {
-        setPromoHighlights([]);
-        return;
-      }
-
-      const offer = await getPromoPopupOffer({ userId });
-      if (!active) return;
-
-      if (!offer) {
-        setPromoHighlights([]);
-        return;
-      }
-
-      setPromoHighlights([offer]);
-
-      let alreadySeenThisSession = false;
-      try {
-        alreadySeenThisSession = sessionStorage.getItem(sessionKey) === 'done';
-      } catch {
-        alreadySeenThisSession = false;
-      }
-
-      if (!alreadySeenThisSession && !activeModal && !isGuideOpen) {
-        setPromoPopupOffer(offer);
-        setActiveModal('promo_offer');
-      }
-    };
-
-    const timeoutId = window.setTimeout(loadOffer, 1200);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timeoutId);
-    };
-  }, [userId, profile?.onboarding_completed_at, activeModal, isGuideOpen]);
-
-  const dismissPromoOffer = async () => {
-    try {
-      sessionStorage.setItem(`taree2y_promo_offer_seen_${userId}`, 'done');
-    } catch {
-      // ignore session storage failures
-    }
-
-    setPromoPopupOffer(null);
-
-    if (userId) {
-      await markOfferPopupSeen(userId);
-      await refreshProfile?.();
-    }
-  };
 
   const navigateTo = (view, tab = activeTab) => {
     log.debug('navigate', {
@@ -318,17 +262,18 @@ export default function UserApp({
     seatNumbers,
     passengers,
     promoCode,
-    promoDiscountAmount = 0,
     hasLuggage,
+    rideToStation,
     needsAccess,
   }) => {
     const subDiscountRate =
       subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
     const baseTotal = trip.price * passengers;
     const autoDiscount = Math.floor(baseTotal * subDiscountRate);
-    const promoDiscount = Math.max(0, Number(promoDiscountAmount || 0));
+    const promoDiscount = getPromoDiscount(promoCode, baseTotal);
     const luggageFee = hasLuggage ? 50 * passengers : 0;
-    const finalTotal = Math.max(0, baseTotal + luggageFee - autoDiscount - promoDiscount);
+    const rideFee = rideToStation ? 80 : 0;
+    const finalTotal = Math.max(0, baseTotal + luggageFee + rideFee - autoDiscount - promoDiscount);
     const pointsToAwardLater = Math.max(
       0,
       Math.floor(Math.max(0, baseTotal - autoDiscount - promoDiscount) / 5),
@@ -355,8 +300,8 @@ export default function UserApp({
       earnedPointsPending: pointsToAwardLater,
       pointsAwarded: false,
       luggage: hasLuggage,
+      ride: rideToStation,
       access: needsAccess,
-      promoCode: promoCode || null,
       ticketToken: `demo-token-${pnr}`,
       qrPayload: `demo-booking:${pnr}`,
       source: 'local',
@@ -371,6 +316,7 @@ export default function UserApp({
         passengers,
         baseTotal,
         luggageFee,
+        rideFee,
         autoDiscount,
         promoDiscount,
       }),
@@ -384,7 +330,6 @@ export default function UserApp({
         amount: finalTotal,
         date: bookingDate,
         desc: `تذكرة: ${trip.from} - ${trip.to}`,
-        description: `تذكرة: ${trip.from} - ${trip.to}`,
       },
       ...prev,
     ]);
@@ -423,8 +368,8 @@ export default function UserApp({
     seatNumbers,
     passengers,
     promoCode,
-    promoDiscountAmount = 0,
     hasLuggage,
+    rideToStation,
     needsAccess,
   }) => {
     if (!trip?.instanceId) {
@@ -433,8 +378,8 @@ export default function UserApp({
         seatNumbers,
         passengers,
         promoCode,
-        promoDiscountAmount,
         hasLuggage,
+        rideToStation,
         needsAccess,
       });
     }
@@ -445,7 +390,7 @@ export default function UserApp({
       passengers,
       promoCode,
       hasLuggage,
-      rideToStation: false,
+      rideToStation,
       needsAccess,
     });
 
@@ -597,7 +542,6 @@ export default function UserApp({
             amount: refundAmount,
             date: getLocalDateInputValue(),
             desc: `استرداد تذكرة ${tripToCancel.pnr}`,
-            description: `استرداد تذكرة ${tripToCancel.pnr}`,
           },
           ...value,
         ]);
@@ -633,7 +577,6 @@ export default function UserApp({
             amount: numericAmount,
             date: getLocalDateInputValue(),
             desc,
-            description: desc,
           },
           ...prev,
         ]);
@@ -734,8 +677,8 @@ export default function UserApp({
           seatNumbers,
           passengers,
           promoCode: options.promoCode || '',
-          promoDiscountAmount: Number(options.promoDiscountAmount || 0),
           hasLuggage: Boolean(options.hasLuggage),
+          rideToStation: Boolean(options.rideToStation),
           needsAccess: Boolean(options.needsAccess),
         });
         if (result?.ok) {
@@ -951,8 +894,6 @@ export default function UserApp({
                 onPromoSearch={handleSearch}
                 openModal={setActiveModal}
                 openGuide={openGuide}
-                isFirstTimeUser={Boolean(profile?.isFirstTimeUser)}
-                promoHighlights={promoHighlights}
               />
             ) : null}
 
@@ -999,7 +940,6 @@ export default function UserApp({
 
             {activeView === 'checkout' && selectedTrip ? (
               <CheckoutView
-                userId={userId}
                 trip={selectedTrip}
                 seats={selectedSeats}
                 passengers={searchParams.passengers}
@@ -1035,7 +975,7 @@ export default function UserApp({
             ) : null}
 
             {activeView === 'tracking' && viewedTicket ? (
-              <TrackingView ticket={ensureTicketIdentity(viewedTicket)} showToast={showToast} />
+              <TrackingView ticket={ensureTicketIdentity(viewedTicket)} showToast={showToast} openModal={setActiveModal} />
             ) : null}
 
             {activeView === 'main' && activeTab === 'wallet' ? (
@@ -1047,19 +987,17 @@ export default function UserApp({
                 setTransactions={setTransactions}
                 showToast={showToast}
                 openTopUp={() => setActiveModal('topup')}
-                openWalletQr={() => setActiveModal('wallet_qr')}
+                openQrTopUp={() => setActiveModal('topup_qr')}
               />
             ) : null}
 
             {activeView === 'main' && activeTab === 'profile' ? (
               <ProfileView
                 user={user}
-                profile={profile}
                 points={points}
                 subscription={subscription}
                 isDark={isDark}
                 setIsDark={setIsDark}
-                refreshProfile={refreshProfile}
                 onLogout={async () => {
                   const { error } = await supabase.auth.signOut();
                   if (error) {
@@ -1089,7 +1027,17 @@ export default function UserApp({
         ) : null}
       </div>
 
-      {activeModal === 'help' ? <ChatbotModal closeModal={() => setActiveModal(null)} user={user} /> : null}
+      {activeModal === 'courier' ? (
+        <CourierModal
+          closeModal={() => setActiveModal(null)}
+          wallet={wallet}
+          setWallet={setWallet}
+          setTransactions={setTransactions}
+          showToast={showToast}
+        />
+      ) : null}
+
+      {activeModal === 'bot' ? <ChatbotModal closeModal={() => setActiveModal(null)} user={user} /> : null}
 
       {activeModal === 'subs' ? (
         <SubscriptionsModal
@@ -1099,6 +1047,16 @@ export default function UserApp({
           setTransactions={setTransactions}
           subscription={subscription}
           setSubscription={setSubscription}
+          showToast={showToast}
+        />
+      ) : null}
+
+      {activeModal === 'food' ? (
+        <FoodOrderModal
+          closeModal={() => setActiveModal(null)}
+          wallet={wallet}
+          setWallet={setWallet}
+          setTransactions={setTransactions}
           showToast={showToast}
         />
       ) : null}
@@ -1114,6 +1072,7 @@ export default function UserApp({
           showToast={showToast}
         />
       ) : null}
+
 
       {activeModal === 'wallet_qr' ? (
         <WalletQrModal
@@ -1145,15 +1104,6 @@ export default function UserApp({
           clearNotifications={clearNotifications}
           requestBrowserPermission={requestBrowserPermission}
           showToast={showToast}
-        />
-      ) : null}
-
-      {activeModal === 'promo_offer' ? (
-        <PromoOfferModal
-          offer={promoPopupOffer}
-          closeModal={() => setActiveModal(null)}
-          showToast={showToast}
-          onDismiss={dismissPromoOffer}
         />
       ) : null}
 

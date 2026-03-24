@@ -6,26 +6,9 @@ import {
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
 import { readJSON, readNumber, demoKey } from '../../utils/storage';
-import { getLocalDateInputValue, getTripLifecycleStatus } from '../utils/travel';
+import { getTripLifecycleStatus } from '../utils/travel';
 
 const log = createLogger('cloud-app-state');
-
-function normalizeWalletTransaction(entry) {
-  const description =
-    entry?.description ||
-    entry?.desc ||
-    entry?.title ||
-    'عملية على المحفظة';
-
-  return {
-    ...entry,
-    amount: Number(entry?.amount || 0),
-    type: entry?.type === 'debit' ? 'debit' : 'credit',
-    date: entry?.date || entry?.created_at || getLocalDateInputValue(),
-    desc: description,
-    description,
-  };
-}
 
 export function useCloudAppState(userId) {
   const [wallet, setWallet] = useState(0);
@@ -47,9 +30,7 @@ export function useCloudAppState(userId) {
     (state) =>
       JSON.stringify({
         wallet: Number(state?.wallet ?? 0),
-        transactions: Array.isArray(state?.transactions)
-          ? state.transactions.map(normalizeWalletTransaction)
-          : [],
+        transactions: Array.isArray(state?.transactions) ? state.transactions : [],
         myTrips: Array.isArray(state?.myTrips) ? state.myTrips : [],
         points: Number(state?.points ?? 0),
         subscription: state?.subscription || 'none',
@@ -62,7 +43,7 @@ export function useCloudAppState(userId) {
       const normalized = {
         wallet: Number(nextState?.wallet ?? 0),
         transactions: Array.isArray(nextState?.transactions)
-          ? nextState.transactions.map(normalizeWalletTransaction)
+          ? nextState.transactions
           : [],
         myTrips: Array.isArray(nextState?.myTrips) ? nextState.myTrips : [],
         points: Number(nextState?.points ?? 0),
@@ -221,13 +202,7 @@ export function useCloudAppState(userId) {
   useEffect(() => {
     if (!backendReady || !userId) return;
 
-    const snapshot = {
-      wallet,
-      transactions: transactions.map(normalizeWalletTransaction),
-      myTrips,
-      points,
-      subscription,
-    };
+    const snapshot = { wallet, transactions, myTrips, points, subscription };
 
     const timeoutId = window.setTimeout(async () => {
       try {

@@ -8,7 +8,7 @@ export { isPublicPortalPath } from './publicPortal';
 export default function PublicPortalRouter() {
   const pathname = window.location.pathname || '/';
 
-  if (pathname.startsWith('/wallet-topup')) {
+  if (pathname.startsWith('/public/wallet-topup')) {
     return <PublicWalletTopUpView />;
   }
 

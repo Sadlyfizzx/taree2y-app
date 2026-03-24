@@ -67,46 +67,6 @@ export function createWalletRequestId() {
   return `TOP-${stamp}-${random}`;
 }
 
-export function buildWalletTopupClientId(requestId) {
-  const safe = String(requestId || '').trim();
-  if (!safe) return `topup-${Date.now()}`;
-  return `topup-${safe}`;
-}
-
-export function getWalletTopupPaidStorageKey(requestId) {
-  return `taree2y_topup_paid_${String(requestId || '').trim()}`;
-}
-
-export function readWalletTopupPaidState(requestId) {
-  const key = getWalletTopupPaidStorageKey(requestId);
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function markWalletTopupPaid(requestId, payload = {}) {
-  const key = getWalletTopupPaidStorageKey(requestId);
-
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        paid: true,
-        paidAt: Date.now(),
-        requestId: String(requestId || ''),
-        ...payload,
-      }),
-    );
-  } catch {
-    // ignore storage failures
-  }
-}
-
 export async function copyTextWithFallback(text, label = 'الرابط') {
   const safeText = String(text || '').trim();
   if (!safeText) return false;
@@ -176,22 +136,12 @@ export async function getPublicTripShare(token) {
   return data?.payload || data || null;
 }
 
-export async function publicTopupWallet({
-  userId,
-  amount,
-  requestId,
-  paymentChannel = 'public_qr',
-  clientId,
-}) {
-  const safeRequestId = String(requestId || '').trim();
-  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
-
+export async function publicTopupWallet({ userId, amount, requestId, paymentChannel = 'public_qr' }) {
   const { data, error } = await supabase.rpc('public_topup_wallet', {
     p_user_id: userId,
     p_amount: Number(amount),
-    p_request_id: safeRequestId,
+    p_request_id: requestId,
     p_payment_channel: paymentChannel,
-    p_client_id: safeClientId,
   });
 
   if (error) throw error;

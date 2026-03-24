@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
+import { ensureProfileForUser, normalizeProfileRow } from '../../lib/account';
 
 const log = createLogger('auth-session');
 
@@ -9,76 +10,45 @@ export function useAuthSession() {
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  const loadProfile = useCallback(async (user) => {
+    if (!user?.id) {
+      setProfile(null);
+      return null;
+    }
+
+    const { data, error } = await ensureProfileForUser(user);
+
+    if (error) {
+      log.warn('profile_bootstrap_failed', {
+        userId: user.id,
+        error,
+      });
+    }
+
+    const normalized = normalizeProfileRow(data, user);
+    setProfile(normalized);
+    return normalized;
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      log.error('refresh_profile_failed', { error });
+      return null;
+    }
+
+    const activeSession = data.session ?? null;
+    if (!activeSession?.user) {
+      setProfile(null);
+      return null;
+    }
+
+    return loadProfile(activeSession.user);
+  }, [loadProfile]);
+
   useEffect(() => {
     let mounted = true;
-
-    const applyFallbackProfile = async (user) => {
-      const fallbackProfile = {
-        id: user.id,
-        display_name:
-          user?.user_metadata?.display_name ||
-          user?.email?.split('@')[0] ||
-          'مستخدم',
-        phone: user?.user_metadata?.phone || '',
-      };
-
-      if (mounted) setProfile(fallbackProfile);
-
-      const { error } = await supabase.from('profiles').upsert({
-        id: user.id,
-        display_name: fallbackProfile.display_name,
-        phone: fallbackProfile.phone || null,
-      });
-
-      if (error) {
-        log.warn('profile_bootstrap_failed', {
-          userId: user.id,
-          error,
-        });
-      } else {
-        log.info('profile_bootstrap_completed', {
-          userId: user.id,
-        });
-      }
-    };
-
-    const loadProfile = async (user) => {
-      const userId = user?.id;
-      if (!userId) {
-        if (mounted) setProfile(null);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (!mounted) return;
-
-      if (error) {
-        log.error('profile_load_failed', {
-          userId,
-          error,
-        });
-        await applyFallbackProfile(user);
-        return;
-      }
-
-      if (!data) {
-        log.warn('profile_missing_row', {
-          userId,
-        });
-        await applyFallbackProfile(user);
-        return;
-      }
-
-      setProfile(data);
-      log.debug('profile_loaded', {
-        userId,
-      });
-    };
 
     const bootstrap = async () => {
       try {
@@ -89,6 +59,7 @@ export function useAuthSession() {
         if (!mounted) return;
 
         setSession(currentSession);
+
         if (currentSession?.user?.id) {
           await loadProfile(currentSession.user);
         } else {
@@ -110,6 +81,8 @@ export function useAuthSession() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) return;
+
       setSession(nextSession ?? null);
 
       if (!nextSession?.user?.id) {
@@ -120,6 +93,7 @@ export function useAuthSession() {
 
       window.setTimeout(() => {
         if (!mounted) return;
+
         loadProfile(nextSession.user).finally(() => {
           if (mounted) setAuthLoading(false);
         });
@@ -130,7 +104,7 @@ export function useAuthSession() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadProfile]);
 
-  return { session, profile, authLoading };
+  return { session, profile, authLoading, refreshProfile };
 }

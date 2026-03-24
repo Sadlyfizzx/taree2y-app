@@ -1,18 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BusFront, Copy, ShieldCheck, Star } from 'lucide-react';
+import { BusFront, Coffee, Copy, ShieldAlert, Star } from 'lucide-react';
 import RouteTimeline from '../components/ui/RouteTimeline';
 import {
   AppSurface,
   MetaChip,
   PageHeading,
   PrimaryButton,
+  SecondaryButton,
 } from '../components/ui/AppPrimitives';
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { getTripLifecycleStatus, ROUTE_META } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
 import { createPublicTripShare, copyTextWithFallback } from '../public/publicPortal';
 
-function TrackingView({ ticket, showToast }) {
+function TrackingView({ ticket, showToast, openModal }) {
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [sharing, setSharing] = useState(false);
 
@@ -144,11 +145,14 @@ function TrackingView({ ticket, showToast }) {
                 <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{data.departureTime} · {data.from}</p>
               </div>
               {routeMeta.hasRestStop ? (
-                <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
-                  <p className="text-sm font-black text-slate-900 dark:text-white">فيه استراحة في الطريق</p>
-                  <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-                    هتظهر لك الحالة وقت الاستراحة بوضوح، لكن التطبيق مش بيعرض طلبات خدمات غير موصلة فعليًا.
-                  </p>
+                <div>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">استراحة الطريق</p>
+                  <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">لو الرحلة دخلت استراحة هتقدر تطلب قبل الوقفة من هنا.</p>
+                  <div className="mt-3">
+                    <SecondaryButton onClick={() => openModal('food')} icon={<Coffee className="h-4 w-4" />}>
+                      اطلب للاستراحة
+                    </SecondaryButton>
+                  </div>
                 </div>
               ) : null}
               <div>
@@ -165,13 +169,13 @@ function TrackingView({ ticket, showToast }) {
             <PrimaryButton onClick={handleCopyShareLink} icon={<Copy className="h-4 w-4" />} className="w-full justify-center" disabled={sharing}>
               {sharing ? 'جاري تجهيز الرابط…' : 'نسخ رابط المتابعة'}
             </PrimaryButton>
+            <SecondaryButton onClick={() => showToast('زر الطوارئ تجريبي حالياً.', 'error')} icon={<ShieldAlert className="h-4 w-4" />} className="w-full justify-center">
+              تواصل عاجل
+            </SecondaryButton>
           </div>
 
           <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-              <p className="text-sm font-black text-slate-900 dark:text-white">الحالة الحالية</p>
-            </div>
+            <p className="text-sm font-black text-slate-900 dark:text-white">الحالة الحالية</p>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">{lifecycle.statusText}</p>
           </div>
         </AppSurface>

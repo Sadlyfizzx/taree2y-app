@@ -1,88 +1,76 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Bot, Send } from 'lucide-react';
+import React from 'react';
+import { BookOpen, CreditCard, Ticket, Wallet } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
-import { SecondaryButton } from '../components/ui/AppPrimitives';
+import { AppSurface, MetaChip, SecondaryButton } from '../components/ui/AppPrimitives';
 
-const QUICK_ACTIONS = ['إلغاء تذكرة', 'رصيد المحفظة', 'العروض الحالية'];
+const HELP_TOPICS = [
+  {
+    icon: Ticket,
+    title: 'الحجز والتذكرة',
+    text: 'اختار الرحلة، ثبّت المقاعد، راجع الدفع، وبعد التأكيد هتلاقي التذكرة والـ QR جاهزين فورًا.',
+  },
+  {
+    icon: CreditCard,
+    title: 'الخصومات والكوبونات',
+    text: 'الكود بيتراجع من السيرفر قبل التأكيد النهائي حسب تاريخ الحملة، شروط الاستخدام، وهل اتستخدم قبل كده ولا لأ.',
+  },
+  {
+    icon: Wallet,
+    title: 'المحفظة والاسترداد',
+    text: 'أي خصم أو شحن أو استرداد لازم يظهر في رصيد المحفظة وفي حركة الحساب، ولو في تأخير التطبيق بيعمل مزامنة تلقائية.',
+  },
+  {
+    icon: BookOpen,
+    title: 'أول مرة تستخدم طريقي؟',
+    text: 'افتح دليل الاستخدام من الرئيسية أو حسابي عشان تشوف خطوات الحجز والتتبع والإلغاء بشكل مرتب وسريع.',
+  },
+];
 
-function ChatbotModal({ closeModal, user }) {
-  const [messages, setMessages] = useState([
-    {
-      sender: 'bot',
-      text: `أهلاً بيك يا ${user.name.split(' ')[0]}، أنا مساعد طريقي. أقدر أوضحلك الإلغاء، الرصيد، أو أقولك تلاقي التذكرة فين.`,
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const messagesEndRef = useRef(null);
-
-  const sendMessage = (text) => {
-    if (!text.trim()) return;
-
-    setMessages((currentValue) => [...currentValue, { sender: 'user', text }]);
-    setInput('');
-    window.setTimeout(() => {
-      setMessages((currentValue) => [
-        ...currentValue,
-        {
-          sender: 'bot',
-          text: 'تمام، وصلتني الفكرة. النسخة الحالية بتشرح وتوجهك، وللتنفيذ الفعلي ارجع للرحلة أو المحفظة أو الدعم المباشر حسب الطلب.',
-        },
-      ]);
-    }, 700);
-  };
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
+export default function ChatbotModal({ closeModal, user }) {
   return (
     <ModalShell
       onClose={closeModal}
-      title="الدعم والمساعدة"
-      subtitle="استخدم الرسائل أو الاختيارات السريعة للوصول للمعلومة أسرع."
-      icon={<Bot className="h-6 w-6" />}
-      maxWidth="max-w-2xl"
-      className="overflow-hidden"
-      bodyClassName="flex h-[70vh] flex-col px-0 py-0"
+      title="مركز المساعدة"
+      subtitle={`أهلاً يا ${user?.name?.split(' ')[0] || 'صديق طريقي'}، هنا هتلاقي الإجابات الأساسية بشكل واضح بدل واجهة محادثة وهمية.`}
+      icon={<BookOpen className="h-6 w-6" />}
+      maxWidth="max-w-3xl"
     >
-      <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-        <div className="hide-scrollbar flex gap-2 overflow-x-auto">
-          {QUICK_ACTIONS.map((action) => (
-            <SecondaryButton key={action} onClick={() => sendMessage(action)} className="shrink-0">
-              {action}
-            </SecondaryButton>
+      <div className="space-y-5">
+        <div className="flex flex-wrap gap-2">
+          <MetaChip label="شرح واضح" tone="brand" />
+          <MetaChip label="بدون خطوات وهمية" tone="success" />
+          <MetaChip label="مناسب لأول استخدام" tone="neutral" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {HELP_TOPICS.map((topic) => (
+            <AppSurface key={topic.title} className="p-5">
+              <span className="grid h-12 w-12 place-items-center rounded-[22px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+                <topic.icon className="h-5 w-5" />
+              </span>
+              <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">
+                {topic.title}
+              </h3>
+              <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
+                {topic.text}
+              </p>
+            </AppSurface>
           ))}
         </div>
-      </div>
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {messages.map((message, index) => (
-          <div key={`${message.sender}-${index}`} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[86%] rounded-[24px] px-4 py-3 text-sm font-bold leading-6 ${message.sender === 'user' ? 'rounded-bl-md bg-indigo-600 text-white' : 'rounded-br-md border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-200'}`}>
-              {message.text}
-            </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      <div className="border-t border-slate-100 px-5 py-4 dark:border-slate-800">
-        <div className="flex gap-3">
-          <input
-            type="text"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') sendMessage(input);
-            }}
-            placeholder="اكتب سؤالك هنا"
-            className="h-14 flex-1 rounded-[22px] border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-900 outline-none transition focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-          />
-          <button type="button" onClick={() => sendMessage(input)} className="grid h-14 w-14 place-items-center rounded-[22px] bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700">
-            <Send className="h-5 w-5" />
-          </button>
+
+        <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+          <p className="text-sm font-black text-slate-900 dark:text-white">
+            ملحوظة
+          </p>
+          <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
+            لو الخدمة نفسها لسه مش متوصلة بالباك إند، التطبيق مش هيعرضها كأنها شغالة.
+          </p>
+        </div>
+
+        <div className="flex justify-end">
+          <SecondaryButton onClick={closeModal}>تمام</SecondaryButton>
         </div>
       </div>
     </ModalShell>
   );
 }
-
-export default ChatbotModal;

@@ -18,7 +18,7 @@ function SplashScreen({ text }) {
 
 export default function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname || '/' : '/';
-  const { session, profile, authLoading, refreshProfile } = useAuthSession();
+  const { session, profile, authLoading } = useAuthSession();
   const { isDark, setIsDark } = useDarkMode();
 
   if (isPublicPortalPath(pathname)) {
@@ -39,13 +39,7 @@ export default function App() {
       dir="rtl"
     >
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1800px] overflow-hidden">
-        <UserApp
-          userId={session.user.id}
-          profile={profile}
-          refreshProfile={refreshProfile}
-          isDark={isDark}
-          setIsDark={setIsDark}
-        />
+        <UserApp userId={session.user.id} profile={profile} isDark={isDark} setIsDark={setIsDark} />
       </div>
     </div>
   );
