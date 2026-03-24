@@ -66,8 +66,8 @@ function TopUpFlowModal({ closeModal, wallet: _wallet, setWallet, setTransaction
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>إلغاء</SecondaryButton>
-          <PrimaryButton onClick={handleConfirm} disabled={loading}>
-            {loading ? 'جاري الإضافة…' : 'أكد الشحن'}
+          <PrimaryButton onClick={handleConfirm} loading={loading} loadingText="جاري الإضافة…">
+            أكد الشحن
           </PrimaryButton>
         </div>
       }

@@ -398,9 +398,10 @@ function CheckoutView({
                 onClick={() => {
                   applyPromo();
                 }}
-                disabled={promoLoading}
+                loading={promoLoading}
+                loadingText="جاري التفعيل…"
               >
-                {promoLoading ? 'جاري التفعيل…' : 'تفعيل الكود'}
+                تفعيل الكود
               </SecondaryButton>
             </div>
             <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">
@@ -489,10 +490,12 @@ function CheckoutView({
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[240px]">
             <PrimaryButton
               onClick={handlePayment}
-              disabled={!isWalletSufficient || isProcessing || !tripBookability.canBook || holdExpired || promoLoading}
+              disabled={!isWalletSufficient || !tripBookability.canBook || holdExpired || promoLoading}
+              loading={isProcessing}
+              loadingText="جاري تأكيد الحجز…"
               className="w-full"
             >
-              {isProcessing ? 'جاري تأكيد الحجز…' : 'ادفع وأكد الحجز'}
+              ادفع وأكد الحجز
             </PrimaryButton>
             {!isWalletSufficient ? (
               <SecondaryButton onClick={() => openModal('topup')}>اشحن المحفظة الأول</SecondaryButton>

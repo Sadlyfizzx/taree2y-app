@@ -91,7 +91,30 @@ export function SectionHeader({ title, subtitle, action, className = '' }) {
   );
 }
 
-export function PrimaryButton({ children, icon, className = '', ...props }) {
+
+function ButtonSpinner({ className = '' }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cx(
+        'inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent',
+        className,
+      )}
+    />
+  );
+}
+
+export function PrimaryButton({
+  children,
+  icon,
+  className = '',
+  loading = false,
+  loadingText = '',
+  disabled = false,
+  ...props
+}) {
+  const resolvedDisabled = disabled || loading;
+
   return (
     <button
       type="button"
@@ -99,15 +122,53 @@ export function PrimaryButton({ children, icon, className = '', ...props }) {
         'inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-600/25 transition-all hover:bg-indigo-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500',
         className,
       )}
+      disabled={resolvedDisabled}
+      aria-busy={loading || undefined}
       {...props}
     >
-      {icon ? <span className="shrink-0">{icon}</span> : null}
-      <span>{children}</span>
+      {loading ? (
+        <ButtonSpinner />
+      ) : icon ? (
+        <span className="shrink-0">{icon}</span>
+      ) : null}
+      <span>{loading && loadingText ? loadingText : children}</span>
     </button>
   );
 }
 
-export function SecondaryButton({ children, icon, className = '', ...props }) {
+export function SecondaryButton({
+  children,
+  icon,
+  className = '',
+  loading = false,
+  loadingText = '',
+  disabled = false,
+  ...props
+}) {
+  const resolvedDisabled = disabled || loading;
+
+  return (
+    <button
+      type="button"
+      className={cx(
+        'inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition-all hover:border-indigo-200 hover:bg-indigo-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-700 dark:hover:bg-slate-800',
+        className,
+      )}
+      disabled={resolvedDisabled}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading ? (
+        <ButtonSpinner />
+      ) : icon ? (
+        <span className="shrink-0">{icon}</span>
+      ) : null}
+      <span>{loading && loadingText ? loadingText : children}</span>
+    </button>
+  );
+}
+
+export function MetaChip({ children, icon, className = '', ...props }) {
   return (
     <button
       type="button"

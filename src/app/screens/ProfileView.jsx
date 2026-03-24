@@ -266,7 +266,7 @@ function ProfileView({
               </div>
             </label>
 
-            <PrimaryButton onClick={saveProfile} disabled={!hasProfileChanges || savingProfile} icon={<Save className="h-5 w-5" />}>
+            <PrimaryButton onClick={saveProfile} disabled={!hasProfileChanges} loading={savingProfile} loadingText="جاري الحفظ…" icon={<Save className="h-5 w-5" />}>
               {savingProfile ? 'جاري الحفظ…' : 'حفظ البيانات'}
             </PrimaryButton>
           </div>
@@ -305,7 +305,7 @@ function ProfileView({
               </div>
             </label>
 
-            <PrimaryButton onClick={changePassword} disabled={savingPassword} icon={<KeyRound className="h-5 w-5" />}>
+            <PrimaryButton onClick={changePassword} loading={savingPassword} loadingText="جاري التحديث…" icon={<KeyRound className="h-5 w-5" />}>
               {savingPassword ? 'جاري التحديث…' : 'تغيير الباسورد'}
             </PrimaryButton>
           </div>
@@ -415,7 +415,9 @@ function ProfileView({
               </SecondaryButton>
               <PrimaryButton
                 onClick={deleteAccount}
-                disabled={deletingAccount || deleteConfirmText.trim() !== 'حذف'}
+                disabled={deleteConfirmText.trim() !== 'حذف'}
+                loading={deletingAccount}
+                loadingText="جاري الحذف…"
                 className="bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
               >
                 {deletingAccount ? 'جاري التنفيذ…' : 'أكيد، نفّذ حذف الحساب'}

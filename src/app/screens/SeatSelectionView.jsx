@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Check, Clock } from 'lucide-react';
 import BookingProgress from '../components/ui/BookingProgress';
 import RouteTimeline from '../components/ui/RouteTimeline';
@@ -32,6 +32,18 @@ function SeatSelectionView({
 
   const remainingSeats = Math.max(0, passengers - selectedSeats.length);
   const isReady = selectedSeats.length === passengers;
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  const handleConfirm = async () => {
+    if (isConfirming || !isReady || !bookability.canBook) return;
+
+    setIsConfirming(true);
+    try {
+      await onConfirm?.();
+    } finally {
+      setIsConfirming(false);
+    }
+  };
 
   const toggleSeat = (seat) => {
     if (!bookability.canBook) {
@@ -165,7 +177,7 @@ function SeatSelectionView({
               لو غيرت رأيك، تقدر تشيل أي كرسي قبل ما تكمل.
             </p>
           </div>
-          <PrimaryButton onClick={onConfirm} disabled={!isReady || !bookability.canBook} className="w-full sm:w-auto sm:min-w-[200px]">
+          <PrimaryButton onClick={handleConfirm} disabled={!isReady || !bookability.canBook} loading={isConfirming} loadingText="جاري تثبيت المقاعد…" className="w-full sm:w-auto sm:min-w-[200px]">
             كمّل للدفع
           </PrimaryButton>
         </AppSurface>

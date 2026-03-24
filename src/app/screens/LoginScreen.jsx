@@ -295,10 +295,17 @@ function LoginScreen({ isDark, setIsDark }) {
               type="button"
               onClick={handleAuth}
               disabled={loading || cooldownSeconds > 0}
+              aria-busy={loading || undefined}
               className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-[22px] bg-indigo-600 px-4 text-base font-black text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >
-              {actionText}
-              <ChevronLeft className="h-5 w-5" />
+              {loading ? (
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/90 border-t-transparent"
+                />
+              ) : null}
+              <span>{actionText}</span>
+              {!loading ? <ChevronLeft className="h-5 w-5" /> : null}
             </button>
           </div>
         </section>
