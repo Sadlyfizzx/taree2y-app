@@ -3,6 +3,7 @@
 @custom-variant light (&:where(.light, .light *));
 
 :root {
+  --font-app: 'Cairo', 'Segoe UI', Tahoma, Arial, system-ui, sans-serif;
   --bg: #f4f7fb;
   --surface: #ffffff;
   --surface-soft: #eef4ff;
@@ -55,7 +56,8 @@ html.dark {
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: "Segoe UI", Tahoma, Arial, system-ui, sans-serif;
+  font-family: var(--font-app);
+  font-family: var(--font-app);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -71,6 +73,7 @@ input,
 select,
 textarea {
   font: inherit;
+  font-family: inherit;
 }
 
 button {

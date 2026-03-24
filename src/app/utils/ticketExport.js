@@ -10,6 +10,22 @@ function normalizeCode(value, fallbackPrefix = 'TRQ') {
   return `${raw.slice(0, 12)}…${raw.slice(-8)}`;
 }
 
+
+async function ensureCairoFontReady() {
+  if (typeof document === 'undefined' || !document.fonts?.load) return;
+
+  try {
+    await Promise.all([
+      document.fonts.load("400 16px Cairo"),
+      document.fonts.load("600 16px Cairo"),
+      document.fonts.load("700 16px Cairo"),
+      document.fonts.load("800 16px Cairo"),
+    ]);
+  } catch {
+    // fall back silently if the web font is unavailable
+  }
+}
+
 async function buildQrDataUrl(value) {
   return QRCode.toDataURL(String(value || '').trim(), {
     errorCorrectionLevel: 'M',
@@ -28,7 +44,7 @@ function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
   const travelTips = 'وصل المحطة قبل التحرك بـ 20 دقيقة على الأقل.';
 
   return `
-    <div style="width:100%;background:#eef4ff;padding:24px;font-family:Segoe UI,Tahoma,Arial,sans-serif;direction:rtl;box-sizing:border-box;">
+    <div style="width:100%;background:#eef4ff;padding:24px;font-family:'Cairo','Segoe UI',Tahoma,Arial,system-ui,sans-serif;direction:rtl;box-sizing:border-box;">
       <div style="max-width:860px;margin:0 auto;background:#ffffff;border-radius:32px;overflow:hidden;box-shadow:0 24px 60px -32px rgba(16,35,63,.35);border:1px solid rgba(15,23,42,.08);">
         <div style="background:linear-gradient(135deg,#10233f 0%,#163c98 48%,#2156d9 100%);color:#fff;padding:28px 28px 24px;">
           <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
@@ -155,6 +171,7 @@ async function renderMarkupToCanvas(markup) {
 }
 
 export async function exportTicketPng({ ticket, user }) {
+  await ensureCairoFontReady();
   const trackingUrl = buildTripPublicTrackingUrl(ticket);
   const qrDataUrl = await buildQrDataUrl(trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '');
   const markup = buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl: trackingUrl || '—' });
@@ -166,6 +183,7 @@ export async function exportTicketPng({ ticket, user }) {
 }
 
 export async function exportTicketPdf({ ticket, user }) {
+  await ensureCairoFontReady();
   const trackingUrl = buildTripPublicTrackingUrl(ticket);
   const qrDataUrl = await buildQrDataUrl(trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '');
   const markup = buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl: trackingUrl || '—' });
