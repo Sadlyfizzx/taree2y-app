@@ -1,7 +1,8 @@
-import { ArrowRightLeft, BusFront, Calendar, Clock3, MapPin } from 'lucide-react';
+import { BusFront, Calendar, Clock3, MapPin } from 'lucide-react';
 import { withStationNames } from '../../utils/stations';
 import { formatDateText, formatDuration } from '../../utils/formatting';
 import { AppSurface, MetaChip, cx } from './AppPrimitives';
+import InlineArrow from './InlineArrow';
 
 export default function RouteTimeline({
   trip,
@@ -39,8 +40,8 @@ export default function RouteTimeline({
             <span className="h-0.5 w-8 rounded-full bg-current sm:w-12" />
             <span className="h-3 w-3 rounded-full border-2 border-slate-400 bg-white dark:bg-slate-900" />
           </div>
-          <div className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            <Clock3 className="h-3.5 w-3.5" />
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            <InlineArrow className="h-6 w-6 shrink-0 rounded-full text-white shadow-none" />
             {formatDuration(data.durationHour)}
           </div>
         </div>
@@ -60,7 +61,7 @@ export default function RouteTimeline({
       {showMeta ? (
         <div className="mt-4 flex flex-wrap gap-2">
           <MetaChip icon={<Calendar className="h-3.5 w-3.5" />} label={formatDateText(data.date)} tone="neutral" />
-          <MetaChip icon={<ArrowRightLeft className="h-3.5 w-3.5" />} label={`${data.company} • ${data.class}`} tone="brand" />
+          <MetaChip label={`${data.company} • ${data.class}`} tone="brand" />
           {data.hasRestStop ? (
             <MetaChip label="فيه استراحة في الطريق" tone="warning" />
           ) : (

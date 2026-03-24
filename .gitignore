@@ -35,3 +35,10 @@ taree2y-app-ai-export-*.txt
 *.bak.*
 .stability_backups/
 .stability/
+# local build caches
+dist/
+node_modules/
+.vite/
+.eslintcache
+.fix_backups/
+.ui-redesign-backups/

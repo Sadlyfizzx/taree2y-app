@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRightLeft, Sparkles, Star, Tag, Zap } from 'lucide-react';
+import { Sparkles, Star, Tag, Zap } from 'lucide-react';
 import BookingProgress from '../components/ui/BookingProgress';
 import TripCard from '../components/ui/TripCard';
 import { AppSurface, MetaChip, PageHeading } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice, TripCardSkeleton } from '../components/ui/StateBlocks';
 import { withStationNames } from '../utils/stations';
 import { formatDateText } from '../utils/formatting';
+import InlineArrow from '../components/ui/InlineArrow';
 
 function SearchResultsView({ searchParams, searchResults, isSearching, onSelectTrip, showToast }) {
   const [filter, setFilter] = useState('all');
@@ -78,8 +79,10 @@ function SearchResultsView({ searchParams, searchResults, isSearching, onSelectT
         <BookingProgress current="results" />
         <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">
-              {searchParams.from} <ArrowRightLeft className="mx-2 inline h-4 w-4 text-slate-300" /> {searchParams.to}
+            <h2 className="flex flex-wrap items-center gap-3 text-xl font-black text-slate-900 dark:text-white">
+              <span>{searchParams.from}</span>
+              <InlineArrow />
+              <span>{searchParams.to}</span>
             </h2>
             <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">
               {formatDateText(searchParams.date)} · {searchParams.passengers} {searchParams.passengers === 1 ? 'راكب' : 'ركاب'}

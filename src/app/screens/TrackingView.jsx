@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BusFront, Coffee, Share2, ShieldAlert, Star } from 'lucide-react';
+import { BusFront, Coffee, Copy, ShieldAlert, Star } from 'lucide-react';
 import RouteTimeline from '../components/ui/RouteTimeline';
 import {
   AppSurface,
@@ -11,9 +11,11 @@ import {
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { getTripLifecycleStatus, ROUTE_META } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
+import { createPublicTripShare, copyTextWithFallback } from '../public/publicPortal';
 
 function TrackingView({ ticket, showToast, openModal }) {
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowTick(Date.now()), 30000);
@@ -43,6 +45,41 @@ function TrackingView({ ticket, showToast, openModal }) {
   const isMoving = ['en_route', 'rest_stop', 'final_approach'].includes(lifecycle.key);
   const progress = Math.max(0, Math.min(100, lifecycle.progress));
 
+  const handleCopyShareLink = async () => {
+    if (sharing) return;
+    setSharing(true);
+
+    try {
+      const payload = {
+        v: 2,
+        publicTripCode: data.publicTripCode || data.tripCode || data.id || data.pnr || null,
+        driverRunCode: data.driverRunCode || null,
+        pnr: data.pnr || null,
+        from: data.from,
+        to: data.to,
+        fromStationName: data.fromStationName,
+        toStationName: data.toStationName,
+        date: data.date,
+        departureTime: data.departureTime,
+        arrivalTime: data.arrivalTime,
+        durationHour: data.durationHour,
+        company: data.company,
+        class: data.class,
+        driver: data.driver || null,
+        hasRestStop: Boolean(data.hasRestStop),
+        issuedAt: Date.now(),
+      };
+
+      const share = await createPublicTripShare(payload);
+      const copied = await copyTextWithFallback(share.url);
+      showToast(copied ? 'تم نسخ رابط المتابعة.' : 'تعذر نسخ رابط المتابعة حاليا.', copied ? 'success' : 'error');
+    } catch (_error) {
+      showToast('تعذر نسخ رابط المتابعة حاليا.', 'error');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <PageHeading
@@ -52,13 +89,13 @@ function TrackingView({ ticket, showToast, openModal }) {
       />
 
       <AppSurface className="overflow-hidden p-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-3 text-right">
             <MetaChip label={lifecycle.statusText} tone={lifecycle.key === 'rest_stop' ? 'warning' : progress === 100 ? 'success' : 'brand'} />
-            <h2 className="text-3xl font-black text-slate-900 dark:text-white" dir="ltr">
+            <h2 className="text-right text-3xl font-black text-slate-900 dark:text-white" dir="ltr">
               {data.arrivalTime}
             </h2>
-            <p className="text-sm font-bold text-slate-500 dark:text-slate-400">وقت الوصول المتوقع حسب الحالة الحالية.</p>
+            <p className="text-right text-sm font-bold text-slate-500 dark:text-slate-400">وقت الوصول المتوقع حسب الحالة الحالية.</p>
           </div>
           <div className="w-full max-w-[320px] rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
             <div className="flex items-center justify-between text-sm font-black text-slate-900 dark:text-white">
@@ -129,8 +166,8 @@ function TrackingView({ ticket, showToast, openModal }) {
         <AppSurface className="p-5">
           <h3 className="text-lg font-black text-slate-900 dark:text-white">أزرار سريعة</h3>
           <div className="mt-4 space-y-3">
-            <PrimaryButton onClick={() => showToast('هتتوفر مشاركة حالة الرحلة برابط مباشر قريبًا.', 'success')} icon={<Share2 className="h-4 w-4" />} className="w-full justify-center">
-              شارك حالة الرحلة
+            <PrimaryButton onClick={handleCopyShareLink} icon={<Copy className="h-4 w-4" />} className="w-full justify-center" disabled={sharing}>
+              {sharing ? 'جاري تجهيز الرابط…' : 'نسخ رابط المتابعة'}
             </PrimaryButton>
             <SecondaryButton onClick={() => showToast('زر الطوارئ تجريبي حالياً.', 'error')} icon={<ShieldAlert className="h-4 w-4" />} className="w-full justify-center">
               تواصل عاجل

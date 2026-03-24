@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Bell,
   BusFront,
   ChevronRight,
   Home,
@@ -11,11 +12,13 @@ import {
 import { createLogger, isMissingRpcError } from '../../lib/logger';
 import { supabase } from '../../lib/supabase';
 import { useCloudAppState } from '../hooks/useCloudAppState';
+import { useTripNotifications } from '../hooks/useTripNotifications';
 import {
   generateTrips,
   getCancellationPolicy,
   getLocalDateInputValue,
 } from '../utils/travel';
+import { ensureTicketIdentity } from '../utils/tripIdentity';
 import {
   cancelBookingAtomic,
   createBookingAtomic,
@@ -38,16 +41,16 @@ import TrackingView from '../screens/TrackingView';
 import WalletView from '../screens/WalletView';
 import ProfileView from '../screens/ProfileView';
 import TopUpFlowModal from '../modals/TopUpFlowModal';
+import WalletQrTopUpModal from '../modals/WalletQrTopUpModal';
 import PointsModal from '../modals/PointsModal';
 import CourierModal from '../modals/CourierModal';
 import SubscriptionsModal from '../modals/SubscriptionsModal';
 import ChatbotModal from '../modals/ChatbotModal';
 import FoodOrderModal from '../modals/FoodOrderModal';
+import WalletQrModal from '../modals/WalletQrModal';
+import NotificationsModal from '../modals/NotificationsModal';
 
 const log = createLogger('user-app');
-
-const ALLOW_DEMO_FALLBACK =
-  String(import.meta.env?.VITE_ENABLE_DEMO_FALLBACK || '').toLowerCase() === 'true';
 
 const buildInvoiceItems = ({
   passengers,
@@ -91,8 +94,8 @@ const getHeaderContent = (activeView, activeTab) => {
   if (activeView === 'seats') return { title: 'اختيار المقاعد', subtitle: 'حدد المقاعد قبل مراجعة الدفع' };
   if (activeView === 'checkout') return { title: 'الدفع والتأكيد', subtitle: 'راجع كل شيء قبل الحجز النهائي' };
   if (activeView === 'invoice') return { title: 'تم الحجز', subtitle: 'التذكرة جاهزة دلوقتي' };
-  if (activeView === 'ticket') return { title: 'التذكرة', subtitle: 'كل التفاصيل في شاشة واحدة' };
-  if (activeView === 'tracking') return { title: 'متابعة الرحلة', subtitle: 'اعرف حالة الرحلة بسهولة' };
+  if (activeView === 'ticket') return { title: 'التذكرة', subtitle: 'النسخة الحديثة + التصدير + QR' };
+  if (activeView === 'tracking') return { title: 'متابعة الرحلة', subtitle: 'شارك الحالة عبر رابط عام حقيقي' };
   if (activeTab === 'trips') return { title: 'رحلاتي', subtitle: 'الجاية والسابقة والملغية' };
   if (activeTab === 'wallet') return { title: 'المحفظة', subtitle: 'الرصيد والحركات' };
   if (activeTab === 'profile') return { title: 'حسابي', subtitle: 'الإعدادات والمزايا' };
@@ -176,6 +179,17 @@ export default function UserApp({
     }, 4000);
   };
 
+  const {
+    notifications,
+    unreadCount,
+    markAllRead,
+    clearNotifications,
+    requestBrowserPermission,
+  } = useTripNotifications({
+    trips: myTrips,
+    onNotify: (entry) => showToast(entry.title, 'success'),
+  });
+
   const navigateTo = (view, tab = activeTab) => {
     log.debug('navigate', {
       fromView: activeView,
@@ -236,13 +250,8 @@ export default function UserApp({
         error,
       });
 
-      if (ALLOW_DEMO_FALLBACK) {
-        setSearchResults(generateTrips(params.from, params.to, params.date));
-        showToast('تعذر تحميل الرحلات من السيرفر. رجعنا للوضع التجريبي.', 'error');
-      } else {
-        setSearchResults({ trips: [], isDirect: true, source: 'error' });
-        showToast('تعذر تحميل الرحلات من السيرفر. حاول تاني بعد شوية.', 'error');
-      }
+      setSearchResults(generateTrips(params.from, params.to, params.date));
+      showToast('تعذر تحميل الرحلات من السيرفر. رجعنا للوضع التجريبي.', 'error');
     } finally {
       setIsSearching(false);
     }
@@ -277,7 +286,7 @@ export default function UserApp({
     const pnr = `TRQ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
     const bookingDate = getLocalDateInputValue();
 
-    const ticket = {
+    const ticket = ensureTicketIdentity({
       ...trip,
       id: `demo-${pnr}`,
       bookingId: `demo-${pnr}`,
@@ -296,7 +305,7 @@ export default function UserApp({
       ticketToken: `demo-token-${pnr}`,
       qrPayload: `demo-booking:${pnr}`,
       source: 'local',
-    };
+    });
 
     const invoice = {
       pnr,
@@ -336,16 +345,18 @@ export default function UserApp({
   };
 
   const finalizeBookingSuccess = (ticket, invoice) => {
-    if (String(ticket?.bookingId || ticket?.id || '').startsWith('demo-')) {
-      setMyTrips((prev) => [ticket, ...prev]);
+    const normalizedTicket = ensureTicketIdentity(ticket);
+
+    if (String(normalizedTicket?.bookingId || normalizedTicket?.id || '').startsWith('demo-')) {
+      setMyTrips((prev) => [normalizedTicket, ...prev]);
     }
 
     setCurrentInvoice(invoice);
-    setViewedTicket(ticket);
+    setViewedTicket(normalizedTicket);
 
     log.info('booking_finalized', {
-      bookingId: ticket?.bookingId || ticket?.id || null,
-      pnr: ticket?.pnr || null,
+      bookingId: normalizedTicket?.bookingId || normalizedTicket?.id || null,
+      pnr: normalizedTicket?.pnr || null,
       runtimeMode,
     });
 
@@ -362,10 +373,6 @@ export default function UserApp({
     needsAccess,
   }) => {
     if (!trip?.instanceId) {
-      if (!ALLOW_DEMO_FALLBACK) {
-        return { ok: false, message: 'الرحلة دي غير جاهزة للحجز الحقيقي حالياً.' };
-      }
-
       return createDemoBookingResult({
         trip,
         seatNumbers,
@@ -389,6 +396,9 @@ export default function UserApp({
 
     if (result?.ok) {
       await refreshCloudState({ silent: true, force: true });
+      if (result.booking) {
+        result.booking = ensureTicketIdentity(result.booking);
+      }
     }
 
     return result;
@@ -400,11 +410,6 @@ export default function UserApp({
     }
 
     if (!tripArg?.instanceId) {
-      if (!ALLOW_DEMO_FALLBACK) {
-        showToast('الرحلة دي غير جاهزة للحجز الحقيقي حالياً.', 'error');
-        return { ok: false, message: 'Trip instance missing' };
-      }
-
       navigateTo('checkout');
       return { ok: true, source: 'demo' };
     }
@@ -799,15 +804,21 @@ export default function UserApp({
         </nav>
 
         {isSidebarOpen ? (
-          <div className="space-y-3 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mt-8 space-y-3 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-sm font-black text-slate-900 dark:text-white">ملخص سريع</p>
             <div className="flex flex-wrap gap-2">
               <MetaChip label={`الرصيد ${wallet} ج.م`} tone="brand" />
               <MetaChip label={`النقاط ${points}`} tone="success" />
+              <MetaChip label={`التنبيهات ${unreadCount}`} tone={unreadCount ? 'warning' : 'neutral'} />
             </div>
-            <button type="button" onClick={openGuide} className="text-sm font-black text-indigo-700 dark:text-indigo-300">
-              افتح دليل الاستخدام
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={openGuide} className="text-sm font-black text-indigo-700 dark:text-indigo-300">
+                افتح دليل الاستخدام
+              </button>
+              <button type="button" onClick={() => setActiveModal('notifications')} className="text-sm font-black text-slate-600 dark:text-slate-300">
+                التنبيهات
+              </button>
+            </div>
           </div>
         ) : null}
       </aside>
@@ -845,6 +856,19 @@ export default function UserApp({
                 className="hidden rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-800 dark:hover:text-indigo-300 md:inline-flex"
               >
                 الدليل
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveModal('notifications')}
+                className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300"
+                aria-label="التنبيهات"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadCount ? (
+                  <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                ) : null}
               </button>
               <button
                 type="button"
@@ -887,6 +911,11 @@ export default function UserApp({
                   } catch (error) {
                     log.error('seat_load_failed_before_selection', {
                       tripInstanceId: trip?.instanceId || null,
+                      tripCode: trip?.tripCode || trip?.id || null,
+                      errorMessage: error?.message || null,
+                      errorCode: error?.code || null,
+                      errorDetails: error?.details || null,
+                      errorHint: error?.hint || null,
                       error,
                     });
                     showToast('تعذر تحميل المقاعد من السيرفر.', 'error');
@@ -929,12 +958,12 @@ export default function UserApp({
 
             {activeView === 'main' && activeTab === 'trips' ? (
               <TripsView
-                trips={myTrips}
+                trips={myTrips.map(ensureTicketIdentity)}
                 setMyTrips={setMyTrips}
                 processRefund={processDelayedRefund}
                 pendingCancellationBookingIds={pendingCancellationBookingIds}
                 onViewTicket={(ticket) => {
-                  setViewedTicket(ticket);
+                  setViewedTicket(ensureTicketIdentity(ticket));
                   navigateTo('ticket');
                 }}
                 showToast={showToast}
@@ -942,21 +971,23 @@ export default function UserApp({
             ) : null}
 
             {activeView === 'ticket' && viewedTicket ? (
-              <TicketView ticket={viewedTicket} user={user} onTrack={() => navigateTo('tracking')} showToast={showToast} />
+              <TicketView ticket={ensureTicketIdentity(viewedTicket)} user={user} onTrack={() => navigateTo('tracking')} showToast={showToast} />
             ) : null}
 
             {activeView === 'tracking' && viewedTicket ? (
-              <TrackingView ticket={viewedTicket} showToast={showToast} openModal={setActiveModal} />
+              <TrackingView ticket={ensureTicketIdentity(viewedTicket)} showToast={showToast} openModal={setActiveModal} />
             ) : null}
 
             {activeView === 'main' && activeTab === 'wallet' ? (
               <WalletView
+                userId={userId}
                 wallet={wallet}
                 setWallet={setWallet}
                 transactions={transactions}
                 setTransactions={setTransactions}
                 showToast={showToast}
                 openTopUp={() => setActiveModal('topup')}
+                openQrTopUp={() => setActiveModal('topup_qr')}
               />
             ) : null}
 
@@ -1042,12 +1073,36 @@ export default function UserApp({
         />
       ) : null}
 
+
+      {activeModal === 'wallet_qr' ? (
+        <WalletQrModal
+          closeModal={() => setActiveModal(null)}
+          userId={userId}
+          showToast={showToast}
+        />
+      ) : null}
+
       {activeModal === 'topup' ? (
         <TopUpFlowModal
           closeModal={() => setActiveModal(null)}
           wallet={wallet}
           setWallet={setWallet}
           setTransactions={setTransactions}
+          showToast={showToast}
+        />
+      ) : null}
+
+      {activeModal === 'notifications' ? (
+        <NotificationsModal
+          closeModal={() => {
+            markAllRead();
+            setActiveModal(null);
+          }}
+          notifications={notifications}
+          unreadCount={unreadCount}
+          markAllRead={markAllRead}
+          clearNotifications={clearNotifications}
+          requestBrowserPermission={requestBrowserPermission}
           showToast={showToast}
         />
       ) : null}

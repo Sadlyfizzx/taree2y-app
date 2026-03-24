@@ -1,12 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Download,
-  FileText,
-  Loader2,
-  Map,
-  QrCode,
-} from 'lucide-react';
+import React from 'react';
+import { Download, Map, Link2 } from 'lucide-react';
 import RouteTimeline from '../components/ui/RouteTimeline';
+import PrettyQrCard from '../components/ui/PrettyQrCard';
 import {
   AppSurface,
   KeyValueRow,
@@ -20,79 +15,38 @@ import {
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency, formatSeatsText } from '../utils/formatting';
 import { withStationNames } from '../utils/stations';
-import {
-  downloadTicketPdf,
-  downloadTicketPng,
-  generateTicketQrDataUrl,
-  makeSafeFileName,
-  parseTicketQrPayload,
-} from '../../lib/ticketArtifacts';
+import { buildTripPublicTrackingUrl } from '../utils/share';
+import { copyTextToClipboard } from '../utils/clipboard';
+import { exportTicketPdf, exportTicketPng } from '../utils/ticketExport';
 
 function TicketView({ ticket, user, onTrack, showToast }) {
   if (!ticket) return null;
 
   const data = withStationNames(ticket);
-  const ticketRef = useRef(null);
-  const [qrDataUrl, setQrDataUrl] = useState('');
-  const [exporting, setExporting] = useState('');
-
   const isPast = data.status === 'past';
   const isCancelled = data.status === 'cancelled';
   const isRefundPending = data.status === 'refund_pending';
+  const trackingUrl = buildTripPublicTrackingUrl(data);
 
-  const qrMeta = useMemo(
-    () => parseTicketQrPayload(data.qrPayload || data.qr_payload, data),
-    [data],
-  );
-
-  const fileBaseName = useMemo(
-    () => makeSafeFileName(`taree2y-ticket-${data.pnr || data.tripCode || data.id || 'booking'}`),
-    [data.id, data.pnr, data.tripCode],
-  );
-
-  useEffect(() => {
-    let active = true;
-
-    generateTicketQrDataUrl(qrMeta)
-      .then((url) => {
-        if (active) setQrDataUrl(url);
-      })
-      .catch(() => {
-        if (active) setQrDataUrl('');
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [qrMeta]);
-
-  const handleDownloadPng = async () => {
+  const saveTicket = async (kind) => {
     try {
-      setExporting('png');
-      await downloadTicketPng({
-        node: ticketRef.current,
-        fileName: `${fileBaseName}.png`,
-      });
-      showToast('تم حفظ نسخة PNG من التذكرة.', 'success');
+      if (kind === 'pdf') {
+        await exportTicketPdf({ ticket: data, user });
+      } else {
+        await exportTicketPng({ ticket: data, user });
+      }
+      showToast(kind === 'pdf' ? 'تم حفظ التذكرة PDF.' : 'تم حفظ التذكرة PNG.', 'success');
     } catch (error) {
-      showToast('تعذر حفظ نسخة PNG من التذكرة.', 'error');
-    } finally {
-      setExporting('');
+      showToast('تعذر حفظ التذكرة حالياً.', 'error');
     }
   };
 
-  const handleDownloadPdf = async () => {
+  const copyTrackingLink = async () => {
     try {
-      setExporting('pdf');
-      await downloadTicketPdf({
-        node: ticketRef.current,
-        fileName: `${fileBaseName}.pdf`,
-      });
-      showToast('تم حفظ نسخة PDF من التذكرة.', 'success');
-    } catch (error) {
-      showToast('تعذر حفظ نسخة PDF من التذكرة.', 'error');
-    } finally {
-      setExporting('');
+      await copyTextToClipboard(trackingUrl);
+      showToast('تم نسخ رابط المتابعة.', 'success');
+    } catch {
+      showToast('تعذر نسخ رابط المتابعة حالياً.', 'error');
     }
   };
 
@@ -101,7 +55,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
       <PageHeading
         eyebrow="التذكرة"
         title="كل تفاصيل الرحلة قدامك"
-        subtitle="اسم المحطة، وقت التحرك، المقاعد، والـ QR كلهم في شاشة واحدة سهلة وقت السفر."
+        subtitle="اسم المحطة، وقت التحرك، المقاعد، والـ QR في شاشة واحدة واضحة وقت السفر."
         actions={
           <div className="flex gap-2">
             {isRefundPending ? <StatusBadge label="استرداد جاري" tone="warning" /> : null}
@@ -124,17 +78,14 @@ function TicketView({ ticket, user, onTrack, showToast }) {
         />
       ) : null}
 
-      <div ref={ticketRef} className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-        <AppSurface className="ticket-shell overflow-hidden p-5">
-          <div className="flex items-start justify-between gap-4">
+      <div className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
+        <AppSurface className="ticket-shell overflow-hidden p-5 md:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-black tracking-[0.16em] text-slate-400 dark:text-slate-500">رقم الحجز</p>
-              <p className="mt-1 font-mono text-2xl font-black text-slate-900 dark:text-white">{data.pnr || data.id}</p>
+              <p className="mt-1 break-words font-mono text-xl font-black text-slate-900 dark:text-white md:text-2xl">{data.pnr || data.id}</p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <MetaChip label={`التاريخ ${data.date}`} tone="brand" />
-              {data.tripCode ? <MetaChip label={data.tripCode} tone="neutral" /> : null}
-            </div>
+            <MetaChip label={`التاريخ ${data.date}`} tone="brand" />
           </div>
 
           <div className="mt-4">
@@ -155,62 +106,47 @@ function TicketView({ ticket, user, onTrack, showToast }) {
             {data.ride ? <MetaChip label="توصيلة للمحطة مضافة" tone="brand" /> : null}
             {data.access ? <MetaChip label="مساعدة وقت الصعود" tone="success" /> : null}
           </div>
-        </AppSurface>
-
-        <AppSurface className="p-5">
-          <div className="flex items-center gap-3">
-            <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
-              <QrCode className="h-6 w-6" />
-            </span>
-            <div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-white">رمز الصعود</h3>
-              <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">اعرضه وقت الركوب مع رقم الحجز لو الموظف طلبه.</p>
-            </div>
-          </div>
-
-          <div className={`mt-5 rounded-[28px] border border-dashed border-slate-200 bg-white p-5 text-center dark:border-slate-700 dark:bg-slate-950 ${isPast || isCancelled ? 'opacity-60' : ''}`}>
-            <div className="mx-auto flex min-h-[176px] w-full max-w-[176px] items-center justify-center rounded-[28px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900">
-              {qrDataUrl ? (
-                <img src={qrDataUrl} alt="QR التذكرة" className="h-40 w-40 rounded-[22px] object-contain" />
-              ) : (
-                <QrCode className="h-24 w-24 text-slate-900 dark:text-white" />
-              )}
-            </div>
-            <p className="mt-4 text-sm font-black text-slate-900 dark:text-white">{data.ticketToken || 'رمز التذكرة غير متاح'}</p>
-            <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">لو الشبكة ضعفت، رقم الحجز يفضل ظاهر معاك في أعلى الشاشة.</p>
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <KeyValueRow label="مرجع الحجز" value={qrMeta.booking_ref || data.pnr || '—'} />
-            <KeyValueRow label="كود الرحلة" value={qrMeta.trip_code || data.tripCode || '—'} />
-          </div>
 
           <div className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
-            <p className="text-sm font-black text-slate-900 dark:text-white">ملحوظة قبل التحرك</p>
-            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-              حاول توصل المحطة قبل التحرك بـ 20 دقيقة على الأقل عشان الصعود يبقى هادي وواضح.
-            </p>
+            <p className="text-sm font-black text-slate-900 dark:text-white">ملاحظة مهمة</p>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">وصل المحطة قبل التحرك بـ 20 دقيقة على الأقل.</p>
           </div>
         </AppSurface>
+
+        <div className="space-y-5">
+          <PrettyQrCard
+            value={trackingUrl || data.qrPayload || data.ticketToken || data.pnr || ''}
+            title="QR متابعة الرحلة"
+            subtitle="امسح الكود أو افتح الرابط مباشرة."
+            chipLabel={data.driverTripCode || data.tripPublicCode || 'رحلة طريقي'}
+            codeLabel="رابط المتابعة"
+          />
+
+          <AppSurface className="p-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <PrimaryButton onClick={() => saveTicket('pdf')} icon={<Download className="h-5 w-5" />} className="w-full justify-center">
+                حفظ PDF
+              </PrimaryButton>
+              <SecondaryButton onClick={() => saveTicket('png')} icon={<Download className="h-5 w-5" />} className="w-full justify-center">
+                حفظ PNG
+              </SecondaryButton>
+              <SecondaryButton onClick={copyTrackingLink} icon={<Link2 className="h-5 w-5" />} className="w-full justify-center sm:col-span-2 xl:col-span-1">
+                نسخ رابط المتابعة
+              </SecondaryButton>
+            </div>
+          </AppSurface>
+        </div>
       </div>
 
       <StickyActionBar>
-        <AppSurface className="flex flex-col gap-3 p-4">
+        <AppSurface className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-black text-slate-900 dark:text-white">احفظ نسخة من التذكرة على الموبايل أو الكمبيوتر</p>
-            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">متاح دلوقتي حفظ PNG أو PDF بجانب فتح تتبع الرحلة.</p>
+            <p className="text-sm font-black text-slate-900 dark:text-white">لو الرحلة قربت تتحرك افتح التتبع</p>
+            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">هتشوف حالة الرحلة والمستجدات من نفس التطبيق.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <PrimaryButton onClick={onTrack} disabled={isPast || isCancelled} icon={<Map className="h-5 w-5" />} className="sm:flex-1">
-              متابعة الرحلة
-            </PrimaryButton>
-            <SecondaryButton onClick={handleDownloadPng} disabled={exporting !== ''} icon={exporting === 'png' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Download className="h-5 w-5" />} className="sm:flex-1">
-              حفظ PNG
-            </SecondaryButton>
-            <SecondaryButton onClick={handleDownloadPdf} disabled={exporting !== ''} icon={exporting === 'pdf' ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />} className="sm:flex-1">
-              حفظ PDF
-            </SecondaryButton>
-          </div>
+          <PrimaryButton onClick={onTrack} disabled={isPast || isCancelled} icon={<Map className="h-5 w-5" />} className="w-full sm:w-auto sm:min-w-[240px]">
+            متابعة الرحلة
+          </PrimaryButton>
         </AppSurface>
       </StickyActionBar>
     </div>

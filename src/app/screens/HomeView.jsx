@@ -26,6 +26,7 @@ import {
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { CITIES, getLocalDateInputValue } from '../utils/travel';
 import { getPrimaryStationName } from '../utils/stations';
+import InlineArrow from '../components/ui/InlineArrow';
 
 const QUICK_ROUTES = [
   { from: 'القاهرة', to: 'الإسكندرية' },
@@ -312,7 +313,7 @@ function HomeView({
               className="min-w-[220px] rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-right shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800 dark:hover:bg-slate-800"
             >
               <p className="text-sm font-black text-slate-900 dark:text-white">
-                {route.from} <span className="mx-1 text-slate-300">←</span> {route.to}
+                {route.from} <span className="mx-1 inline-flex text-slate-300"><ArrowRightLeft className="h-4 w-4" /></span> {route.to}
               </p>
               <p className="mt-2 text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
                 {getPrimaryStationName(route.from)} · {getPrimaryStationName(route.to)}

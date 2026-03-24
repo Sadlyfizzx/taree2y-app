@@ -70,14 +70,14 @@ function TripsView({
       <PageHeading
         eyebrow="رحلاتي"
         title="كل حجوزاتك في مكان واحد"
-        subtitle="هتلاقي الرحلات الجاية، اللي خلصت، والملغية مع حالة كل واحدة وإجراءات الإلغاء والاسترداد بشكل واضح."
+        subtitle="هتلاقي الرحلات الجاية، اللي خلصت، والملغية مع حالة كل واحدة بشكل واضح."
       />
 
       {pendingCancellationBookingIds.length > 0 ? (
         <InlineNotice
           tone="warning"
           title="فيه طلب استرداد شغال حالياً"
-          text='لحد ما العملية تخلص هتلاقي الرحلة بحالة "استرداد جاري" والمبلغ هينزل في المحفظة أول ما يتم التأكيد.'
+          text='هتلاقي الرحلة بحالة "استرداد جاري" لحد ما العملية تكتمل وينزل المبلغ في المحفظة.'
           icon={Clock}
         />
       ) : null}
@@ -115,10 +115,10 @@ function TripsView({
           }
           text={
             activeTab === 'upcoming'
-              ? 'أول ما تحجز رحلة جديدة هتظهر هنا بكل تفاصيلها والتذكرة هتبقى جاهزة كمان.'
+              ? 'أول ما تحجز رحلة جديدة هتظهر هنا بكل تفاصيلها.'
               : activeTab === 'past'
               ? 'بعد ما أي رحلة تنتهي، هتتنقل تلقائيًا للقائمة دي.'
-              : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد وسجل العملية.'
+              : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد.'
           }
         />
       ) : (
@@ -129,7 +129,6 @@ function TripsView({
             const isPendingCancellation =
               trip.status === 'refund_pending' ||
               (bookingId && pendingCancellationBookingIds.includes(bookingId));
-            const showTrackAction = trip.status === 'upcoming' && !isPendingCancellation;
 
             return (
               <AppSurface key={trip.pnr || trip.id} className="p-5">
@@ -166,7 +165,7 @@ function TripsView({
                     <p className="text-sm font-black text-slate-900 dark:text-white">الإلغاء قبل التحرك</p>
                     <p className="mt-1 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
                       {policy.allowed
-                        ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)} بعد خصم الرسوم.`
+                        ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}.`
                         : policy.message}
                     </p>
                   </div>
@@ -174,7 +173,7 @@ function TripsView({
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <PrimaryButton className="flex-1" onClick={() => onViewTicket(trip)}>
-                    {showTrackAction ? 'افتح التذكرة' : trip.status === 'cancelled' ? 'عرض التفاصيل' : 'عرض الرحلة'}
+                    افتح التذكرة
                   </PrimaryButton>
                   {trip.status === 'upcoming' ? (
                     <SecondaryButton
@@ -203,7 +202,7 @@ function TripsView({
         <ModalShell
           onClose={() => setCancelingTrip(null)}
           title="تأكيد إلغاء الرحلة"
-          subtitle="قبل ما نكمل، راجع الرسوم والمبلغ المتوقع يرجع للمحفظة."
+          subtitle="راجع الرسوم والمبلغ المتوقع يرجع للمحفظة."
           icon={<AlertTriangle className="h-6 w-6" />}
           maxWidth="max-w-lg"
           footer={
@@ -242,7 +241,7 @@ function TripsView({
             <InlineNotice
               tone="warning"
               title="ملحوظة"
-              text="بعد التأكيد، الرحلة هتتحول لحالة استرداد جاري لحد ما المعالجة تكتمل وتظهر الحركة في المحفظة."
+              text="بعد التأكيد، الرحلة هتتحول لحالة استرداد جاري لحد ما المعالجة تكتمل."
               icon={CheckCircle2}
             />
           </div>

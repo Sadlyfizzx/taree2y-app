@@ -48,7 +48,7 @@ function TopUpFlowModal({ closeModal, wallet: _wallet, setWallet, setTransaction
     <ModalShell
       onClose={closeModal}
       title="شحن المحفظة"
-      subtitle="عملية شحن تجريبية عشان تراجع الواجهة وتكمل تجربة الحجز."
+      subtitle="عملية شحن سريعة وواضحة لإضافة الرصيد قبل الحجز."
       icon={<CreditCard className="h-6 w-6" />}
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -108,8 +108,7 @@ function TopUpFlowModal({ closeModal, wallet: _wallet, setWallet, setTransaction
           <p className="text-sm font-black text-slate-900 dark:text-white">المبلغ اللي هيتضاف</p>
           <p className="mt-2 text-2xl font-black text-indigo-700 dark:text-indigo-300">{formatCurrency(numericAmount)}</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <MetaChip label="شحن تجريبي" tone="brand" />
-            <MetaChip label="بدون دفع حقيقي" tone="warning" />
+            <MetaChip label="يضاف مباشرة للمحفظة" tone="success" />
           </div>
         </div>
       </div>

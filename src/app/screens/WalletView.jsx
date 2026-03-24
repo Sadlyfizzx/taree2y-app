@@ -2,7 +2,6 @@ import React from 'react';
 import {
   ArrowDown,
   CreditCard,
-  Phone,
   Plus,
   QrCode,
   Send,
@@ -26,6 +25,7 @@ function WalletView({
   setTransactions: _setTransactions,
   showToast,
   openTopUp,
+  openWalletQr,
 }) {
   return (
     <div className="space-y-5">
@@ -44,26 +44,32 @@ function WalletView({
             <p className="mt-2 text-sm font-bold text-white/80">الرصيد يتحدث تلقائيًا بعد كل حجز أو استرداد.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <PrimaryButton onClick={openTopUp} icon={<Plus className="h-5 w-5" />} className="bg-white text-indigo-700 shadow-none hover:bg-indigo-50">
+            <PrimaryButton onClick={openTopUp} icon={<Plus className="h-5 w-5" />} className="!bg-white !text-indigo-700 hover:!bg-indigo-50 shadow-none">
               شحن المحفظة
             </PrimaryButton>
-            <SecondaryButton onClick={() => showToast('الدفع بالـ QR لسه مش متاح في النسخة الحالية.', 'error')} icon={<QrCode className="h-5 w-5" />} className="border-white/20 bg-white/10 text-white hover:bg-white/15 dark:border-white/20 dark:bg-white/10 dark:text-white">
-              QR
+            <SecondaryButton onClick={openWalletQr} icon={<QrCode className="h-5 w-5" />} className="border-white/20 bg-white/10 text-white hover:bg-white/15 dark:border-white/20 dark:bg-white/10 dark:text-white">
+              شحن بـ QR
             </SecondaryButton>
           </div>
         </div>
       </section>
 
+      <InlineNotice
+        tone="info"
+        title="معلومة مهمة"
+        text="أي استرداد ناتج عن إلغاء حجز هيظهر هنا تلقائيًا، وكمان في تاريخ الحركات تحت."
+      />
+
       <div className="grid gap-4 sm:grid-cols-3">
         {[
-          { icon: CreditCard, label: 'بطاقة بنكية', hint: 'شحن مباشر للمحفظة' },
-          { icon: Phone, label: 'فودافون كاش', hint: 'طريقة منتشرة وسريعة' },
-          { icon: Send, label: 'إنستاباي', hint: 'لو عايز تحويل فوري' },
+          { icon: CreditCard, label: 'بطاقة بنكية', hint: 'شحن مباشر للمحفظة', onClick: openTopUp },
+          { icon: QrCode, label: 'QR الشحن', hint: 'افتح كود ورابط مرتبطين بنفس الحساب', onClick: openWalletQr },
+          { icon: Send, label: 'رابط سريع', hint: 'انسخ الرابط وافتحه من أي جهاز', onClick: openWalletQr },
         ].map((method) => (
           <button
             key={method.label}
             type="button"
-            onClick={openTopUp}
+            onClick={method.onClick}
             className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800"
           >
             <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
@@ -74,12 +80,6 @@ function WalletView({
           </button>
         ))}
       </div>
-
-      <InlineNotice
-        tone="info"
-        title="معلومة مهمة"
-        text="أي استرداد ناتج عن إلغاء حجز هيظهر هنا تلقائيًا، وكمان في تاريخ الحركات تحت."
-      />
 
       <AppSurface className="p-5">
         <SectionHeader title="حركة المحفظة" subtitle="آخر العمليات على رصيدك بترتيب زمني من الأحدث للأقدم." />
@@ -105,7 +105,9 @@ function WalletView({
                     </span>
                     <div>
                       <p className="text-sm font-black text-slate-900 dark:text-white">{transaction.desc}</p>
-                      <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{transaction.date}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <MetaChip label={transaction.date} tone="neutral" />
+                      </div>
                     </div>
                   </div>
                   <div className="text-left">

@@ -1,6 +1,7 @@
 import UserApp from './app/components/UserApp';
 import { useAuthSession } from './app/hooks/useAuthSession';
 import { useDarkMode } from './app/hooks/useDarkMode';
+import PublicPortalRouter, { isPublicPortalPath } from './app/public/PublicPortalRouter';
 import LoginScreen from './app/screens/LoginScreen';
 
 function SplashScreen({ text }) {
@@ -16,8 +17,13 @@ function SplashScreen({ text }) {
 }
 
 export default function App() {
+  const pathname = typeof window !== 'undefined' ? window.location.pathname || '/' : '/';
   const { session, profile, authLoading } = useAuthSession();
   const { isDark, setIsDark } = useDarkMode();
+
+  if (isPublicPortalPath(pathname)) {
+    return <PublicPortalRouter />;
+  }
 
   if (authLoading) {
     return <SplashScreen text="جاري تحميل الحساب…" />;

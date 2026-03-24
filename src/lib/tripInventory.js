@@ -209,15 +209,29 @@ export async function searchTripInventory({ from, to, date, passengers = 1 }) {
 export async function loadTripSeats(tripInstanceId) {
   const currentUserId = await getCurrentUserId();
 
-  await supabase.rpc('release_expired_seat_holds').catch(() => null);
+  try {
+    await supabase.rpc('release_expired_seat_holds');
+  } catch (rpcError) {
+    log.warn('release_expired_seat_holds_failed', {
+      tripInstanceId,
+      errorMessage: rpcError?.message || null,
+      errorCode: rpcError?.code || null,
+      errorDetails: rpcError?.details || null,
+    });
+  }
 
-  const { data, error } = await supabase
-    .from('trip_seats')
-    .select('id, seat_number, seat_index, status, hold_expires_at, held_by_user_id')
-    .eq('trip_instance_id', tripInstanceId)
-    .order('seat_index', { ascending: true });
+  const { data, error } = await supabase.rpc('get_trip_seats', {
+    p_trip_instance_id: tripInstanceId,
+  });
 
   if (error) {
+    log.error('load_trip_seats_failed', {
+      tripInstanceId,
+      errorMessage: error?.message || null,
+      errorCode: error?.code || null,
+      errorDetails: error?.details || null,
+      errorHint: error?.hint || null,
+    });
     throw error;
   }
 
