@@ -5,26 +5,30 @@ import {
 } from '../../lib/supabaseAppState';
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
+import { normalizeWalletTransaction, sortWalletTransactions } from '../../lib/wallet';
 import { readJSON, readNumber, demoKey } from '../../utils/storage';
-import { getLocalDateInputValue, getTripLifecycleStatus } from '../utils/travel';
+import { getTripLifecycleStatus } from '../utils/travel';
 
 const log = createLogger('cloud-app-state');
 
-function normalizeWalletTransaction(entry) {
-  const description =
-    entry?.description ||
-    entry?.desc ||
-    entry?.title ||
-    'عملية على المحفظة';
+function readLocalSubscription(userId) {
+  try {
+    return localStorage.getItem(demoKey(userId, 'sub')) || 'none';
+  } catch {
+    return 'none';
+  }
+}
 
-  return {
-    ...entry,
-    amount: Number(entry?.amount || 0),
-    type: entry?.type === 'debit' ? 'debit' : 'credit',
-    date: entry?.date || entry?.created_at || getLocalDateInputValue(),
-    desc: description,
-    description,
-  };
+function persistLocalSnapshot(userId, snapshot) {
+  try {
+    localStorage.setItem(demoKey(userId, 'wallet'), String(snapshot.wallet));
+    localStorage.setItem(demoKey(userId, 'txns'), JSON.stringify(snapshot.transactions));
+    localStorage.setItem(demoKey(userId, 'trips'), JSON.stringify(snapshot.myTrips));
+    localStorage.setItem(demoKey(userId, 'points'), String(snapshot.points));
+    localStorage.setItem(demoKey(userId, 'sub'), snapshot.subscription);
+  } catch {
+    // ignore storage failures
+  }
 }
 
 export function useCloudAppState(userId) {
@@ -48,7 +52,7 @@ export function useCloudAppState(userId) {
       JSON.stringify({
         wallet: Number(state?.wallet ?? 0),
         transactions: Array.isArray(state?.transactions)
-          ? state.transactions.map(normalizeWalletTransaction)
+          ? sortWalletTransactions(state.transactions)
           : [],
         myTrips: Array.isArray(state?.myTrips) ? state.myTrips : [],
         points: Number(state?.points ?? 0),
@@ -62,7 +66,7 @@ export function useCloudAppState(userId) {
       const normalized = {
         wallet: Number(nextState?.wallet ?? 0),
         transactions: Array.isArray(nextState?.transactions)
-          ? nextState.transactions.map(normalizeWalletTransaction)
+          ? sortWalletTransactions(nextState.transactions)
           : [],
         myTrips: Array.isArray(nextState?.myTrips) ? nextState.myTrips : [],
         points: Number(nextState?.points ?? 0),
@@ -146,11 +150,10 @@ export function useCloudAppState(userId) {
       }
 
       const localWallet = readNumber(demoKey(userId, 'wallet'), 0);
-      const localTransactions = readJSON(demoKey(userId, 'txns'), []);
+      const localTransactions = sortWalletTransactions(readJSON(demoKey(userId, 'txns'), []));
       const localTrips = readJSON(demoKey(userId, 'trips'), []);
       const localPoints = readNumber(demoKey(userId, 'points'), 0);
-      const localSubscription =
-        localStorage.getItem(demoKey(userId, 'sub')) || 'none';
+      const localSubscription = readLocalSubscription(userId);
 
       const cloudLooksEmpty =
         !data ||
@@ -223,7 +226,7 @@ export function useCloudAppState(userId) {
 
     const snapshot = {
       wallet,
-      transactions: transactions.map(normalizeWalletTransaction),
+      transactions: sortWalletTransactions(transactions).map(normalizeWalletTransaction),
       myTrips,
       points,
       subscription,
@@ -261,11 +264,13 @@ export function useCloudAppState(userId) {
   useEffect(() => {
     if (!backendReady) return;
 
-    localStorage.setItem(demoKey(userId, 'wallet'), String(wallet));
-    localStorage.setItem(demoKey(userId, 'txns'), JSON.stringify(transactions));
-    localStorage.setItem(demoKey(userId, 'trips'), JSON.stringify(myTrips));
-    localStorage.setItem(demoKey(userId, 'points'), String(points));
-    localStorage.setItem(demoKey(userId, 'sub'), subscription);
+    persistLocalSnapshot(userId, {
+      wallet,
+      transactions: sortWalletTransactions(transactions),
+      myTrips,
+      points,
+      subscription,
+    });
   }, [userId, wallet, transactions, myTrips, points, subscription, backendReady]);
 
   useEffect(() => {

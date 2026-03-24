@@ -1,7 +1,13 @@
 import { supabase } from './supabase';
-import { createLogger, normalizeSupabaseError } from './logger';
+import { createLogger, isRlsError, normalizeSupabaseError } from './logger';
 
 const log = createLogger('account');
+
+export const PROFILE_ACCOUNT_STATUS = {
+  ACTIVE: 'active',
+  DELETED: 'deleted',
+  DISABLED: 'disabled',
+};
 
 function normalizeText(value) {
   const text = String(value ?? '').trim();
@@ -23,6 +29,20 @@ function isMissingColumnError(error) {
   );
 }
 
+function normalizeAccountStatus(value) {
+  const status = String(value || '').trim().toLowerCase();
+
+  if (status === PROFILE_ACCOUNT_STATUS.DELETED) {
+    return PROFILE_ACCOUNT_STATUS.DELETED;
+  }
+
+  if (status === PROFILE_ACCOUNT_STATUS.DISABLED) {
+    return PROFILE_ACCOUNT_STATUS.DISABLED;
+  }
+
+  return PROFILE_ACCOUNT_STATUS.ACTIVE;
+}
+
 function buildBaseProfile(user) {
   return {
     id: user?.id || '',
@@ -31,14 +51,15 @@ function buildBaseProfile(user) {
       user?.email?.split('@')[0] ||
       'مستخدم',
     phone: normalizeText(user?.user_metadata?.phone) || '',
-    address_line1: '',
-    address_line2: '',
-    city: '',
-    emergency_phone: '',
+    account_status: PROFILE_ACCOUNT_STATUS.ACTIVE,
+    deleted_at: null,
+    created_at: null,
+    updated_at: null,
     onboarding_completed_at: null,
     first_app_open_at: null,
     last_offer_popup_at: null,
     email: user?.email || '',
+    isFirstTimeUser: true,
   };
 }
 
@@ -49,12 +70,12 @@ export function normalizeProfileRow(row, user) {
   return {
     ...base,
     ...safeRow,
-    display_name: safeRow.display_name || base.display_name,
+    display_name: normalizeText(safeRow.display_name) || base.display_name,
     phone: normalizeText(safeRow.phone) || base.phone || '',
-    address_line1: normalizeText(safeRow.address_line1) || '',
-    address_line2: normalizeText(safeRow.address_line2) || '',
-    city: normalizeText(safeRow.city) || '',
-    emergency_phone: normalizeText(safeRow.emergency_phone) || '',
+    account_status: normalizeAccountStatus(safeRow.account_status),
+    deleted_at: safeRow.deleted_at || null,
+    created_at: safeRow.created_at || null,
+    updated_at: safeRow.updated_at || null,
     onboarding_completed_at: safeRow.onboarding_completed_at || null,
     first_app_open_at: safeRow.first_app_open_at || null,
     last_offer_popup_at: safeRow.last_offer_popup_at || null,
@@ -63,32 +84,47 @@ export function normalizeProfileRow(row, user) {
   };
 }
 
-function buildExtendedProfilePayload(user, currentProfile = {}) {
-  const profile = normalizeProfileRow(currentProfile, user);
+function buildProfilePayload(user, currentProfile = {}, overrides = {}) {
+  const nextUser = {
+    ...user,
+    user_metadata: {
+      ...(user?.user_metadata || {}),
+      ...(currentProfile?.display_name || overrides.display_name
+        ? { display_name: overrides.display_name ?? currentProfile.display_name }
+        : {}),
+      ...(overrides.phone !== undefined || currentProfile?.phone !== undefined
+        ? { phone: overrides.phone ?? currentProfile.phone ?? null }
+        : {}),
+    },
+  };
+
+  const profile = normalizeProfileRow(
+    { ...currentProfile, ...overrides },
+    nextUser,
+  );
   const nowIso = new Date().toISOString();
 
-  return {
-    id: user.id,
+  return compactObject({
+    id: user?.id,
     display_name: profile.display_name,
     phone: normalizeText(profile.phone),
-    address_line1: normalizeText(profile.address_line1),
-    address_line2: normalizeText(profile.address_line2),
-    city: normalizeText(profile.city),
-    emergency_phone: normalizeText(profile.emergency_phone),
-    onboarding_completed_at: profile.onboarding_completed_at,
+    account_status: normalizeAccountStatus(profile.account_status),
+    deleted_at: profile.deleted_at || null,
+    onboarding_completed_at: profile.onboarding_completed_at || null,
     first_app_open_at: profile.first_app_open_at || nowIso,
-    last_offer_popup_at: profile.last_offer_popup_at,
-  };
+    last_offer_popup_at: profile.last_offer_popup_at || null,
+    updated_at: nowIso,
+  });
 }
 
-async function upsertProfilePayload(payload) {
+async function upsertProfilePayload(payload, { allowFallback = true } = {}) {
   let response = await supabase
     .from('profiles')
     .upsert(payload)
     .select('*')
     .maybeSingle();
 
-  if (response.error && isMissingColumnError(response.error)) {
+  if (allowFallback && response.error && isMissingColumnError(response.error)) {
     const fallbackPayload = compactObject({
       id: payload.id,
       display_name: payload.display_name,
@@ -105,11 +141,21 @@ async function upsertProfilePayload(payload) {
   return response;
 }
 
+export function isInactiveProfile(profile) {
+  const status = normalizeAccountStatus(profile?.account_status);
+  return (
+    status === PROFILE_ACCOUNT_STATUS.DELETED ||
+    status === PROFILE_ACCOUNT_STATUS.DISABLED ||
+    Boolean(profile?.deleted_at)
+  );
+}
+
 export async function ensureProfileForUser(user) {
   if (!user?.id) {
     return {
       data: null,
       error: new Error('Missing user id'),
+      source: 'missing_user',
     };
   }
 
@@ -125,24 +171,38 @@ export async function ensureProfileForUser(user) {
       error,
     });
 
+    if (isRlsError(error)) {
+      return {
+        data: normalizeProfileRow(null, user),
+        error,
+        source: 'fallback_rls',
+      };
+    }
+
     const fallbackResponse = await upsertProfilePayload(
-      buildExtendedProfilePayload(user),
+      buildProfilePayload(user),
+      { allowFallback: true },
     );
 
     return {
-      data: normalizeProfileRow(fallbackResponse.data, user),
-      error: fallbackResponse.error,
+      data: normalizeProfileRow(fallbackResponse.data || null, user),
+      error: fallbackResponse.error || error,
+      source: fallbackResponse.data
+        ? 'bootstrapped_after_error'
+        : 'fallback_after_error',
     };
   }
 
   if (!data) {
     const createResponse = await upsertProfilePayload(
-      buildExtendedProfilePayload(user),
+      buildProfilePayload(user),
+      { allowFallback: true },
     );
 
     return {
-      data: normalizeProfileRow(createResponse.data, user),
+      data: normalizeProfileRow(createResponse.data || null, user),
       error: createResponse.error,
+      source: createResponse.data ? 'created' : 'fallback_created',
     };
   }
 
@@ -150,52 +210,99 @@ export async function ensureProfileForUser(user) {
   const requiresPatch =
     !normalized.display_name ||
     !normalized.first_app_open_at ||
-    (normalized.phone && normalized.phone !== data.phone);
+    normalizeText(data.phone) !== (normalized.phone || '') ||
+    !normalized.account_status;
 
   if (!requiresPatch) {
     return {
       data: normalized,
       error: null,
+      source: 'db',
     };
   }
 
   const patchResponse = await upsertProfilePayload(
-    buildExtendedProfilePayload(user, normalized),
+    buildProfilePayload(user, normalized),
+    { allowFallback: true },
   );
 
   return {
     data: normalizeProfileRow(patchResponse.data || normalized, user),
     error: patchResponse.error,
+    source: patchResponse.data ? 'patched' : 'patched_with_fallback',
   };
 }
 
-export async function updateProfileDetails(userId, updates) {
+export async function updateProfileDetails(
+  userId,
+  updates,
+  options = { allowFallback: true },
+) {
+  const nextDisplayName =
+    updates.display_name !== undefined
+      ? String(updates.display_name).trim() || undefined
+      : undefined;
+  const nowIso = new Date().toISOString();
+
   const payload = compactObject({
     id: userId,
-    display_name: updates.display_name
-      ? String(updates.display_name).trim()
-      : undefined,
+    display_name: nextDisplayName,
     phone:
       updates.phone !== undefined ? normalizeText(updates.phone) : undefined,
-    address_line1:
-      updates.address_line1 !== undefined
-        ? normalizeText(updates.address_line1)
+    account_status:
+      updates.account_status !== undefined
+        ? normalizeAccountStatus(updates.account_status)
         : undefined,
-    address_line2:
-      updates.address_line2 !== undefined
-        ? normalizeText(updates.address_line2)
+    deleted_at:
+      updates.deleted_at !== undefined ? updates.deleted_at : undefined,
+    onboarding_completed_at:
+      updates.onboarding_completed_at !== undefined
+        ? updates.onboarding_completed_at
         : undefined,
-    city: updates.city !== undefined ? normalizeText(updates.city) : undefined,
-    emergency_phone:
-      updates.emergency_phone !== undefined
-        ? normalizeText(updates.emergency_phone)
+    first_app_open_at:
+      updates.first_app_open_at !== undefined
+        ? updates.first_app_open_at
         : undefined,
-    onboarding_completed_at: updates.onboarding_completed_at,
-    first_app_open_at: updates.first_app_open_at,
-    last_offer_popup_at: updates.last_offer_popup_at,
+    last_offer_popup_at:
+      updates.last_offer_popup_at !== undefined
+        ? updates.last_offer_popup_at
+        : undefined,
+    updated_at: nowIso,
   });
 
-  return upsertProfilePayload(payload);
+  const response = await upsertProfilePayload(payload, options);
+
+  return {
+    data: response.data ? normalizeProfileRow(response.data, { id: userId }) : null,
+    error: response.error,
+  };
+}
+
+export async function softDeleteProfile(userId) {
+  const nowIso = new Date().toISOString();
+
+  const response = await supabase
+    .from('profiles')
+    .upsert({
+      id: userId,
+      display_name: 'حساب محذوف',
+      phone: null,
+      account_status: PROFILE_ACCOUNT_STATUS.DELETED,
+      deleted_at: nowIso,
+      updated_at: nowIso,
+    })
+    .select('*')
+    .maybeSingle();
+
+  return {
+    data: response.data
+      ? normalizeProfileRow(response.data, {
+          id: userId,
+          user_metadata: { display_name: 'حساب محذوف' },
+        })
+      : null,
+    error: response.error,
+  };
 }
 
 export async function markOnboardingComplete(userId) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ArrowDown,
   CreditCard,
@@ -17,15 +17,11 @@ import {
 } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency } from '../utils/formatting';
-
-function getTransactionLabel(transaction) {
-  return (
-    transaction?.description ||
-    transaction?.desc ||
-    transaction?.title ||
-    'حركة على المحفظة'
-  );
-}
+import {
+  formatWalletTransactionDate,
+  getWalletTransactionLabel,
+  sortWalletTransactions,
+} from '../../lib/wallet';
 
 function WalletView({
   wallet,
@@ -36,6 +32,11 @@ function WalletView({
   openTopUp,
   openWalletQr,
 }) {
+  const displayedTransactions = useMemo(
+    () => sortWalletTransactions(transactions),
+    [transactions],
+  );
+
   return (
     <div className="space-y-5">
       <PageHeading
@@ -92,7 +93,7 @@ function WalletView({
 
       <AppSurface className="p-5">
         <SectionHeader title="حركة المحفظة" subtitle="آخر العمليات على رصيدك بترتيب زمني من الأحدث للأقدم." />
-        {transactions.length === 0 ? (
+        {displayedTransactions.length === 0 ? (
           <div className="mt-5">
             <EmptyStateCard
               title="مفيش حركات لسه"
@@ -101,7 +102,7 @@ function WalletView({
           </div>
         ) : (
           <div className="mt-5 space-y-3">
-            {transactions.map((transaction) => {
+            {displayedTransactions.map((transaction) => {
               const isCredit = transaction.type === 'credit';
               return (
                 <div
@@ -113,9 +114,9 @@ function WalletView({
                       {isCredit ? <ArrowDown className="h-5 w-5" /> : <Ticket className="h-5 w-5" />}
                     </span>
                     <div>
-                      <p className="text-sm font-black text-slate-900 dark:text-white">{getTransactionLabel(transaction)}</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-white">{getWalletTransactionLabel(transaction)}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <MetaChip label={transaction.date} tone="neutral" />
+                        <MetaChip label={formatWalletTransactionDate(transaction)} tone="neutral" />
                       </div>
                     </div>
                   </div>

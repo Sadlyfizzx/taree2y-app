@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Crown } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
-import { getLocalDateInputValue } from '../utils/travel';
 import { formatCurrency } from '../utils/formatting';
+import { createWalletTransaction } from '../../lib/wallet';
 
 function SubscriptionsModal({
   closeModal,
@@ -14,21 +14,25 @@ function SubscriptionsModal({
   setSubscription,
   showToast,
 }) {
+  const [buyingPlan, setBuyingPlan] = useState('');
+
   const handleBuy = (subType, price) => {
+    if (buyingPlan) return;
+
     if (wallet < price) {
       showToast('الرصيد الحالي مش مكفي لتفعيل الباقة.', 'error');
       return;
     }
 
+    setBuyingPlan(subType);
     setWallet((currentValue) => currentValue - price);
     setTransactions((currentValue) => [
-      {
+      createWalletTransaction({
         id: `SUB-${Date.now()}`,
         type: 'debit',
         amount: price,
-        date: getLocalDateInputValue(),
-        desc: `اشتراك باقة ${subType === 'student' ? 'الطالب' : 'VIP'}`,
-      },
+        description: `اشتراك باقة ${subType === 'student' ? 'الطالب' : 'VIP'}`,
+      }),
       ...currentValue,
     ]);
     setSubscription(subType);
@@ -87,7 +91,9 @@ function SubscriptionsModal({
                 {isActive ? (
                   <SecondaryButton className="w-full" onClick={closeModal}>تمام</SecondaryButton>
                 ) : (
-                  <PrimaryButton className="w-full" onClick={() => handleBuy(plan.key, plan.price)}>فعّل الباقة</PrimaryButton>
+                  <PrimaryButton className="w-full" onClick={() => handleBuy(plan.key, plan.price)} disabled={Boolean(buyingPlan)}>
+                    {buyingPlan === plan.key ? 'جاري التفعيل…' : 'فعّل الباقة'}
+                  </PrimaryButton>
                 )}
               </div>
             </div>

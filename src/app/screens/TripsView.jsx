@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -30,6 +30,7 @@ function TripsView({
 }) {
   const [activeTab, setActiveTab] = useState('upcoming');
   const [cancelingTrip, setCancelingTrip] = useState(null);
+  const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
   const computedTrips = useMemo(
     () =>
@@ -57,10 +58,23 @@ function TripsView({
     return trip.status === 'cancelled';
   });
 
-  const confirmCancel = () => {
-    if (!cancelingTrip) return;
-    processRefund(cancelingTrip);
-    setCancelingTrip(null);
+  useEffect(() => {
+    if (!cancelingTrip) {
+      setIsCancelSubmitting(false);
+    }
+  }, [cancelingTrip]);
+
+  const confirmCancel = async () => {
+    if (!cancelingTrip || isCancelSubmitting) return;
+
+    setIsCancelSubmitting(true);
+
+    try {
+      await processRefund(cancelingTrip);
+      setCancelingTrip(null);
+    } finally {
+      setIsCancelSubmitting(false);
+    }
   };
 
   const cancelPolicy = cancelingTrip ? getCancellationPolicy(cancelingTrip) : null;
@@ -200,20 +214,23 @@ function TripsView({
 
       {cancelingTrip && cancelPolicy ? (
         <ModalShell
-          onClose={() => setCancelingTrip(null)}
+          onClose={() => {
+            if (isCancelSubmitting) return;
+            setCancelingTrip(null);
+          }}
           title="تأكيد إلغاء الرحلة"
           subtitle="راجع الرسوم والمبلغ المتوقع يرجع للمحفظة."
           icon={<AlertTriangle className="h-6 w-6" />}
           maxWidth="max-w-lg"
           footer={
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <SecondaryButton onClick={() => setCancelingTrip(null)}>رجوع</SecondaryButton>
+              <SecondaryButton onClick={() => setCancelingTrip(null)} disabled={isCancelSubmitting}>رجوع</SecondaryButton>
               <PrimaryButton
                 onClick={confirmCancel}
-                disabled={!cancelPolicy.allowed}
+                disabled={!cancelPolicy.allowed || isCancelSubmitting}
                 className="bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
               >
-                أكد الإلغاء
+                {isCancelSubmitting ? 'جاري إرسال الطلب…' : 'أكد الإلغاء'}
               </PrimaryButton>
             </div>
           }

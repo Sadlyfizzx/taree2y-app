@@ -30,6 +30,35 @@
       content="ابحث عن الرحلات، اختر مقعدك، ادفع من المحفظة، وتابع رحلتك من تطبيق طريقي."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      (() => {
+        try {
+          const themeKey = 'taree2y_v7_theme';
+          const storedTheme = localStorage.getItem(themeKey);
+          const prefersDark =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+          const isDark =
+            storedTheme === 'dark' ||
+            (storedTheme !== 'light' && prefersDark);
+
+          document.documentElement.classList.toggle('dark', Boolean(isDark));
+          document.documentElement.classList.toggle('light', !isDark);
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+
+          const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+          if (metaThemeColor) {
+            metaThemeColor.setAttribute(
+              'content',
+              isDark ? '#020617' : '#f4f7fb',
+            );
+          }
+        } catch {
+          // ignore theme bootstrap failures
+        }
+      })();
+    </script>
     <title>طريقي | احجز رحلتك بسهولة داخل مصر</title>
   </head>
   <body dir="rtl">

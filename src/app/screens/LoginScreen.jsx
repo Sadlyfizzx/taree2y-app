@@ -1,6 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BusFront, CheckCircle2, ChevronLeft, Moon, Phone, Sun, User } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import {
+  consumeAccountAccessNotice,
+  extractRateLimitSeconds,
+  getFriendlyAuthError,
+  signInWithEmail,
+  signUpWithEmail,
+} from '../../lib/auth';
+import { createLogger } from '../../lib/logger';
+
+const log = createLogger('login-screen');
 
 function LoginScreen({ isDark, setIsDark }) {
   const [mode, setMode] = useState('signin');
@@ -11,8 +20,34 @@ function LoginScreen({ isDark, setIsDark }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!cooldownSeconds) return undefined;
+
+    const timerId = window.setInterval(() => {
+      setCooldownSeconds((currentValue) => {
+        if (currentValue <= 1) {
+          window.clearInterval(timerId);
+          return 0;
+        }
+        return currentValue - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [cooldownSeconds]);
+
+  useEffect(() => {
+    const notice = consumeAccountAccessNotice();
+    if (notice) {
+      setMessage(notice);
+    }
+  }, []);
 
   const handleAuth = async () => {
+    if (loading || cooldownSeconds > 0) return;
+
     setError('');
     setMessage('');
 
@@ -31,53 +66,57 @@ function LoginScreen({ isDark, setIsDark }) {
     try {
       if (mode === 'signup') {
         if (!displayName.trim()) {
-          setLoading(false);
           setError('اكتب اسمك بالكامل.');
           return;
         }
 
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim(),
+        const data = await signUpWithEmail({
+          email,
           password,
-          options: {
-            data: {
-              display_name: displayName.trim(),
-            },
-          },
+          displayName,
+          phone,
         });
 
-        if (signUpError) throw signUpError;
+        setPassword('');
 
-        const userId = data.user?.id;
-        if (userId) {
-          const { error: profileError } = await supabase.from('profiles').upsert({
-            id: userId,
-            display_name: displayName.trim(),
-            phone: phone.trim() || null,
-          });
-
-          if (profileError) throw profileError;
-        }
-
-        if (data.session) {
+        if (data.session?.user?.id) {
           setMessage('الحساب اتعمل واتسجل دخولك بنجاح.');
         } else {
+          setMode('signin');
           setMessage('الحساب اتعمل. لو تفعيل الإيميل شغال، افتح الإيميل وبعدها سجّل دخول.');
         }
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+        await signInWithEmail({
+          email,
           password,
         });
-
-        if (signInError) throw signInError;
       }
     } catch (authError) {
-      setError(authError.message || 'حصل خطأ أثناء المحاولة.');
+      log.warn('auth_submit_failed', {
+        mode,
+        error: authError,
+      });
+
+      const nextCooldown = extractRateLimitSeconds(authError?.message || '');
+
+      if (nextCooldown > 0) {
+        setCooldownSeconds(nextCooldown);
+      }
+
+      setError(getFriendlyAuthError(authError, mode === 'signup' ? 'signup' : 'signin'));
     } finally {
       setLoading(false);
     }
   };
+
+  const actionText =
+    loading
+      ? 'جاري التنفيذ…'
+      : cooldownSeconds > 0
+      ? `استنى ${cooldownSeconds} ث`
+      : mode === 'signin'
+      ? 'سجّل الدخول'
+      : 'اعمل الحساب';
 
   return (
     <div className={`min-h-[100dvh] bg-[var(--bg)] p-4 md:p-8 ${isDark ? 'dark' : ''}`} dir="rtl">
@@ -255,10 +294,10 @@ function LoginScreen({ isDark, setIsDark }) {
             <button
               type="button"
               onClick={handleAuth}
-              disabled={loading}
+              disabled={loading || cooldownSeconds > 0}
               className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-[22px] bg-indigo-600 px-4 text-base font-black text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >
-              {loading ? 'جاري التنفيذ…' : mode === 'signin' ? 'سجّل الدخول' : 'اعمل الحساب'}
+              {actionText}
               <ChevronLeft className="h-5 w-5" />
             </button>
           </div>

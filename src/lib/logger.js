@@ -88,6 +88,19 @@ function normalizeValue(value, depth = 0) {
   return value;
 }
 
+function getErrorPayload(candidate) {
+  const normalized = normalizeSupabaseError(candidate);
+  const payload = JSON.stringify({
+    code: normalized.code,
+    status: normalized.status,
+    message: normalized.message,
+    details: normalized.details,
+    hint: normalized.hint,
+  }).toLowerCase();
+
+  return { normalized, payload };
+}
+
 function emit(level, moduleName, event, context) {
   if (LEVEL_PRIORITY[level] < getActiveLevel()) return;
 
@@ -112,30 +125,57 @@ function emit(level, moduleName, event, context) {
   );
 }
 
-export function isMissingRpcError(candidate) {
-  const normalized = normalizeSupabaseError(candidate);
-  const payload = JSON.stringify({
-    code: normalized.code,
-    status: normalized.status,
-    message: normalized.message,
-    details: normalized.details,
-    hint: normalized.hint,
-  }).toLowerCase();
+export function isNetworkError(candidate) {
+  const { normalized, payload } = getErrorPayload(candidate);
 
   return (
-    normalized.status === 404 ||
-    payload.includes('pgrst202') ||
-    payload.includes('cancel_booking_atomic') && payload.includes('not found') ||
-    payload.includes('could not find the function') ||
-    payload.includes('schema cache') ||
-    payload.includes('not found')
+    normalized.status === 0 ||
+    payload.includes('failed to fetch') ||
+    payload.includes('networkerror') ||
+    payload.includes('network request failed') ||
+    payload.includes('load failed')
   );
 }
 
-export function classifyRpcError(candidate) {
+export function isRateLimitError(candidate) {
+  const { normalized, payload } = getErrorPayload(candidate);
+  return (
+    normalized.status === 429 ||
+    payload.includes('rate limit') ||
+    payload.includes('too many requests')
+  );
+}
+
+export function isRlsError(candidate) {
+  const { payload } = getErrorPayload(candidate);
+
+  return (
+    payload.includes('row-level security') ||
+    payload.includes('violates row-level security policy') ||
+    payload.includes('permission denied for table') ||
+    payload.includes('permission denied')
+  );
+}
+
+export function isMissingRpcError(candidate, expectedFunctionName = '') {
+  const { payload } = getErrorPayload(candidate);
+  const expected = String(expectedFunctionName || '').trim().toLowerCase();
+  const matchesExpectedFunction = expected ? payload.includes(expected) : true;
+
+  return (
+    payload.includes('pgrst202') ||
+    payload.includes('could not find the function') ||
+    payload.includes('schema cache') ||
+    (payload.includes('function') &&
+      payload.includes('not found') &&
+      matchesExpectedFunction)
+  );
+}
+
+export function classifyRpcError(candidate, expectedFunctionName = '') {
   if (!candidate) return 'unknown';
   if (candidate?.errorClass) return candidate.errorClass;
-  if (isMissingRpcError(candidate)) return 'missing_rpc';
+  if (isMissingRpcError(candidate, expectedFunctionName)) return 'missing_rpc';
   return 'rpc_error';
 }
 

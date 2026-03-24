@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
 
 :root {
   --bg: #f4f7fb;
@@ -16,15 +18,34 @@
   --success: #047857;
 }
 
+html.dark {
+  --bg: #020617;
+  --surface: #0f172a;
+  --surface-soft: #111827;
+  --ink: #f8fafc;
+  --muted: #94a3b8;
+  --line: rgba(148, 163, 184, 0.16);
+  --line-strong: rgba(148, 163, 184, 0.28);
+  --brand: #2156d9;
+  --brand-strong: #163c98;
+  --accent: #14b8a6;
+  --warning: #f59e0b;
+  --danger: #fb7185;
+  --success: #10b981;
+}
+
 html,
 body,
 #root {
   min-height: 100%;
   margin: 0;
+  background: var(--bg);
+  color: var(--ink);
 }
 
 html {
   color-scheme: light;
+  background: var(--bg);
 }
 
 html.dark {
@@ -38,6 +59,7 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
 * {

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Award } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
-import { getLocalDateInputValue } from '../utils/travel';
+import { createWalletTransaction } from '../../lib/wallet';
 
 function PointsModal({
   closeModal,
@@ -13,22 +13,26 @@ function PointsModal({
   setPoints,
   showToast,
 }) {
+  const [redeeming, setRedeeming] = useState(false);
+
   const handleRedeem = () => {
+    if (redeeming) return;
+
     if (points < 500) {
       showToast('محتاج 500 نقطة على الأقل عشان الاستبدال.', 'error');
       return;
     }
 
+    setRedeeming(true);
     setPoints((currentValue) => currentValue - 500);
     setWallet((currentValue) => currentValue + 50);
     setTransactions((currentValue) => [
-      {
+      createWalletTransaction({
         id: `POINTS-${Date.now()}`,
         type: 'credit',
         amount: 50,
-        date: getLocalDateInputValue(),
-        desc: 'استبدال 500 نقطة ولاء',
-      },
+        description: 'استبدال 500 نقطة ولاء',
+      }),
       ...currentValue,
     ]);
 
@@ -45,8 +49,8 @@ function PointsModal({
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>رجوع</SecondaryButton>
-          <PrimaryButton onClick={handleRedeem} disabled={points < 500}>
-            استبدل 500 نقطة
+          <PrimaryButton onClick={handleRedeem} disabled={points < 500 || redeeming}>
+            {redeeming ? 'جاري الاستبدال…' : 'استبدل 500 نقطة'}
           </PrimaryButton>
         </div>
       }

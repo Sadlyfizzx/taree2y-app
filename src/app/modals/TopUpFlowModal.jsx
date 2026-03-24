@@ -2,8 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { CreditCard, Phone, Send } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
-import { getLocalDateInputValue } from '../utils/travel';
 import { formatCurrency } from '../utils/formatting';
+import { createWalletTransaction } from '../../lib/wallet';
 import { calculateWalletTopupBreakdown } from '../public/publicPortal';
 
 const METHODS = [
@@ -24,6 +24,8 @@ function TopUpFlowModal({ closeModal, wallet: _wallet, setWallet, setTransaction
   );
 
   const handleConfirm = () => {
+    if (loading) return;
+
     if (!grossAmount || grossAmount < 50) {
       showToast('أقل شحن 50 ج.م.', 'error');
       return;
@@ -37,15 +39,16 @@ function TopUpFlowModal({ closeModal, wallet: _wallet, setWallet, setTransaction
     setLoading(true);
 
     window.setTimeout(() => {
+      const methodLabel = METHODS.find((item) => item.key === method)?.label || 'محفظة';
+
       setWallet((currentValue) => currentValue + netAmount);
       setTransactions((currentValue) => [
-        {
+        createWalletTransaction({
           id: `DEMO-TOPUP-${Date.now()}`,
           type: 'credit',
           amount: netAmount,
-          date: getLocalDateInputValue(),
-          desc: `شحن رصيد صافي (${METHODS.find((item) => item.key === method)?.label || 'محفظة'}) بعد خصم رسوم ${feeAmount} ج.م`,
-        },
+          description: `شحن رصيد صافي (${methodLabel}) بعد خصم رسوم ${feeAmount} ج.م`,
+        }),
         ...currentValue,
       ]);
       setLoading(false);

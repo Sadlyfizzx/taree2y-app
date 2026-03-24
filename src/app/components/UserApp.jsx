@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { createLogger, isMissingRpcError } from '../../lib/logger';
 import { markOfferPopupSeen } from '../../lib/account';
+import { signOutCurrentUser } from '../../lib/auth';
+import { createWalletTransaction } from '../../lib/wallet';
 import { getPromoPopupOffer } from '../../lib/promoEngine';
-import { supabase } from '../../lib/supabase';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
 import {
@@ -70,7 +71,7 @@ const formatCancellationErrorMessage = (result) => {
     return 'تعذر إلغاء الحجز حالياً.';
   }
 
-  if (result.errorClass === 'missing_rpc' || isMissingRpcError(result)) {
+  if (result.errorClass === 'missing_rpc' || isMissingRpcError(result, 'cancel_booking_atomic')) {
     return 'ميزة الإلغاء غير مفعلة على السيرفر حالياً. تم إيقاف العملية بدون أي تعديل على الحجز أو المحفظة.';
   }
 
@@ -94,6 +95,7 @@ export default function UserApp({
   userId,
   profile,
   refreshProfile,
+  authWarning = '',
   isDark,
   setIsDark,
   runtimeMode = 'supabase',
@@ -104,7 +106,6 @@ export default function UserApp({
       name: profile?.display_name || 'مستخدم',
       phone: profile?.phone || '',
       email: profile?.email || '',
-      address: profile?.address_line1 || '',
     }),
     [profile],
   );
@@ -144,6 +145,7 @@ export default function UserApp({
   const [pendingCancellationBookingIds, setPendingCancellationBookingIds] = useState([]);
   const [promoPopupOffer, setPromoPopupOffer] = useState(null);
   const [promoHighlights, setPromoHighlights] = useState([]);
+  const shownAuthWarningRef = useRef('');
 
   const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide({
     userId,
@@ -177,6 +179,14 @@ export default function UserApp({
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, 4000);
   };
+
+  useEffect(() => {
+    if (!authWarning) return;
+    if (shownAuthWarningRef.current === authWarning) return;
+
+    shownAuthWarningRef.current = authWarning;
+    showToast(authWarning, 'error');
+  }, [authWarning]);
 
   const {
     notifications,
@@ -378,14 +388,13 @@ export default function UserApp({
 
     setWallet((prev) => prev - finalTotal);
     setTransactions((prev) => [
-      {
+      createWalletTransaction({
         id: `TXN-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
         type: 'debit',
         amount: finalTotal,
         date: bookingDate,
-        desc: `تذكرة: ${trip.from} - ${trip.to}`,
         description: `تذكرة: ${trip.from} - ${trip.to}`,
-      },
+      }),
       ...prev,
     ]);
 
@@ -591,14 +600,13 @@ export default function UserApp({
 
         setWallet((value) => value + refundAmount);
         setTransactions((value) => [
-          {
+          createWalletTransaction({
             id: `REF-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
             type: 'credit',
             amount: refundAmount,
             date: getLocalDateInputValue(),
-            desc: `استرداد تذكرة ${tripToCancel.pnr}`,
             description: `استرداد تذكرة ${tripToCancel.pnr}`,
-          },
+          }),
           ...value,
         ]);
 
@@ -627,14 +635,13 @@ export default function UserApp({
         if (!numericAmount) return 0;
         setWallet((prev) => prev + numericAmount);
         setTransactions((prev) => [
-          {
+          createWalletTransaction({
             id: `QA-TOPUP-${Date.now()}`,
             type: 'credit',
             amount: numericAmount,
             date: getLocalDateInputValue(),
-            desc,
             description: desc,
-          },
+          }),
           ...prev,
         ]);
         await wait();
@@ -1061,13 +1068,17 @@ export default function UserApp({
                 setIsDark={setIsDark}
                 refreshProfile={refreshProfile}
                 onLogout={async () => {
-                  const { error } = await supabase.auth.signOut();
-                  if (error) {
-                    log.error('logout_failed', { error });
-                    showToast('تعذر تسجيل الخروج حالياً.', 'error');
-                    return;
+                  const result = await signOutCurrentUser();
+
+                  if (!result?.ok) {
+                    log.error('logout_failed', { error: result?.error || null });
+                  } else {
+                    log.info('logout_succeeded', {
+                      usedLocalFallback: Boolean(result.usedLocalFallback),
+                    });
                   }
-                  log.info('logout_succeeded');
+
+                  return result;
                 }}
                 showToast={showToast}
                 openModal={setActiveModal}

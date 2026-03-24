@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   Award,
-  Bot,
   BookOpen,
   Crown,
   Languages,
@@ -10,10 +10,18 @@ import {
   Phone,
   Save,
   Sun,
+  Trash2,
   User,
   KeyRound,
 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { updateAccountPassword } from '../../lib/account';
+import {
+  getFriendlyAuthError,
+  requestCurrentUserDeletion,
+  updateCurrentUserProfile,
+} from '../../lib/auth';
+import { createLogger } from '../../lib/logger';
+import ModalShell from '../components/ui/ModalShell';
 import {
   AppSurface,
   MetaChip,
@@ -23,12 +31,16 @@ import {
   SectionHeader,
 } from '../components/ui/AppPrimitives';
 
+const log = createLogger('profile-view');
+
 function ProfileView({
   user,
+  profile,
   points,
   subscription,
   isDark,
   setIsDark,
+  refreshProfile,
   onLogout,
   showToast,
   openModal,
@@ -36,25 +48,30 @@ function ProfileView({
 }) {
   const isGold = points >= 1000;
 
-  const [displayName, setDisplayName] = useState(user?.name || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [displayName, setDisplayName] = useState(profile?.display_name || user?.name || '');
+  const [phone, setPhone] = useState(profile?.phone || user?.phone || '');
   const [savingProfile, setSavingProfile] = useState(false);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
 
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
   useEffect(() => {
-    setDisplayName(user?.name || '');
-    setPhone(user?.phone || '');
-  }, [user?.name, user?.phone]);
+    setDisplayName(profile?.display_name || user?.name || '');
+    setPhone(profile?.phone || user?.phone || '');
+  }, [profile?.display_name, profile?.phone, user?.name, user?.phone]);
 
   const initial = useMemo(
     () => ({
-      displayName: user?.name || '',
-      phone: user?.phone || '',
+      displayName: profile?.display_name || user?.name || '',
+      phone: profile?.phone || user?.phone || '',
     }),
-    [user?.name, user?.phone],
+    [profile?.display_name, profile?.phone, user?.name, user?.phone],
   );
 
   const hasProfileChanges =
@@ -62,48 +79,34 @@ function ProfileView({
     phone.trim() !== initial.phone.trim();
 
   const saveProfile = async () => {
+    if (savingProfile) return;
+
     if (!displayName.trim()) {
       showToast('اكتب الاسم الأول.', 'error');
       return;
     }
 
     setSavingProfile(true);
+
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-
-      const authUser = authData?.user;
-      if (!authUser?.id) {
-        throw new Error('لا يوجد مستخدم مسجل حالياً.');
-      }
-
-      const payload = {
-        id: authUser.id,
-        display_name: displayName.trim(),
-        phone: phone.trim() || null,
-      };
-
-      const { error: profileError } = await supabase.from('profiles').upsert(payload);
-      if (profileError) throw profileError;
-
-      const { error: updateUserError } = await supabase.auth.updateUser({
-        data: {
-          display_name: displayName.trim(),
-          phone: phone.trim() || null,
-        },
+      await updateCurrentUserProfile({
+        displayName,
+        phone,
       });
 
-      if (updateUserError) throw updateUserError;
-
+      await refreshProfile?.();
       showToast('تم تحديث بيانات الحساب.', 'success');
     } catch (error) {
-      showToast(error?.message || 'تعذر تحديث بيانات الحساب حالياً.', 'error');
+      log.error('profile_update_failed', { error });
+      showToast(getFriendlyAuthError(error, 'profile'), 'error');
     } finally {
       setSavingProfile(false);
     }
   };
 
   const changePassword = async () => {
+    if (savingPassword) return;
+
     if (!newPassword.trim() || newPassword.length < 6) {
       showToast('الباسورد الجديد لازم يبقى 6 حروف أو أكتر.', 'error');
       return;
@@ -115,10 +118,9 @@ function ProfileView({
     }
 
     setSavingPassword(true);
+
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+      const { error } = await updateAccountPassword(newPassword);
 
       if (error) throw error;
 
@@ -126,9 +128,57 @@ function ProfileView({
       setConfirmPassword('');
       showToast('تم تغيير الباسورد بنجاح.', 'success');
     } catch (error) {
-      showToast(error?.message || 'تعذر تغيير الباسورد حالياً.', 'error');
+      log.error('password_change_failed', { error });
+      showToast(getFriendlyAuthError(error, 'password'), 'error');
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
+    try {
+      const result = await onLogout?.();
+
+      if (result?.ok === false) {
+        throw result.error || new Error('logout_failed');
+      }
+    } catch (error) {
+      log.error('logout_failed', { error });
+      showToast(getFriendlyAuthError(error, 'logout'), 'error');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (deletingAccount) return;
+
+    if (deleteConfirmText.trim() !== 'حذف') {
+      showToast('اكتب كلمة "حذف" لتأكيد العملية.', 'error');
+      return;
+    }
+
+    setDeletingAccount(true);
+
+    try {
+      const result = await requestCurrentUserDeletion();
+
+      log.info('account_delete_requested', {
+        mode: result?.mode || 'unknown',
+        authUserDeleted: Boolean(result?.authUserDeleted),
+      });
+
+      setIsDeleteOpen(false);
+      setDeleteConfirmText('');
+    } catch (error) {
+      log.error('account_delete_failed', { error });
+      showToast(getFriendlyAuthError(error, 'delete_account'), 'error');
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -144,11 +194,11 @@ function ProfileView({
         <AppSurface className="p-6">
           <div className="flex items-center gap-4">
             <span className="grid h-20 w-20 place-items-center rounded-[28px] bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-3xl font-black text-white shadow-lg shadow-indigo-600/25">
-              {(displayName || user?.name || 'م').charAt(0)}
+              {(displayName || profile?.display_name || user?.name || 'م').charAt(0)}
             </span>
             <div>
               <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-                {displayName || user?.name || 'مستخدم'}
+                {displayName || profile?.display_name || user?.name || 'مستخدم'}
               </h2>
               <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400" dir="ltr">
                 {phone || 'مفيش رقم موبايل مسجل'}
@@ -271,9 +321,9 @@ function ProfileView({
           <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">فعّل باقة ووفّر على كل رحلة جاية.</p>
         </button>
 
-        <button type="button" onClick={() => openModal('bot')} className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
+        <button type="button" onClick={() => openModal('help')} className="rounded-[28px] border border-slate-200 bg-white p-5 text-right shadow-sm transition hover:border-indigo-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
           <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
-            <Bot className="h-6 w-6" />
+            <BookOpen className="h-6 w-6" />
           </span>
           <h3 className="mt-4 text-lg font-black text-slate-900 dark:text-white">الدعم والمساعدة</h3>
           <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">اسأل عن الإلغاء، التتبع، أو العروض في ثواني.</p>
@@ -318,9 +368,82 @@ function ProfileView({
         </div>
       </AppSurface>
 
-      <PrimaryButton onClick={onLogout} icon={<LogOut className="h-5 w-5" />} className="w-full bg-rose-600 hover:bg-rose-700 shadow-rose-600/25 md:max-w-sm">
-        تسجيل الخروج
+      <AppSurface className="border-rose-200 bg-rose-50/60 p-5 dark:border-rose-900/40 dark:bg-rose-900/10">
+        <SectionHeader title="حذف الحساب" subtitle="يعطّل الحساب داخل التطبيق ويسجّلك خروج بأوضح شكل ممكن." />
+        <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-black text-rose-800 dark:text-rose-200">دي عملية soft delete داخل التطبيق، مش حذف نهائي لمستخدم Supabase Auth</p>
+            <p className="mt-1 text-sm font-bold text-rose-700/80 dark:text-rose-200/80">
+              لو السيرفر عندك موصل حذف نهائي بشكل آمن هيتم استخدامه. غير كده هنعلّم الحساب كمحذوف داخل التطبيق ونمنع دخوله.
+            </p>
+          </div>
+          <SecondaryButton
+            onClick={() => setIsDeleteOpen(true)}
+            icon={<Trash2 className="h-4 w-4" />}
+            className="border-rose-300 bg-white text-rose-700 hover:border-rose-400 hover:bg-rose-50 dark:border-rose-800 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/20"
+          >
+            حذف الحساب
+          </SecondaryButton>
+        </div>
+      </AppSurface>
+
+      <PrimaryButton onClick={handleLogout} disabled={loggingOut} icon={<LogOut className="h-5 w-5" />} className="w-full bg-rose-600 hover:bg-rose-700 shadow-rose-600/25 md:max-w-sm">
+        {loggingOut ? 'جاري تسجيل الخروج…' : 'تسجيل الخروج'}
       </PrimaryButton>
+
+      {isDeleteOpen ? (
+        <ModalShell
+          onClose={() => {
+            if (deletingAccount) return;
+            setIsDeleteOpen(false);
+            setDeleteConfirmText('');
+          }}
+          title="تأكيد حذف الحساب"
+          subtitle='اكتب كلمة "حذف" للتأكيد. التطبيق هيعطّل الحساب داخله ويسجّلك خروج بشكل آمن وواضح.'
+          icon={<AlertTriangle className="h-6 w-6" />}
+          maxWidth="max-w-lg"
+          footer={
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <SecondaryButton
+                onClick={() => {
+                  if (deletingAccount) return;
+                  setIsDeleteOpen(false);
+                  setDeleteConfirmText('');
+                }}
+              >
+                رجوع
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={deleteAccount}
+                disabled={deletingAccount || deleteConfirmText.trim() !== 'حذف'}
+                className="bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
+              >
+                {deletingAccount ? 'جاري التنفيذ…' : 'أكيد، نفّذ حذف الحساب'}
+              </PrimaryButton>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-4 py-4 dark:border-rose-900/40 dark:bg-rose-900/10">
+              <p className="text-sm font-black text-rose-800 dark:text-rose-200">تنبيه مهم</p>
+              <p className="mt-2 text-sm font-bold leading-6 text-rose-700 dark:text-rose-200/85">
+                العملية دي ما بتوعدش بحذف مستخدم Supabase Auth نهائيًا من غير Backend آمن أو Service Role. لكنها بتعطّل الحساب داخل التطبيق وتمنع استخدامه بعد تسجيل الخروج.
+              </p>
+            </div>
+
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-black text-slate-800 dark:text-slate-200">اكتب كلمة "حذف" للتأكيد</span>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(event) => setDeleteConfirmText(event.target.value)}
+                placeholder="حذف"
+                className="h-14 w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 text-base font-black text-slate-900 outline-none transition focus:border-rose-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              />
+            </label>
+          </div>
+        </ModalShell>
+      ) : null}
     </div>
   );
 }

@@ -132,6 +132,8 @@ function CheckoutView({
   if (!trip) return null;
 
   const applyPromo = async ({ silent = false } = {}) => {
+    if (promoLoading) return promoState;
+
     const normalizedCode = String(promoInput || '').trim().toUpperCase();
 
     if (!normalizedCode) {
@@ -208,6 +210,8 @@ function CheckoutView({
   };
 
   const handlePayment = async () => {
+    if (isProcessing || promoLoading) return;
+
     const bookability = getTripBookability(data);
 
     if (!bookability.canBook) {
@@ -217,6 +221,11 @@ function CheckoutView({
 
     if (holdExpired) {
       showToast('مهلة تثبيت المقاعد انتهت. ارجع للمقاعد وثبّتها تاني.', 'error');
+      return;
+    }
+
+    if (!Array.isArray(seats) || seats.length === 0) {
+      showToast('اختار المقاعد الأول.', 'error');
       return;
     }
 
