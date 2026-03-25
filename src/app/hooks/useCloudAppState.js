@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  loadSupabaseAppState,
-  saveSupabaseAppState,
-} from '../../lib/supabaseAppState';
+import { loadSupabaseAppState } from '../../lib/supabaseAppState';
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
 import { normalizeWalletTransaction, sortWalletTransactions } from '../../lib/wallet';
@@ -185,40 +182,8 @@ export function useCloudAppState(userId) {
   useEffect(() => {
     if (!backendReady || !userId) return;
 
-    const snapshot = {
-      wallet,
-      transactions: sortWalletTransactions(transactions).map(normalizeWalletTransaction),
-      myTrips,
-      points,
-      subscription,
-    };
-
-    const timeoutId = window.setTimeout(async () => {
-      try {
-        isSavingRef.current = true;
-        await saveSupabaseAppState(userId, snapshot);
-        await refreshCloudState({ silent: true, force: true });
-      } catch (error) {
-        log.error('save_failed', {
-          userId,
-          error,
-        });
-      } finally {
-        isSavingRef.current = false;
-      }
-    }, 350);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    userId,
-    wallet,
-    transactions,
-    myTrips,
-    points,
-    subscription,
-    backendReady,
-    refreshCloudState,
-  ]);
+    isSavingRef.current = false;
+  }, [userId, backendReady, wallet, transactions, myTrips, points, subscription]);
 
   useEffect(() => {
     if (!backendReady || !userId) return;

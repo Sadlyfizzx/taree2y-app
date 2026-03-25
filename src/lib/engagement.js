@@ -8,6 +8,75 @@ import {
 const log = createLogger('engagement');
 
 const REFERRAL_PENDING_KEY = 'taree2y_pending_referral_code';
+const DISABLED_ENGAGEMENT_RPCS_KEY = 'taree2y_disabled_engagement_rpcs';
+
+function readDisabledEngagementRpcs() {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(DISABLED_ENGAGEMENT_RPCS_KEY);
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+const disabledEngagementRpcs = new Set(readDisabledEngagementRpcs());
+
+function persistDisabledEngagementRpcs() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      DISABLED_ENGAGEMENT_RPCS_KEY,
+      JSON.stringify(Array.from(disabledEngagementRpcs)),
+    );
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function markEngagementRpcUnavailable(rpcName) {
+  const safeName = normalizeText(rpcName);
+  if (!safeName) return;
+  disabledEngagementRpcs.add(safeName);
+  persistDisabledEngagementRpcs();
+}
+
+function isEngagementRpcDisabled(rpcName) {
+  return disabledEngagementRpcs.has(normalizeText(rpcName));
+}
+
+function getNormalizedErrorText(error) {
+  const normalized = normalizeSupabaseError(error);
+  return JSON.stringify({
+    name: normalized.name,
+    code: normalized.code,
+    status: normalized.status,
+    message: normalized.message,
+    details: normalized.details,
+    hint: normalized.hint,
+  }).toLowerCase();
+}
+
+function isMissingOrUnavailableRpc(error, rpcName = '') {
+  if (isMissingRpcError(error, rpcName)) return true;
+
+  const text = getNormalizedErrorText(error);
+  const expected = normalizeText(rpcName).toLowerCase();
+
+  return (
+    text.includes('pgrst202') ||
+    text.includes('42883') ||
+    text.includes('404') ||
+    text.includes('could not find the function') ||
+    text.includes('function does not exist') ||
+    text.includes('schema cache') ||
+    (expected && text.includes(expected) && text.includes('not found')) ||
+    (expected && text.includes(expected) && text.includes('does not exist'))
+  );
+}
 
 function maybeObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -193,6 +262,15 @@ export async function syncUserEngagement({ userId, context = {} }) {
     return { ok: false, code: 'auth_required', message: 'user_id missing', data: {} };
   }
 
+  if (isEngagementRpcDisabled('sync_user_engagement')) {
+    return {
+      ok: false,
+      code: 'sync_unavailable',
+      message: 'تعذر مزامنة طبقة التفاعل حالياً.',
+      data: {},
+    };
+  }
+
   try {
     const { data, error } = await supabase.rpc('sync_user_engagement', {
       p_user_id: userId,
@@ -203,12 +281,20 @@ export async function syncUserEngagement({ userId, context = {} }) {
 
     return normalizeRpcResult(data, 'تمت مزامنة طبقة التفاعل.');
   } catch (error) {
-    if (!isMissingRpcError(error, 'sync_user_engagement')) {
-      log.warn('sync_user_engagement_failed', {
-        userId,
-        error: normalizeSupabaseError(error),
-      });
+    if (isMissingOrUnavailableRpc(error, 'sync_user_engagement')) {
+      markEngagementRpcUnavailable('sync_user_engagement');
+      return {
+        ok: false,
+        code: 'sync_unavailable',
+        message: 'تعذر مزامنة طبقة التفاعل حالياً.',
+        data: {},
+      };
     }
+
+    log.warn('sync_user_engagement_failed', {
+      userId,
+      error: normalizeSupabaseError(error),
+    });
 
     return {
       ok: false,
@@ -372,6 +458,10 @@ export async function getTargetedPromoOffer({ userId, context = {} }) {
 export async function getReferralSummary({ userId }) {
   if (!userId) return null;
 
+  if (isEngagementRpcDisabled('get_referral_summary')) {
+    return null;
+  }
+
   try {
     const { data, error } = await supabase.rpc('get_referral_summary', {
       p_user_id: userId,
@@ -380,12 +470,15 @@ export async function getReferralSummary({ userId }) {
     if (error) throw error;
     return normalizeReferralSummary(data || {});
   } catch (error) {
-    if (!isMissingRpcError(error, 'get_referral_summary')) {
-      log.warn('get_referral_summary_failed', {
-        userId,
-        error: normalizeSupabaseError(error),
-      });
+    if (isMissingOrUnavailableRpc(error, 'get_referral_summary')) {
+      markEngagementRpcUnavailable('get_referral_summary');
+      return null;
     }
+
+    log.warn('get_referral_summary_failed', {
+      userId,
+      error: normalizeSupabaseError(error),
+    });
 
     return null;
   }
