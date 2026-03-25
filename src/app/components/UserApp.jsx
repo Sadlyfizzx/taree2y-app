@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
   BusFront,
@@ -10,6 +10,15 @@ import {
   Wallet as WalletIcon,
 } from 'lucide-react';
 import { createLogger, isMissingRpcError } from '../../lib/logger';
+import {
+  applyReferralCode as applyReferralCodeRpc,
+  clearPendingReferralCode,
+  getReferralCodeFromUrl,
+  getReferralSummary,
+  readPendingReferralCode,
+  recordCampaignEvent,
+  stashPendingReferralCode,
+} from '../../lib/engagement';
 import { markOfferPopupSeen } from '../../lib/account';
 import { signOutCurrentUser } from '../../lib/auth';
 import { createWalletTransaction } from '../../lib/wallet';
@@ -17,7 +26,6 @@ import { getPromoPopupOffer } from '../../lib/promoEngine';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
 import {
-  generateTrips,
   getCancellationPolicy,
   getLocalDateInputValue,
 } from '../utils/travel';
@@ -50,6 +58,7 @@ import ChatbotModal from '../modals/ChatbotModal';
 import WalletQrModal from '../modals/WalletQrModal';
 import NotificationsModal from '../modals/NotificationsModal';
 import PromoOfferModal from '../modals/PromoOfferModal';
+import InternalOpsPanel from './internal/InternalOpsPanel';
 
 const log = createLogger('user-app');
 
@@ -90,6 +99,24 @@ const getHeaderContent = (activeView, activeTab) => {
   if (activeTab === 'profile') return { title: 'حسابي', subtitle: 'الملف الشخصي والإعدادات' };
   return { title: 'طريقي', subtitle: 'رحلات مصر بشكل أوضح وأسهل' };
 };
+
+function readInternalOpsEnabled() {
+  if (String(import.meta.env.VITE_ENABLE_INTERNAL_OPS || '').toLowerCase() === 'true') {
+    return true;
+  }
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ops') === '1') {
+      return true;
+    }
+
+    const stored = localStorage.getItem('taree2y_internal_ops');
+    return stored === '1' || stored === 'true';
+  } catch {
+    return false;
+  }
+}
 
 export default function UserApp({
   userId,
@@ -142,10 +169,15 @@ export default function UserApp({
   const [viewedTicket, setViewedTicket] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [activeModal, setActiveModal] = useState(null);
+  const [walletQrInitialAmount, setWalletQrInitialAmount] = useState(null);
   const [pendingCancellationBookingIds, setPendingCancellationBookingIds] = useState([]);
   const [promoPopupOffer, setPromoPopupOffer] = useState(null);
   const [promoHighlights, setPromoHighlights] = useState([]);
+  const [referralSummary, setReferralSummary] = useState(null);
+  const [internalOpsEnabled] = useState(readInternalOpsEnabled);
   const shownAuthWarningRef = useRef('');
+  const promoHighlightImpressionsRef = useRef(new Set());
+  const promoPopupImpressionsRef = useRef(new Set());
 
   const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide({
     userId,
@@ -195,9 +227,116 @@ export default function UserApp({
     clearNotifications,
     requestBrowserPermission,
   } = useTripNotifications({
+    userId,
     trips: myTrips,
     onNotify: (entry) => showToast(entry.title, 'success'),
   });
+
+  const promoContext = useMemo(
+    () => ({
+      from: selectedTrip?.from || searchParams.from || '',
+      to: selectedTrip?.to || searchParams.to || '',
+      passengers: searchParams.passengers || 1,
+      activeView,
+      activeTab,
+    }),
+    [
+      selectedTrip?.from,
+      selectedTrip?.to,
+      searchParams.from,
+      searchParams.to,
+      searchParams.passengers,
+      activeView,
+      activeTab,
+    ],
+  );
+
+  const refreshReferralSummary = useCallback(async () => {
+    if (!userId) {
+      setReferralSummary(null);
+      return null;
+    }
+
+    const summary = await getReferralSummary({ userId });
+    setReferralSummary(summary);
+    return summary;
+  }, [userId]);
+
+  const handleApplyReferralCode = async (code) => {
+    const result = await applyReferralCodeRpc({ userId, code });
+    if (result?.message) {
+      showToast(result.message, result.ok ? 'success' : 'error');
+    }
+    await refreshReferralSummary();
+    return result;
+  };
+
+  const handlePromoHighlightInteraction = (offer, action = 'opened') => {
+    if (!userId || !offer?.campaignId) return;
+
+    recordCampaignEvent({
+      userId,
+      campaignId: offer.campaignId,
+      eventName: action === 'copied' ? 'offer_highlight_copied' : 'offer_highlight_opened',
+      source: 'home_highlight',
+      metadata: {
+        code: offer.code || '',
+        triggerKind: offer.triggerKind || '',
+      },
+    });
+  };
+
+  useEffect(() => {
+    const codeFromUrl = getReferralCodeFromUrl();
+    if (codeFromUrl) {
+      stashPendingReferralCode(codeFromUrl);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!userId) {
+      setReferralSummary(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    (async () => {
+      const summary = await getReferralSummary({ userId });
+      if (!active) return;
+      setReferralSummary(summary);
+
+      const pendingCode = readPendingReferralCode();
+      if (!pendingCode || summary?.canApplyCode === false) return;
+
+      const result = await applyReferralCodeRpc({ userId, code: pendingCode });
+      if (!active) return;
+
+      if (result?.message) {
+        showToast(result.message, result.ok ? 'success' : 'error');
+      }
+
+      if (
+        result?.ok ||
+        ['referral_exists', 'referral_invalid', 'referral_self', 'referral_not_eligible'].includes(
+          String(result?.code || ''),
+        )
+      ) {
+        clearPendingReferralCode();
+      }
+
+      const refreshed = await getReferralSummary({ userId });
+      if (active) {
+        setReferralSummary(refreshed);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [userId, myTrips.length]);
 
   useEffect(() => {
     let active = true;
@@ -210,7 +349,7 @@ export default function UserApp({
         return;
       }
 
-      const offer = await getPromoPopupOffer({ userId });
+      const offer = await getPromoPopupOffer({ userId, context: promoContext });
       if (!active) return;
 
       if (!offer) {
@@ -218,7 +357,30 @@ export default function UserApp({
         return;
       }
 
-      setPromoHighlights([offer]);
+      const nextHighlights = offer.highlightEnabled === false ? [] : [offer];
+      setPromoHighlights(nextHighlights);
+
+      nextHighlights.forEach((entry) => {
+        const impressionKey = entry.campaignId || entry.code || entry.title;
+        if (!impressionKey || promoHighlightImpressionsRef.current.has(impressionKey)) return;
+        promoHighlightImpressionsRef.current.add(impressionKey);
+        if (entry.campaignId) {
+          recordCampaignEvent({
+            userId,
+            campaignId: entry.campaignId,
+            eventName: 'offer_highlight_impression',
+            source: 'home_highlight',
+            metadata: {
+              code: entry.code || '',
+              triggerKind: entry.triggerKind || '',
+            },
+          });
+        }
+      });
+
+      if (!offer.popupEnabled) {
+        return;
+      }
 
       let alreadySeenThisSession = false;
       try {
@@ -227,9 +389,24 @@ export default function UserApp({
         alreadySeenThisSession = false;
       }
 
-      if (!alreadySeenThisSession && !activeModal && !isGuideOpen) {
+      if (offer.popupEnabled && !alreadySeenThisSession && !activeModal && !isGuideOpen) {
         setPromoPopupOffer(offer);
         setActiveModal('promo_offer');
+
+        const popupKey = offer.campaignId || offer.code || offer.title;
+        if (popupKey && !promoPopupImpressionsRef.current.has(popupKey) && offer.campaignId) {
+          promoPopupImpressionsRef.current.add(popupKey);
+          recordCampaignEvent({
+            userId,
+            campaignId: offer.campaignId,
+            eventName: 'offer_popup_shown',
+            source: 'promo_modal',
+            metadata: {
+              code: offer.code || '',
+              triggerKind: offer.triggerKind || '',
+            },
+          });
+        }
       }
     };
 
@@ -239,13 +416,23 @@ export default function UserApp({
       active = false;
       window.clearTimeout(timeoutId);
     };
-  }, [userId, profile?.onboarding_completed_at, activeModal, isGuideOpen]);
+  }, [userId, profile?.onboarding_completed_at, activeModal, isGuideOpen, promoContext]);
 
   const dismissPromoOffer = async () => {
     try {
       sessionStorage.setItem(`taree2y_promo_offer_seen_${userId}`, 'done');
     } catch {
       // ignore session storage failures
+    }
+
+    if (userId && promoPopupOffer?.campaignId) {
+      recordCampaignEvent({
+        userId,
+        campaignId: promoPopupOffer.campaignId,
+        eventName: 'offer_dismissed',
+        source: 'promo_modal',
+        metadata: { code: promoPopupOffer.code || '' },
+      });
     }
 
     setPromoPopupOffer(null);
@@ -302,11 +489,41 @@ export default function UserApp({
         passengers: params.passengers,
       });
 
-      setSearchResults(results);
+      const authoritativeTrips = Array.isArray(results?.trips)
+        ? results.trips.filter((trip) => String(trip?.instanceId || '').trim())
+        : [];
 
-      if (results.source === 'fallback') {
-        showToast('شغّلنا البحث الاحتياطي لأن جداول الرحلات لسه ما اتطبقتش بالكامل.', 'error');
+      const hasFallbackSource = String(results?.source || '')
+        .toLowerCase()
+        .includes('fallback');
+
+      const hasNonAuthoritativeTrips = Array.isArray(results?.trips)
+        ? results.trips.some((trip) => !String(trip?.instanceId || '').trim())
+        : false;
+
+      if (hasFallbackSource || hasNonAuthoritativeTrips) {
+        log.error('non_authoritative_search_blocked', {
+          from: params.from,
+          to: params.to,
+          date: params.date,
+          passengers: params.passengers,
+          source: results?.source || null,
+          returnedTrips: Array.isArray(results?.trips) ? results.trips.length : 0,
+          authoritativeTrips: authoritativeTrips.length,
+        });
+
+        setSearchResults({
+          trips: [],
+          isDirect: Boolean(results?.isDirect ?? true),
+        });
+        showToast('تعذر تحميل رحلات صالحة من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
+        return;
       }
+
+      setSearchResults({
+        ...results,
+        trips: authoritativeTrips,
+      });
     } catch (error) {
       log.error('search_failed', {
         from: params.from,
@@ -316,8 +533,11 @@ export default function UserApp({
         error,
       });
 
-      setSearchResults(generateTrips(params.from, params.to, params.date));
-      showToast('تعذر تحميل الرحلات من السيرفر. رجعنا للوضع التجريبي.', 'error');
+      setSearchResults({
+        trips: [],
+        isDirect: true,
+      });
+      showToast('تعذر تحميل الرحلات من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
     } finally {
       setIsSearching(false);
     }
@@ -325,95 +545,21 @@ export default function UserApp({
 
   const createDemoBookingResult = ({
     trip,
-    seatNumbers,
-    passengers,
-    promoCode,
-    promoDiscountAmount = 0,
-    hasLuggage,
-    needsAccess,
   }) => {
-    const subDiscountRate =
-      subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
-    const baseTotal = trip.price * passengers;
-    const autoDiscount = Math.floor(baseTotal * subDiscountRate);
-    const promoDiscount = Math.max(0, Number(promoDiscountAmount || 0));
-    const luggageFee = hasLuggage ? 50 * passengers : 0;
-    const finalTotal = Math.max(0, baseTotal + luggageFee - autoDiscount - promoDiscount);
-    const pointsToAwardLater = Math.max(
-      0,
-      Math.floor(Math.max(0, baseTotal - autoDiscount - promoDiscount) / 5),
-    );
-
-    if (wallet < finalTotal) {
-      return { ok: false, message: 'رصيد المحفظة مش كفاية للتأكيد.' };
-    }
-
-    const pnr = `TRQ-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const bookingDate = getLocalDateInputValue();
-
-    const ticket = ensureTicketIdentity({
-      ...trip,
-      id: `demo-${pnr}`,
-      bookingId: `demo-${pnr}`,
-      pnr,
-      bookingDate,
-      date: trip.date,
-      selectedSeats: seatNumbers,
-      finalTotal,
-      paymentMethod: 'wallet',
-      status: 'upcoming',
-      earnedPointsPending: pointsToAwardLater,
-      pointsAwarded: false,
-      luggage: hasLuggage,
-      access: needsAccess,
-      promoCode: promoCode || null,
-      ticketToken: `demo-token-${pnr}`,
-      qrPayload: `demo-booking:${pnr}`,
-      source: 'local',
+    log.error('demo_booking_blocked_in_production', {
+      tripId: trip?.id || null,
+      tripInstanceId: trip?.instanceId || null,
     });
 
-    const invoice = {
-      pnr,
-      total: finalTotal,
-      method: 'محفظة طريقي',
-      date: new Date().toLocaleString('ar-EG'),
-      items: buildInvoiceItems({
-        passengers,
-        baseTotal,
-        luggageFee,
-        autoDiscount,
-        promoDiscount,
-      }),
+    return {
+      ok: false,
+      code: 'backend_trip_required',
+      message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.',
     };
-
-    setWallet((prev) => prev - finalTotal);
-    setTransactions((prev) => [
-      createWalletTransaction({
-        id: `TXN-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-        type: 'debit',
-        amount: finalTotal,
-        date: bookingDate,
-        description: `تذكرة: ${trip.from} - ${trip.to}`,
-      }),
-      ...prev,
-    ]);
-
-    log.info('demo_booking_created', {
-      pnr,
-      passengers,
-      finalTotal,
-      runtimeMode,
-    });
-
-    return { ok: true, booking: ticket, invoice };
   };
 
   const finalizeBookingSuccess = (ticket, invoice) => {
     const normalizedTicket = ensureTicketIdentity(ticket);
-
-    if (String(normalizedTicket?.bookingId || normalizedTicket?.id || '').startsWith('demo-')) {
-      setMyTrips((prev) => [normalizedTicket, ...prev]);
-    }
 
     setCurrentInvoice(invoice);
     setViewedTicket(normalizedTicket);
@@ -432,20 +578,16 @@ export default function UserApp({
     seatNumbers,
     passengers,
     promoCode,
-    promoDiscountAmount = 0,
+    promoDiscountAmount: _promoDiscountAmount = 0,
     hasLuggage,
     needsAccess,
   }) => {
     if (!trip?.instanceId) {
-      return createDemoBookingResult({
-        trip,
-        seatNumbers,
-        passengers,
-        promoCode,
-        promoDiscountAmount,
-        hasLuggage,
-        needsAccess,
-      });
+      return {
+        ok: false,
+        code: 'backend_trip_required',
+        message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.',
+      };
     }
 
     const result = await createBookingAtomic({
@@ -474,8 +616,13 @@ export default function UserApp({
     }
 
     if (!tripArg?.instanceId) {
-      navigateTo('checkout');
-      return { ok: true, source: 'demo' };
+      const result = {
+        ok: false,
+        code: 'backend_trip_required',
+        message: 'اختيار المقاعد الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر.',
+      };
+      showToast(result.message, 'error');
+      return result;
     }
 
     const holdResult = await holdTripSeats({
@@ -508,117 +655,76 @@ export default function UserApp({
 
   const processDelayedRefund = async (tripToCancel) => {
     const bookingId = tripToCancel?.bookingId || tripToCancel?.id || null;
-    const bookingIdText = String(bookingId || '');
-    const isDemoBooking = bookingIdText.startsWith('demo-');
 
-    if (bookingId && !isDemoBooking) {
-      setPendingCancellationBookingIds((prev) =>
-        prev.includes(bookingId) ? prev : [...prev, bookingId],
-      );
-      setMyTrips((prev) =>
-        prev.map((trip) => {
-          const tripKey = trip.bookingId || trip.id || null;
-          if (tripKey !== bookingId) return trip;
-          return { ...trip, status: 'refund_pending' };
-        }),
-      );
-
-      log.info('booking_cancel_requested', {
-        bookingId,
-        pnr: tripToCancel?.pnr || null,
-      });
-
-      try {
-        const result = await cancelBookingAtomic({ bookingId });
-
-        if (!result?.ok) {
-          log.warn('booking_cancel_rejected', {
-            bookingId,
-            pnr: tripToCancel?.pnr || null,
-            errorClass: result?.errorClass || null,
-            code: result?.code || null,
-            httpStatus: result?.httpStatus || null,
-            reason: result?.message || 'unknown',
-          });
-
-          showToast(formatCancellationErrorMessage(result), 'error');
-          await refreshCloudState({ silent: true, force: true });
-          return;
-        }
-
-        log.info('booking_cancel_completed', {
-          bookingId,
-          pnr: tripToCancel?.pnr || null,
-          refundAmount: Number(result?.refundAmount || 0),
-        });
-
-        showToast(
-          `تم الإلغاء، ورجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة.`,
-          'success',
-        );
-        await refreshCloudState({ silent: true, force: true });
-      } catch (error) {
-        log.error('booking_cancel_failed', {
-          bookingId,
-          pnr: tripToCancel?.pnr || null,
-          error,
-        });
-
-        showToast(formatCancellationErrorMessage(error), 'error');
-
-        try {
-          await refreshCloudState({ silent: true, force: true });
-        } catch (refreshError) {
-          log.warn('booking_cancel_refresh_failed', {
-            bookingId,
-            error: refreshError,
-          });
-        }
-      } finally {
-        setPendingCancellationBookingIds((prev) => prev.filter((id) => id !== bookingId));
-      }
-      return;
+    if (!bookingId) {
+      return showToast('الإلغاء الحقيقي متاح فقط للحجوزات المرتبطة بالسيرفر.', 'error');
     }
 
-    const policy = getCancellationPolicy(tripToCancel);
-    if (!policy.allowed) return showToast(policy.message, 'error');
-
-    const refundAmount = Number(policy.refundAmount || 0);
-
+    setPendingCancellationBookingIds((prev) =>
+      prev.includes(bookingId) ? prev : [...prev, bookingId],
+    );
     setMyTrips((prev) =>
-      prev.map((trip) =>
-        trip.pnr === tripToCancel.pnr ? { ...trip, status: 'refund_pending' } : trip,
-      ),
+      prev.map((trip) => {
+        const tripKey = trip.bookingId || trip.id || null;
+        if (tripKey !== bookingId) return trip;
+        return { ...trip, status: 'refund_pending' };
+      }),
     );
 
-    showToast('جاري الإلغاء ومعالجة طلب الاسترداد.', 'success');
+    log.info('booking_cancel_requested', {
+      bookingId,
+      pnr: tripToCancel?.pnr || null,
+    });
 
-    window.setTimeout(() => {
-      setMyTrips((currentTrips) => {
-        const exists = currentTrips.find((trip) => trip.pnr === tripToCancel.pnr);
-        if (!exists) return currentTrips;
+    try {
+      const result = await cancelBookingAtomic({ bookingId });
 
-        setWallet((value) => value + refundAmount);
-        setTransactions((value) => [
-          createWalletTransaction({
-            id: `REF-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-            type: 'credit',
-            amount: refundAmount,
-            date: getLocalDateInputValue(),
-            description: `استرداد تذكرة ${tripToCancel.pnr}`,
-          }),
-          ...value,
-        ]);
+      if (!result?.ok) {
+        log.warn('booking_cancel_rejected', {
+          bookingId,
+          pnr: tripToCancel?.pnr || null,
+          errorClass: result?.errorClass || null,
+          code: result?.code || null,
+          httpStatus: result?.httpStatus || null,
+          reason: result?.message || 'unknown',
+        });
 
-        return currentTrips.map((trip) =>
-          trip.pnr === tripToCancel.pnr
-            ? { ...trip, status: 'cancelled', pointsAwarded: false, source: 'local' }
-            : trip,
-        );
+        showToast(formatCancellationErrorMessage(result), 'error');
+        await refreshCloudState({ silent: true, force: true });
+        return;
+      }
+
+      log.info('booking_cancel_completed', {
+        bookingId,
+        pnr: tripToCancel?.pnr || null,
+        refundAmount: Number(result?.refundAmount || 0),
       });
 
-      showToast(`تم الإلغاء، ورجعلك ${refundAmount} ج.م للمحفظة.`, 'success');
-    }, 800);
+      showToast(
+        `تم الإلغاء، ورجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة.`,
+        'success',
+      );
+      await refreshCloudState({ silent: true, force: true });
+    } catch (error) {
+      log.error('booking_cancel_failed', {
+        bookingId,
+        pnr: tripToCancel?.pnr || null,
+        error,
+      });
+
+      showToast(formatCancellationErrorMessage(error), 'error');
+
+      try {
+        await refreshCloudState({ silent: true, force: true });
+      } catch (refreshError) {
+        log.warn('booking_cancel_refresh_failed', {
+          bookingId,
+          error: refreshError,
+        });
+      }
+    } finally {
+      setPendingCancellationBookingIds((prev) => prev.filter((id) => id !== bookingId));
+    }
   };
 
   useEffect(() => {
@@ -804,19 +910,16 @@ export default function UserApp({
     );
   }
 
+  const latestTrip = (Array.isArray(myTrips) ? myTrips : []).find(Boolean)
+    ? ensureTicketIdentity((Array.isArray(myTrips) ? myTrips : []).find(Boolean))
+    : null;
+
   const headerContent = getHeaderContent(activeView, activeTab);
 
   return (
     <>
       <ToastStack toasts={toasts} />
 
-      {runtimeMode === 'local-demo' ? (
-        <div className="absolute inset-x-0 top-0 z-50 px-4 py-2">
-          <div className="mx-auto max-w-[1200px] rounded-b-[22px] border border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-black text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
-            بعض الميزات حالياً شغالة في وضع محلي تجريبي بدون مزامنة كاملة.
-          </div>
-        </div>
-      ) : null}
 
       <aside
         className={`hidden h-full flex-col border-l border-slate-200 bg-slate-50/80 px-4 py-5 dark:border-slate-800 dark:bg-slate-950/80 md:flex ${
@@ -921,6 +1024,15 @@ export default function UserApp({
               >
                 الدليل
               </button>
+              {internalOpsEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('internal_ops')}
+                  className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100 dark:hover:bg-amber-900/40 md:inline-flex"
+                >
+                  OPS
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setActiveModal('notifications')}
@@ -960,6 +1072,7 @@ export default function UserApp({
                 openGuide={openGuide}
                 isFirstTimeUser={Boolean(profile?.isFirstTimeUser)}
                 promoHighlights={promoHighlights}
+                onPromoHighlightInteraction={handlePromoHighlightInteraction}
               />
             ) : null}
 
@@ -1054,7 +1167,10 @@ export default function UserApp({
                 setTransactions={setTransactions}
                 showToast={showToast}
                 openTopUp={() => setActiveModal('topup')}
-                openWalletQr={() => setActiveModal('wallet_qr')}
+                openWalletQr={() => {
+                  setWalletQrInitialAmount(null);
+                  setActiveModal('wallet_qr');
+                }}
               />
             ) : null}
 
@@ -1083,6 +1199,9 @@ export default function UserApp({
                 showToast={showToast}
                 openModal={setActiveModal}
                 openGuide={openGuide}
+                referralSummary={referralSummary}
+                refreshReferralSummary={refreshReferralSummary}
+                applyReferralCode={handleApplyReferralCode}
               />
             ) : null}
           </div>
@@ -1111,6 +1230,8 @@ export default function UserApp({
           subscription={subscription}
           setSubscription={setSubscription}
           showToast={showToast}
+          runtimeMode={runtimeMode}
+          refreshCloudState={refreshCloudState}
         />
       ) : null}
 
@@ -1123,13 +1244,19 @@ export default function UserApp({
           points={points}
           setPoints={setPoints}
           showToast={showToast}
+          runtimeMode={runtimeMode}
+          refreshCloudState={refreshCloudState}
         />
       ) : null}
 
       {activeModal === 'wallet_qr' ? (
         <WalletQrModal
-          closeModal={() => setActiveModal(null)}
+          closeModal={() => {
+            setWalletQrInitialAmount(null);
+            setActiveModal(null);
+          }}
           userId={userId}
+          initialAmount={walletQrInitialAmount}
           showToast={showToast}
         />
       ) : null}
@@ -1137,10 +1264,16 @@ export default function UserApp({
       {activeModal === 'topup' ? (
         <TopUpFlowModal
           closeModal={() => setActiveModal(null)}
+          userId={userId}
           wallet={wallet}
           setWallet={setWallet}
           setTransactions={setTransactions}
           showToast={showToast}
+          runtimeMode={runtimeMode}
+          openWalletQr={(amount) => {
+            setWalletQrInitialAmount(amount || null);
+            setActiveModal('wallet_qr');
+          }}
         />
       ) : null}
 
@@ -1165,6 +1298,42 @@ export default function UserApp({
           closeModal={() => setActiveModal(null)}
           showToast={showToast}
           onDismiss={dismissPromoOffer}
+          onCopyOffer={(offer) => {
+            if (!userId || !offer?.campaignId) return;
+            recordCampaignEvent({
+              userId,
+              campaignId: offer.campaignId,
+              eventName: 'offer_copied',
+              source: 'promo_modal',
+              metadata: { code: offer.code || '' },
+            });
+          }}
+        />
+      ) : null}
+
+      {activeModal === 'internal_ops' && internalOpsEnabled ? (
+        <InternalOpsPanel
+          closeModal={() => setActiveModal(null)}
+          userId={userId}
+          user={user}
+          wallet={wallet}
+          points={points}
+          subscription={subscription}
+          latestTrip={latestTrip}
+          onRefresh={refreshCloudState}
+          onOpenLatestTicket={() => {
+            if (!latestTrip) return;
+            setViewedTicket(ensureTicketIdentity(latestTrip));
+            setActiveModal(null);
+            navigateTo('ticket');
+          }}
+          onOpenLatestTracking={() => {
+            if (!latestTrip) return;
+            setViewedTicket(ensureTicketIdentity(latestTrip));
+            setActiveModal(null);
+            navigateTo('tracking');
+          }}
+          showToast={showToast}
         />
       ) : null}
 

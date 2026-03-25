@@ -6,30 +6,9 @@ import {
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
 import { normalizeWalletTransaction, sortWalletTransactions } from '../../lib/wallet';
-import { readJSON, readNumber, demoKey } from '../../utils/storage';
 import { getTripLifecycleStatus } from '../utils/travel';
 
 const log = createLogger('cloud-app-state');
-
-function readLocalSubscription(userId) {
-  try {
-    return localStorage.getItem(demoKey(userId, 'sub')) || 'none';
-  } catch {
-    return 'none';
-  }
-}
-
-function persistLocalSnapshot(userId, snapshot) {
-  try {
-    localStorage.setItem(demoKey(userId, 'wallet'), String(snapshot.wallet));
-    localStorage.setItem(demoKey(userId, 'txns'), JSON.stringify(snapshot.transactions));
-    localStorage.setItem(demoKey(userId, 'trips'), JSON.stringify(snapshot.myTrips));
-    localStorage.setItem(demoKey(userId, 'points'), String(snapshot.points));
-    localStorage.setItem(demoKey(userId, 'sub'), snapshot.subscription);
-  } catch {
-    // ignore storage failures
-  }
-}
 
 export function useCloudAppState(userId) {
   const [wallet, setWallet] = useState(0);
@@ -39,7 +18,6 @@ export function useCloudAppState(userId) {
   const [subscription, setSubscription] = useState('none');
   const [backendReady, setBackendReady] = useState(false);
   const [backendLoading, setBackendLoading] = useState(true);
-  const [didSeedSupabaseFromLocal, setDidSeedSupabaseFromLocal] = useState(false);
 
   const isHydratingCloudRef = useRef(false);
   const isSavingRef = useRef(false);
@@ -107,6 +85,7 @@ export function useCloudAppState(userId) {
           userId,
           error,
         });
+
         if (!silent) setBackendLoading(false);
         return;
       }
@@ -120,7 +99,6 @@ export function useCloudAppState(userId) {
         subscription: data?.subscription ?? 'none',
       });
       setBackendReady(true);
-      setDidSeedSupabaseFromLocal(false);
 
       if (!silent) setBackendLoading(false);
 
@@ -137,6 +115,19 @@ export function useCloudAppState(userId) {
     let active = true;
 
     (async () => {
+      if (!userId) {
+        applyAppState({
+          wallet: 0,
+          transactions: [],
+          myTrips: [],
+          points: 0,
+          subscription: 'none',
+        });
+        setBackendReady(false);
+        setBackendLoading(false);
+        return;
+      }
+
       setBackendLoading(true);
 
       const { data, error } = await loadSupabaseAppState(userId);
@@ -147,42 +138,13 @@ export function useCloudAppState(userId) {
           userId,
           error,
         });
-      }
 
-      const localWallet = readNumber(demoKey(userId, 'wallet'), 0);
-      const localTransactions = sortWalletTransactions(readJSON(demoKey(userId, 'txns'), []));
-      const localTrips = readJSON(demoKey(userId, 'trips'), []);
-      const localPoints = readNumber(demoKey(userId, 'points'), 0);
-      const localSubscription = readLocalSubscription(userId);
-
-      const cloudLooksEmpty =
-        !data ||
-        (Number(data?.wallet ?? 0) === 0 &&
-          Number(data?.points ?? 0) === 0 &&
-          (data?.subscription ?? 'none') === 'none' &&
-          (data?.transactions ?? []).length === 0 &&
-          (data?.myTrips ?? []).length === 0);
-
-      const localHasData =
-        localWallet > 0 ||
-        localPoints > 0 ||
-        localSubscription !== 'none' ||
-        localTransactions.length > 0 ||
-        localTrips.length > 0;
-
-      if (cloudLooksEmpty && localHasData) {
         applyAppState({
-          wallet: localWallet,
-          transactions: localTransactions,
-          myTrips: localTrips,
-          points: localPoints,
-          subscription: localSubscription,
-        });
-        setDidSeedSupabaseFromLocal(true);
-        log.info('local_state_seeded_into_runtime', {
-          userId,
-          localTrips: localTrips.length,
-          localTransactions: localTransactions.length,
+          wallet: 0,
+          transactions: [],
+          myTrips: [],
+          points: 0,
+          subscription: 'none',
         });
       } else {
         applyAppState({
@@ -192,7 +154,6 @@ export function useCloudAppState(userId) {
           points: data?.points ?? 0,
           subscription: data?.subscription ?? 'none',
         });
-        setDidSeedSupabaseFromLocal(false);
       }
 
       setBackendReady(true);
@@ -236,7 +197,6 @@ export function useCloudAppState(userId) {
       try {
         isSavingRef.current = true;
         await saveSupabaseAppState(userId, snapshot);
-        if (didSeedSupabaseFromLocal) setDidSeedSupabaseFromLocal(false);
         await refreshCloudState({ silent: true, force: true });
       } catch (error) {
         log.error('save_failed', {
@@ -246,7 +206,7 @@ export function useCloudAppState(userId) {
       } finally {
         isSavingRef.current = false;
       }
-    }, didSeedSupabaseFromLocal ? 120 : 350);
+    }, 350);
 
     return () => window.clearTimeout(timeoutId);
   }, [
@@ -257,21 +217,8 @@ export function useCloudAppState(userId) {
     points,
     subscription,
     backendReady,
-    didSeedSupabaseFromLocal,
     refreshCloudState,
   ]);
-
-  useEffect(() => {
-    if (!backendReady) return;
-
-    persistLocalSnapshot(userId, {
-      wallet,
-      transactions: sortWalletTransactions(transactions),
-      myTrips,
-      points,
-      subscription,
-    });
-  }, [userId, wallet, transactions, myTrips, points, subscription, backendReady]);
 
   useEffect(() => {
     if (!backendReady || !userId) return;

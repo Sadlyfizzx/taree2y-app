@@ -28,12 +28,18 @@ const log = createLogger('checkout');
 
 const defaultPromoState = {
   status: 'idle',
+  resultCode: 'promo_empty',
+  message: '',
   applied: false,
   code: '',
+  campaignId: null,
   title: '',
   description: '',
-  message: '',
   discountAmount: 0,
+  discountType: null,
+  discountValue: 0,
+  minimumBookingAmount: 0,
+  firstTripOnly: false,
   unavailable: false,
 };
 
@@ -42,6 +48,42 @@ function getRemainingHoldMs(holdExpiresAt) {
   const expiresAtMs = new Date(holdExpiresAt).getTime();
   if (Number.isNaN(expiresAtMs)) return null;
   return Math.max(0, expiresAtMs - Date.now());
+}
+
+function buildTripMeta(data, passengers) {
+  return {
+    from: data.from,
+    to: data.to,
+    date: data.date,
+    company: data.company,
+    travel_class: data.class,
+    passengers,
+  };
+}
+
+function mapPromoResultToState(result, normalizedCode) {
+  const applied = Boolean(result?.data?.applied);
+
+  return {
+    status: applied
+      ? 'applied'
+      : result?.data?.unavailable
+      ? 'unavailable'
+      : 'rejected',
+    resultCode: result?.code || 'promo_unknown',
+    message: result?.message || '',
+    applied,
+    code: result?.data?.promoCode || normalizedCode,
+    campaignId: result?.data?.campaignId || null,
+    title: result?.data?.title || '',
+    description: result?.data?.description || '',
+    discountAmount: Number(result?.data?.discountAmount || 0),
+    discountType: result?.data?.discountType || null,
+    discountValue: Number(result?.data?.discountValue || 0),
+    minimumBookingAmount: Number(result?.data?.minimumBookingAmount || 0),
+    firstTripOnly: Boolean(result?.data?.firstTripOnly),
+    unavailable: Boolean(result?.data?.unavailable),
+  };
 }
 
 function CheckoutView({
@@ -78,20 +120,22 @@ function CheckoutView({
     class: 'اقتصادي مميز',
     status: 'upcoming',
   };
+
+  const supportsRealPromo = Boolean(data?.instanceId);
   const subDiscountRate =
     subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
   const baseTotal = data.price * passengers;
   const autoDiscount = Math.floor(baseTotal * subDiscountRate);
   const luggageFee = hasLuggage ? 50 * passengers : 0;
-  const discount = promoState.applied ? promoState.discountAmount : 0;
+  const promoDiscount = promoState.applied ? promoState.discountAmount : 0;
   const finalTotalPreview = Math.max(
     0,
-    baseTotal + luggageFee - discount - autoDiscount,
+    baseTotal + luggageFee - promoDiscount - autoDiscount,
   );
   const isWalletSufficient = wallet >= finalTotalPreview;
   const pointsToAwardLater = Math.max(
     0,
-    Math.floor(Math.max(0, baseTotal - autoDiscount - discount) / 5),
+    Math.floor(Math.max(0, baseTotal - autoDiscount - promoDiscount) / 5),
   );
   const tripBookability = getTripBookability(data);
   const holdExpired = remainingHoldMs !== null && remainingHoldMs <= 0;
@@ -124,10 +168,10 @@ function CheckoutView({
       return;
     }
 
-    if (promoState.applied && normalizedInput !== promoState.code) {
+    if (promoState.code && normalizedInput !== promoState.code) {
       setPromoState(defaultPromoState);
     }
-  }, [promoInput, promoState]);
+  }, [promoInput, promoState.code, promoState.status]);
 
   if (!trip) return null;
 
@@ -135,6 +179,19 @@ function CheckoutView({
     if (promoLoading) return promoState;
 
     const normalizedCode = String(promoInput || '').trim().toUpperCase();
+
+    if (!supportsRealPromo) {
+      const rejectedState = {
+        ...defaultPromoState,
+        status: 'rejected',
+        resultCode: 'promo_backend_required',
+        code: normalizedCode,
+        message: 'أكواد الخصم الحقيقية متاحة فقط على الرحلات المرتبطة بالسيرفر.',
+      };
+      setPromoState(rejectedState);
+      if (!silent) showToast(rejectedState.message, 'error');
+      return rejectedState;
+    }
 
     if (!normalizedCode) {
       setPromoState(defaultPromoState);
@@ -149,31 +206,10 @@ function CheckoutView({
         userId,
         code: normalizedCode,
         bookingAmount: baseTotal,
-        tripMeta: {
-          from: data.from,
-          to: data.to,
-          date: data.date,
-          company: data.company,
-          travel_class: data.class,
-          passengers,
-        },
+        tripMeta: buildTripMeta(data, passengers),
       });
 
-      const nextState = {
-        status: result.applied
-          ? 'applied'
-          : result.unavailable
-          ? 'unavailable'
-          : 'rejected',
-        applied: Boolean(result.applied),
-        code: result.code || normalizedCode,
-        title: result.title || '',
-        description: result.description || '',
-        message: result.message || '',
-        discountAmount: Number(result.discountAmount || 0),
-        unavailable: Boolean(result.unavailable),
-      };
-
+      const nextState = mapPromoResultToState(result, normalizedCode);
       setPromoState(nextState);
 
       if (!silent) {
@@ -196,6 +232,7 @@ function CheckoutView({
       const failedState = {
         ...defaultPromoState,
         status: 'rejected',
+        resultCode: 'promo_unavailable',
         code: normalizedCode,
         message: 'تعذر مراجعة الكود حالياً.',
       };
@@ -229,8 +266,6 @@ function CheckoutView({
       return;
     }
 
-    if (!isWalletSufficient) return;
-
     if (seats.length !== passengers || new Set(seats).size !== passengers) {
       showToast('عدد المقاعد المختارة لازم يساوي عدد الركاب.', 'error');
       return;
@@ -239,7 +274,7 @@ function CheckoutView({
     const typedPromoCode = String(promoInput || '').trim().toUpperCase();
     let latestPromoState = promoState;
 
-    if (typedPromoCode && (!promoState.applied || promoState.code !== typedPromoCode)) {
+    if (typedPromoCode) {
       latestPromoState = await applyPromo({ silent: true });
 
       if (!latestPromoState.applied) {
@@ -251,6 +286,19 @@ function CheckoutView({
       }
     }
 
+    const backendFinalTotalPreview = Math.max(
+      0,
+      baseTotal + luggageFee - autoDiscount - (latestPromoState.applied ? latestPromoState.discountAmount : 0),
+    );
+
+    if (wallet < backendFinalTotalPreview) {
+      showToast(
+        `رصيد المحفظة الحالي ${formatCurrency(wallet)} أقل من المطلوب بعد المراجعة النهائية ${formatCurrency(backendFinalTotalPreview)}.`,
+        'error',
+      );
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -259,9 +307,7 @@ function CheckoutView({
         seatNumbers: seats,
         passengers,
         promoCode: latestPromoState.applied ? latestPromoState.code : '',
-        promoDiscountAmount: latestPromoState.applied
-          ? latestPromoState.discountAmount
-          : 0,
+        promoDiscountAmount: 0,
         hasLuggage,
         needsAccess,
       });
@@ -270,6 +316,7 @@ function CheckoutView({
         log.warn('booking_rejected', {
           tripInstanceId: data.instanceId || null,
           message: result?.message || 'unknown',
+          code: result?.code || null,
         });
         showToast(result?.message || 'حصلت مشكلة أثناء تأكيد الحجز.', 'error');
         return;
@@ -390,8 +437,9 @@ function CheckoutView({
                 type="text"
                 value={promoInput}
                 onChange={(event) => setPromoInput(event.target.value)}
-                placeholder="اكتب الكود لو عندك"
-                className="h-14 w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 text-base font-black text-slate-800 outline-none transition focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                placeholder={supportsRealPromo ? 'اكتب الكود لو عندك' : 'الكود الحقيقي متاح على رحلات السيرفر فقط'}
+                disabled={!supportsRealPromo}
+                className="h-14 w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 text-base font-black text-slate-800 outline-none transition focus:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
               />
               <SecondaryButton
                 className="sm:min-w-[120px]"
@@ -400,12 +448,15 @@ function CheckoutView({
                 }}
                 loading={promoLoading}
                 loadingText="جاري التفعيل…"
+                disabled={!supportsRealPromo}
               >
                 تفعيل الكود
               </SecondaryButton>
             </div>
             <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">
-              الكود بيتراجع مرة أخيرة من السيرفر وقت التأكيد النهائي.
+              {supportsRealPromo
+                ? 'الكود بيتراجع من السيرفر في المعاينة، وبيتراجع مرة أخيرة وقت التأكيد النهائي.'
+                : 'الرحلة الحالية شغالة في وضع تجريبي، لذلك الكود الحقيقي غير متاح عليها.'}
             </p>
 
             {promoState.status !== 'idle' ? (
@@ -439,8 +490,8 @@ function CheckoutView({
               {autoDiscount > 0 ? (
                 <KeyValueRow label="خصم الباقة" value={`- ${formatCurrency(autoDiscount)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
               ) : null}
-              {discount > 0 ? (
-                <KeyValueRow label="خصم الكود" value={`- ${formatCurrency(discount)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
+              {promoDiscount > 0 ? (
+                <KeyValueRow label="خصم الكود" value={`- ${formatCurrency(promoDiscount)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
               ) : null}
               <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
                 <KeyValueRow label="الإجمالي المطلوب" value={formatCurrency(finalTotalPreview)} valueClassName="text-lg font-black text-indigo-700 dark:text-indigo-300" />

@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
-import { Crown } from 'lucide-react';
+import { Crown, ShieldCheck } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
+import { InlineNotice } from '../components/ui/StateBlocks';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
 import { createWalletTransaction } from '../../lib/wallet';
+import {
+  createClientMoneyId,
+  isAuthoritativeRuntime,
+  purchaseSubscriptionAtomic,
+} from '../../lib/moneyLifecycle';
 
 function SubscriptionsModal({
   closeModal,
@@ -13,10 +19,13 @@ function SubscriptionsModal({
   subscription,
   setSubscription,
   showToast,
+  runtimeMode = 'supabase',
+  refreshCloudState,
 }) {
   const [buyingPlan, setBuyingPlan] = useState('');
+  const authoritative = isAuthoritativeRuntime(runtimeMode);
 
-  const handleBuy = (subType, price) => {
+  const handleBuy = async (subType, price) => {
     if (buyingPlan) return;
 
     if (wallet < price) {
@@ -25,19 +34,41 @@ function SubscriptionsModal({
     }
 
     setBuyingPlan(subType);
-    setWallet((currentValue) => currentValue - price);
-    setTransactions((currentValue) => [
-      createWalletTransaction({
-        id: `SUB-${Date.now()}`,
-        type: 'debit',
-        amount: price,
-        description: `اشتراك باقة ${subType === 'student' ? 'الطالب' : 'VIP'}`,
-      }),
-      ...currentValue,
-    ]);
-    setSubscription(subType);
-    showToast('تم تفعيل الباقة بنجاح.', 'success');
-    closeModal();
+
+    try {
+      if (!authoritative) {
+        setWallet((currentValue) => currentValue - price);
+        setTransactions((currentValue) => [
+          createWalletTransaction({
+            id: `SUB-${Date.now()}`,
+            type: 'debit',
+            amount: price,
+            description: `اشتراك باقة ${subType === 'student' ? 'الطالب' : 'VIP'}`,
+          }),
+          ...currentValue,
+        ]);
+        setSubscription(subType);
+        showToast('تم تفعيل الباقة بنجاح.', 'success');
+        closeModal();
+        return;
+      }
+
+      const result = await purchaseSubscriptionAtomic({
+        plan: subType,
+        clientId: createClientMoneyId(`sub-${subType}`),
+      });
+
+      if (!result?.ok) {
+        showToast(result?.message || 'تعذر تفعيل الباقة حالياً.', 'error');
+        return;
+      }
+
+      await refreshCloudState?.({ silent: true, force: true });
+      showToast(result?.message || 'تم تفعيل الباقة بنجاح.', 'success');
+      closeModal();
+    } finally {
+      setBuyingPlan('');
+    }
   };
 
   const plans = [
@@ -67,38 +98,49 @@ function SubscriptionsModal({
       icon={<Crown className="h-6 w-6" />}
       maxWidth="max-w-3xl"
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        {plans.map((plan) => {
-          const isActive = subscription === plan.key;
-          return (
-            <div key={plan.key} className={`rounded-[28px] border p-5 ${plan.tone}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-xl font-black text-slate-900 dark:text-white">{plan.title}</h4>
-                  <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{formatCurrency(plan.price)} / شهريًا</p>
+      <div className="space-y-5">
+        {authoritative ? (
+          <InlineNotice
+            tone="info"
+            title="تفعيل محمي على السيرفر"
+            text="في وضع الإنتاج، شراء الباقة لا يخصم محليًا. لازم العملية الذرية تنجح على السيرفر الأول لحماية الرصيد ومنع التكرار."
+            icon={ShieldCheck}
+          />
+        ) : null}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {plans.map((plan) => {
+            const isActive = subscription === plan.key;
+            return (
+              <div key={plan.key} className={`rounded-[28px] border p-5 ${plan.tone}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="text-xl font-black text-slate-900 dark:text-white">{plan.title}</h4>
+                    <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{formatCurrency(plan.price)} / شهريًا</p>
+                  </div>
+                  {isActive ? <MetaChip label="مفعلة حالياً" tone="success" /> : null}
                 </div>
-                {isActive ? <MetaChip label="مفعلة حالياً" tone="success" /> : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {plan.chips.map((chip) => <MetaChip key={chip} label={chip} tone="brand" />)}
+                </div>
+                <ul className="mt-4 space-y-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                  {plan.points.map((point) => (
+                    <li key={point}>• {point}</li>
+                  ))}
+                </ul>
+                <div className="mt-5">
+                  {isActive ? (
+                    <SecondaryButton className="w-full" onClick={closeModal}>تمام</SecondaryButton>
+                  ) : (
+                    <PrimaryButton className="w-full" onClick={() => handleBuy(plan.key, plan.price)} disabled={Boolean(buyingPlan)}>
+                      {buyingPlan === plan.key ? 'جاري التفعيل…' : 'فعّل الباقة'}
+                    </PrimaryButton>
+                  )}
+                </div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {plan.chips.map((chip) => <MetaChip key={chip} label={chip} tone="brand" />)}
-              </div>
-              <ul className="mt-4 space-y-2 text-sm font-bold text-slate-600 dark:text-slate-300">
-                {plan.points.map((point) => (
-                  <li key={point}>• {point}</li>
-                ))}
-              </ul>
-              <div className="mt-5">
-                {isActive ? (
-                  <SecondaryButton className="w-full" onClick={closeModal}>تمام</SecondaryButton>
-                ) : (
-                  <PrimaryButton className="w-full" onClick={() => handleBuy(plan.key, plan.price)} disabled={Boolean(buyingPlan)}>
-                    {buyingPlan === plan.key ? 'جاري التفعيل…' : 'فعّل الباقة'}
-                  </PrimaryButton>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </ModalShell>
   );

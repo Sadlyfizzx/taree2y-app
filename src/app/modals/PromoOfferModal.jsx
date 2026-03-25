@@ -22,6 +22,7 @@ export default function PromoOfferModal({
   closeModal,
   showToast,
   onDismiss,
+  onCopyOffer,
 }) {
   if (!offer) return null;
 
@@ -36,6 +37,7 @@ export default function PromoOfferModal({
     );
 
     if (copied) {
+      onCopyOffer?.(offer);
       onDismiss?.();
       closeModal();
     }

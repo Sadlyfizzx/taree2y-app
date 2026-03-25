@@ -84,6 +84,7 @@ function HomeView({
   openGuide,
   isFirstTimeUser = false,
   promoHighlights = [],
+  onPromoHighlightInteraction,
 }) {
   const todayDate = getLocalDateInputValue();
 
@@ -95,7 +96,8 @@ function HomeView({
     }));
   };
 
-  const copyPromo = async (code) => {
+  const copyPromo = async (offer) => {
+    const code = String(offer?.code || '').trim();
     if (!code) return;
 
     if (navigator.clipboard && window.isSecureContext) {
@@ -118,6 +120,7 @@ function HomeView({
     }
 
     showToast(`تم نسخ الكود ${code} جاهز للاستخدام`, 'success');
+    onPromoHighlightInteraction?.(offer, 'copied');
   };
 
   const searchFieldClassName =
@@ -354,9 +357,11 @@ function HomeView({
                 type="button"
                 onClick={() => {
                   if (offer.code) {
-                    copyPromo(offer.code);
+                    copyPromo(offer);
                     return;
                   }
+
+                  onPromoHighlightInteraction?.(offer, 'opened');
 
                   if (offer.routeParams) {
                     onPromoSearch({

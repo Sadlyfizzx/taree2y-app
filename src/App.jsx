@@ -1,6 +1,7 @@
 import UserApp from './app/components/UserApp';
 import { useAuthSession } from './app/hooks/useAuthSession';
 import { useDarkMode } from './app/hooks/useDarkMode';
+import { useDeploymentRefresh } from './app/hooks/useDeploymentRefresh';
 import PublicPortalRouter, { isPublicPortalPath } from './app/public/PublicPortalRouter';
 import LoginScreen from './app/screens/LoginScreen';
 
@@ -20,6 +21,11 @@ export default function App() {
   const pathname = typeof window !== 'undefined' ? window.location.pathname || '/' : '/';
   const { session, profile, authLoading, authWarning, refreshProfile } = useAuthSession();
   const { isDark, setIsDark } = useDarkMode();
+
+  useDeploymentRefresh({
+    enabled: !import.meta.env.DEV,
+    checkIntervalMs: 60000,
+  });
 
   if (isPublicPortalPath(pathname)) {
     return <PublicPortalRouter />;

@@ -7,10 +7,19 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:booking": "vitest run src/lib/promoEngine.test.js src/app/screens/CheckoutView.test.jsx",
+    "qa:phase3": "npm run test:booking",
+    "test:core": "vitest run src/app/components/internal/InternalOpsPanel.test.jsx src/app/public/publicPortal.test.js src/app/public/PublicWalletTopUpView.test.jsx src/app/components/UserApp.smoke.test.jsx",
+    "test:all": "npm run test:booking && npm run test:core"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -18,7 +27,9 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
-    "vite": "^8.0.1"
+    "jsdom": "^29.0.1",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.1"
   },
   "dependencies": {
     "@fontsource/cairo": "^5.2.7",

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { ExternalLink, QrCode } from 'lucide-react';
+import { ExternalLink, QrCode, ShieldCheck } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
+import { InlineNotice } from '../components/ui/StateBlocks';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
 import {
@@ -13,9 +14,15 @@ import {
 
 const QUICK_AMOUNTS = [50, 100, 200, 500];
 
-export default function WalletQrModal({ closeModal, userId, showToast }) {
-  const [amount, setAmount] = useState('100');
+export default function WalletQrModal({ closeModal, userId, showToast, initialAmount = 100 }) {
+  const [amount, setAmount] = useState(() => String(initialAmount || 100));
   const [qrDataUrl, setQrDataUrl] = useState('');
+
+  useEffect(() => {
+    if (initialAmount) {
+      setAmount(String(initialAmount));
+    }
+  }, [initialAmount]);
 
   const numericAmount = Math.max(0, Number(amount) || 0);
   const { grossAmount, feeAmount, netAmount } = useMemo(
@@ -80,6 +87,13 @@ export default function WalletQrModal({ closeModal, userId, showToast }) {
       }
     >
       <div className="space-y-5">
+        <InlineNotice
+          tone="info"
+          title="الرصيد يتحدث بعد الدفع الحقيقي"
+          text="طالما العملية لسه ما اتأكدتش في صفحة الشحن، التطبيق مش هيضيف الرصيد محليًا. ده مقصود لحماية المحفظة ومنع الازدواج."
+          icon={ShieldCheck}
+        />
+
         <label className="flex flex-col gap-2">
           <span className="text-sm font-black text-slate-900 dark:text-white">المبلغ المدفوع</span>
           <input

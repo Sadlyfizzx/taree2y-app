@@ -152,7 +152,7 @@ function SearchResultsView({ searchParams, searchResults, isSearching, onSelectT
                   : selectedTrip.seats?.filter((seat) => seat.status === 'available').length || 0;
 
                 if (availableSeats === 0) {
-                  showToast('سجلنا طلبك على قائمة الانتظار وهتوصلك تنبيه لو ظهر مكان.', 'success');
+                  showToast('لا توجد مقاعد متاحة على الرحلة دي حالياً.', 'error');
                   return;
                 }
 

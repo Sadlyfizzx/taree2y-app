@@ -21,6 +21,7 @@ import {
   updateCurrentUserProfile,
 } from '../../lib/auth';
 import { createLogger } from '../../lib/logger';
+import ReferralCard from '../components/ui/ReferralCard';
 import ModalShell from '../components/ui/ModalShell';
 import {
   AppSurface,
@@ -45,6 +46,9 @@ function ProfileView({
   showToast,
   openModal,
   openGuide,
+  referralSummary,
+  refreshReferralSummary,
+  applyReferralCode,
 }) {
   const isGold = points >= 1000;
 
@@ -232,6 +236,13 @@ function ProfileView({
           </p>
         </AppSurface>
       </div>
+
+      <ReferralCard
+        summary={referralSummary}
+        onRefresh={refreshReferralSummary}
+        onApplyCode={applyReferralCode}
+        showToast={showToast}
+      />
 
       <div className="grid gap-5 xl:grid-cols-2">
         <AppSurface className="p-6">
