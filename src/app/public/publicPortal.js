@@ -77,34 +77,12 @@ export function getWalletTopupPaidStorageKey(requestId) {
   return `taree2y_topup_paid_${String(requestId || '').trim()}`;
 }
 
-export function readWalletTopupPaidState(requestId) {
-  const key = getWalletTopupPaidStorageKey(requestId);
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+export function readWalletTopupPaidState(_requestId) {
+  return null;
 }
 
-export function markWalletTopupPaid(requestId, payload = {}) {
-  const key = getWalletTopupPaidStorageKey(requestId);
-
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        paid: true,
-        paidAt: Date.now(),
-        requestId: String(requestId || ''),
-        ...payload,
-      }),
-    );
-  } catch {
-    // ignore storage failures
-  }
+export function markWalletTopupPaid(_requestId, _payload = {}) {
+  // backend-only mode: top-up confirmation must be read from the backend, not browser storage
 }
 
 export async function copyTextWithFallback(text, label = 'الرابط') {

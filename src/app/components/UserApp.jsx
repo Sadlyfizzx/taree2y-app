@@ -12,12 +12,9 @@ import {
 import { createLogger, isMissingRpcError } from '../../lib/logger';
 import {
   applyReferralCode as applyReferralCodeRpc,
-  clearPendingReferralCode,
   getReferralCodeFromUrl,
   getReferralSummary,
-  readPendingReferralCode,
   recordCampaignEvent,
-  stashPendingReferralCode,
 } from '../../lib/engagement';
 import { markOfferPopupSeen } from '../../lib/account';
 import { signOutCurrentUser } from '../../lib/auth';
@@ -106,12 +103,7 @@ function readInternalOpsEnabled() {
 
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('ops') === '1') {
-      return true;
-    }
-
-    const stored = localStorage.getItem('taree2y_internal_ops');
-    return stored === '1' || stored === 'true';
+    return params.get('ops') === '1';
   } catch {
     return false;
   }
@@ -177,6 +169,9 @@ export default function UserApp({
   const shownAuthWarningRef = useRef('');
   const promoHighlightImpressionsRef = useRef(new Set());
   const promoPopupImpressionsRef = useRef(new Set());
+  const dismissedPromoPopupRef = useRef(new Set());
+  const appliedReferralCodesRef = useRef(new Set());
+  const referralCodeFromUrl = useMemo(() => getReferralCodeFromUrl(), []);
 
   const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide({
     userId,
@@ -286,13 +281,6 @@ export default function UserApp({
   };
 
   useEffect(() => {
-    const codeFromUrl = getReferralCodeFromUrl();
-    if (codeFromUrl) {
-      stashPendingReferralCode(codeFromUrl);
-    }
-  }, []);
-
-  useEffect(() => {
     let active = true;
 
     if (!userId) {
@@ -307,23 +295,16 @@ export default function UserApp({
       if (!active) return;
       setReferralSummary(summary);
 
-      const pendingCode = readPendingReferralCode();
+      const pendingCode = referralCodeFromUrl;
       if (!pendingCode || summary?.canApplyCode === false) return;
+      if (appliedReferralCodesRef.current.has(`${userId}:${pendingCode}`)) return;
 
+      appliedReferralCodesRef.current.add(`${userId}:${pendingCode}`);
       const result = await applyReferralCodeRpc({ userId, code: pendingCode });
       if (!active) return;
 
       if (result?.message) {
         showToast(result.message, result.ok ? 'success' : 'error');
-      }
-
-      if (
-        result?.ok ||
-        ['referral_exists', 'referral_invalid', 'referral_self', 'referral_not_eligible'].includes(
-          String(result?.code || ''),
-        )
-      ) {
-        clearPendingReferralCode();
       }
 
       const refreshed = await getReferralSummary({ userId });
@@ -335,12 +316,10 @@ export default function UserApp({
     return () => {
       active = false;
     };
-  }, [userId, myTrips.length]);
+  }, [userId, myTrips.length, referralCodeFromUrl]);
 
   useEffect(() => {
     let active = true;
-
-    const sessionKey = `taree2y_promo_offer_seen_${userId}`;
 
     const loadOffer = async () => {
       if (!userId || !profile?.onboarding_completed_at) {
@@ -381,19 +360,16 @@ export default function UserApp({
         return;
       }
 
-      let alreadySeenThisSession = false;
-      try {
-        alreadySeenThisSession = sessionStorage.getItem(sessionKey) === 'done';
-      } catch {
-        alreadySeenThisSession = false;
+      const popupKey = offer.campaignId || offer.code || offer.title || 'popup';
+      if (dismissedPromoPopupRef.current.has(`${userId}:${popupKey}`)) {
+        return;
       }
 
-      if (offer.popupEnabled && !alreadySeenThisSession && !activeModal && !isGuideOpen) {
+      if (offer.popupEnabled && !activeModal && !isGuideOpen) {
         setPromoPopupOffer(offer);
         setActiveModal('promo_offer');
 
-        const popupKey = offer.campaignId || offer.code || offer.title;
-        if (popupKey && !promoPopupImpressionsRef.current.has(popupKey) && offer.campaignId) {
+        if (!promoPopupImpressionsRef.current.has(popupKey) && offer.campaignId) {
           promoPopupImpressionsRef.current.add(popupKey);
           recordCampaignEvent({
             userId,
@@ -416,12 +392,10 @@ export default function UserApp({
       window.clearTimeout(timeoutId);
     };
   }, [userId, profile?.onboarding_completed_at, activeModal, isGuideOpen, promoContext]);
-
   const dismissPromoOffer = async () => {
-    try {
-      sessionStorage.setItem(`taree2y_promo_offer_seen_${userId}`, 'done');
-    } catch {
-      // ignore session storage failures
+    const popupKey = promoPopupOffer?.campaignId || promoPopupOffer?.code || promoPopupOffer?.title || 'popup';
+    if (userId) {
+      dismissedPromoPopupRef.current.add(`${userId}:${popupKey}`);
     }
 
     if (userId && promoPopupOffer?.campaignId) {

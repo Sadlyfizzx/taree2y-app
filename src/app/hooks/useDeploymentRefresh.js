@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-const RELOAD_GUARD_KEY = 'taree2y_last_deploy_reload_at';
+let lastReloadAt = 0;
 
 function normalizeAssetPath(value) {
   try {
@@ -32,21 +32,11 @@ function collectAssetsFromDocument(doc) {
 }
 
 function canReloadNow() {
-  try {
-    const raw = sessionStorage.getItem(RELOAD_GUARD_KEY);
-    const lastReloadAt = Number(raw || 0);
-    return !Number.isFinite(lastReloadAt) || Date.now() - lastReloadAt > 15000;
-  } catch {
-    return true;
-  }
+  return !Number.isFinite(lastReloadAt) || Date.now() - lastReloadAt > 15000;
 }
 
 function markReloadNow() {
-  try {
-    sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
-  } catch {
-    // ignore storage failures
-  }
+  lastReloadAt = Date.now();
 }
 
 async function fetchRemoteAssetSignature() {

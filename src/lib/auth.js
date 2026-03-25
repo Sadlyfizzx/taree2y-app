@@ -15,7 +15,7 @@ import {
 } from './account';
 
 const log = createLogger('auth');
-const ACCOUNT_ACCESS_NOTICE_KEY = 'taree2y_account_access_notice_v2';
+let pendingAccountAccessNotice = '';
 
 function normalizeText(value) {
   const text = String(value ?? '').trim();
@@ -36,36 +36,13 @@ export function extractRateLimitSeconds(message = '') {
 export function setAccountAccessNotice(message) {
   const safeMessage = normalizeText(message);
   if (!safeMessage) return;
-
-  try {
-    localStorage.setItem(
-      ACCOUNT_ACCESS_NOTICE_KEY,
-      JSON.stringify({
-        message: safeMessage,
-        at: Date.now(),
-      }),
-    );
-  } catch {
-    // ignore storage failures
-  }
+  pendingAccountAccessNotice = safeMessage;
 }
 
 export function consumeAccountAccessNotice() {
-  try {
-    const raw = localStorage.getItem(ACCOUNT_ACCESS_NOTICE_KEY);
-    if (!raw) return '';
-    localStorage.removeItem(ACCOUNT_ACCESS_NOTICE_KEY);
-
-    const parsed = JSON.parse(raw);
-    return normalizeText(parsed?.message) || '';
-  } catch {
-    try {
-      localStorage.removeItem(ACCOUNT_ACCESS_NOTICE_KEY);
-    } catch {
-      // ignore storage failures
-    }
-    return '';
-  }
+  const nextMessage = normalizeText(pendingAccountAccessNotice);
+  pendingAccountAccessNotice = '';
+  return nextMessage;
 }
 
 export function getFriendlyAuthError(error, context = 'generic') {

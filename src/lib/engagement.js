@@ -11,30 +11,13 @@ const REFERRAL_PENDING_KEY = 'taree2y_pending_referral_code';
 const DISABLED_ENGAGEMENT_RPCS_KEY = 'taree2y_disabled_engagement_rpcs';
 
 function readDisabledEngagementRpcs() {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const raw = window.sessionStorage.getItem(DISABLED_ENGAGEMENT_RPCS_KEY);
-    const parsed = JSON.parse(raw || '[]');
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 const disabledEngagementRpcs = new Set(readDisabledEngagementRpcs());
 
 function persistDisabledEngagementRpcs() {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.sessionStorage.setItem(
-      DISABLED_ENGAGEMENT_RPCS_KEY,
-      JSON.stringify(Array.from(disabledEngagementRpcs)),
-    );
-  } catch {
-    // ignore storage failures
-  }
+  // backend-only mode: do not persist client capability state in browser storage
 }
 
 function markEngagementRpcUnavailable(rpcName) {
@@ -225,36 +208,15 @@ export function getReferralCodeFromUrl() {
 }
 
 export function stashPendingReferralCode(code) {
-  const safeCode = normalizeUpperText(code);
-  if (!safeCode || typeof window === 'undefined') return safeCode;
-
-  try {
-    window.localStorage.setItem(REFERRAL_PENDING_KEY, safeCode);
-  } catch {
-    // ignore storage failures
-  }
-
-  return safeCode;
+  return normalizeUpperText(code);
 }
 
 export function readPendingReferralCode() {
-  if (typeof window === 'undefined') return '';
-
-  try {
-    return normalizeUpperText(window.localStorage.getItem(REFERRAL_PENDING_KEY));
-  } catch {
-    return '';
-  }
+  return '';
 }
 
 export function clearPendingReferralCode() {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.localStorage.removeItem(REFERRAL_PENDING_KEY);
-  } catch {
-    // ignore storage failures
-  }
+  // backend-only mode: do not persist referral codes in browser storage
 }
 
 export async function syncUserEngagement({ userId, context = {} }) {

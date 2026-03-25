@@ -1,23 +1,9 @@
 import { useEffect, useState } from 'react';
 
-const THEME_KEY = 'taree2y_v7_theme';
 const LIGHT_THEME_COLOR = '#f4f7fb';
 const DARK_THEME_COLOR = '#020617';
 
-function readStoredTheme() {
-  try {
-    return localStorage.getItem(THEME_KEY);
-  } catch {
-    return null;
-  }
-}
-
 function getInitialDarkState() {
-  const storedTheme = readStoredTheme();
-
-  if (storedTheme === 'dark') return true;
-  if (storedTheme === 'light') return false;
-
   if (
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function'
@@ -50,12 +36,6 @@ export function useDarkMode() {
 
   useEffect(() => {
     syncDocumentTheme(isDark);
-
-    try {
-      localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
-    } catch {
-      // ignore storage failures
-    }
   }, [isDark]);
 
   return { isDark, setIsDark };

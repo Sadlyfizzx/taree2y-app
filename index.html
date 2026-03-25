@@ -36,25 +36,19 @@
     <script>
       (() => {
         try {
-          const themeKey = 'taree2y_v7_theme';
-          const storedTheme = localStorage.getItem(themeKey);
           const prefersDark =
             typeof window.matchMedia === 'function' &&
             window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-          const isDark =
-            storedTheme === 'dark' ||
-            (storedTheme !== 'light' && prefersDark);
-
-          document.documentElement.classList.toggle('dark', Boolean(isDark));
-          document.documentElement.classList.toggle('light', !isDark);
-          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+          document.documentElement.classList.toggle('dark', Boolean(prefersDark));
+          document.documentElement.classList.toggle('light', !prefersDark);
+          document.documentElement.style.colorScheme = prefersDark ? 'dark' : 'light';
 
           const metaThemeColor = document.querySelector('meta[name="theme-color"]');
           if (metaThemeColor) {
             metaThemeColor.setAttribute(
               'content',
-              isDark ? '#020617' : '#f4f7fb',
+              prefersDark ? '#020617' : '#f4f7fb',
             );
           }
         } catch {
