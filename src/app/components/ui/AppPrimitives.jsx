@@ -168,7 +168,7 @@ export function SecondaryButton({
   );
 }
 
-export function MetaChip({ children, icon, className = '', ...props }) {
+export function ActionChip({ children, icon, className = '', ...props }) {
   return (
     <button
       type="button"
