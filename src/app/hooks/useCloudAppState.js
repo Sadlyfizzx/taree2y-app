@@ -2,10 +2,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadSupabaseAppState } from '../../lib/supabaseAppState';
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
-import { normalizeWalletTransaction, sortWalletTransactions } from '../../lib/wallet';
-import { getTripLifecycleStatus } from '../utils/travel';
+import { sortWalletTransactions } from '../../lib/wallet';
 
 const log = createLogger('cloud-app-state');
+
+const EMPTY_APP_STATE = {
+  wallet: 0,
+  transactions: [],
+  myTrips: [],
+  points: 0,
+  subscription: 'none',
+};
+
+function normalizeAppState(nextState) {
+  return {
+    wallet: Number(nextState?.wallet ?? 0),
+    transactions: Array.isArray(nextState?.transactions)
+      ? sortWalletTransactions(nextState.transactions)
+      : [],
+    myTrips: Array.isArray(nextState?.myTrips) ? nextState.myTrips : [],
+    points: Number(nextState?.points ?? 0),
+    subscription: nextState?.subscription || 'none',
+  };
+}
 
 export function useCloudAppState(userId) {
   const [wallet, setWallet] = useState(0);
@@ -16,11 +35,9 @@ export function useCloudAppState(userId) {
   const [backendReady, setBackendReady] = useState(false);
   const [backendLoading, setBackendLoading] = useState(true);
 
-  const isHydratingCloudRef = useRef(false);
-  const isSavingRef = useRef(false);
-  const lastLocalMutationAtRef = useRef(0);
-  const lastRefreshAtRef = useRef(0);
   const currentStateSignatureRef = useRef('');
+  const refreshInFlightRef = useRef(null);
+  const lastRefreshAtRef = useRef(0);
 
   const buildStateSignature = useCallback(
     (state) =>
@@ -38,20 +55,13 @@ export function useCloudAppState(userId) {
 
   const applyAppState = useCallback(
     (nextState) => {
-      const normalized = {
-        wallet: Number(nextState?.wallet ?? 0),
-        transactions: Array.isArray(nextState?.transactions)
-          ? sortWalletTransactions(nextState.transactions)
-          : [],
-        myTrips: Array.isArray(nextState?.myTrips) ? nextState.myTrips : [],
-        points: Number(nextState?.points ?? 0),
-        subscription: nextState?.subscription || 'none',
-      };
-
+      const normalized = normalizeAppState(nextState);
       const signature = buildStateSignature(normalized);
-      if (signature === currentStateSignatureRef.current) return false;
 
-      isHydratingCloudRef.current = true;
+      if (signature === currentStateSignatureRef.current) {
+        return false;
+      }
+
       currentStateSignatureRef.current = signature;
       setWallet(normalized.wallet);
       setTransactions(normalized.transactions);
@@ -65,45 +75,85 @@ export function useCloudAppState(userId) {
 
   const refreshCloudState = useCallback(
     async ({ silent = false, force = false } = {}) => {
-      if (!userId) return;
+      if (!userId) {
+        applyAppState(EMPTY_APP_STATE);
+        setBackendReady(false);
+        setBackendLoading(false);
+        return {
+          ok: true,
+          code: 'empty_user',
+          message: 'لا يوجد مستخدم نشط حاليًا.',
+          data: EMPTY_APP_STATE,
+        };
+      }
 
       const nowMs = Date.now();
-      if (!force && silent) {
-        if (isSavingRef.current) return;
-        if (nowMs - lastLocalMutationAtRef.current < 1500) return;
-        if (nowMs - lastRefreshAtRef.current < 2000) return;
+      if (!force && refreshInFlightRef.current) {
+        return refreshInFlightRef.current;
+      }
+
+      if (!force && silent && nowMs - lastRefreshAtRef.current < 2000) {
+        return {
+          ok: true,
+          code: 'refresh_skipped',
+          message: 'تم تجاهل تحديث متكرر خلال وقت قصير.',
+          data: null,
+        };
       }
 
       if (!silent) setBackendLoading(true);
 
-      const { data, error } = await loadSupabaseAppState(userId);
-      if (error) {
-        log.error('refresh_failed', {
-          userId,
-          error,
+      const task = (async () => {
+        const { data, error } = await loadSupabaseAppState(userId);
+
+        if (error) {
+          log.error('refresh_failed', {
+            userId,
+            error,
+          });
+
+          return {
+            ok: false,
+            code: 'refresh_failed',
+            message: 'تعذر تحديث البيانات من السيرفر.',
+            error,
+          };
+        }
+
+        const normalized = normalizeAppState({
+          wallet: data?.wallet ?? 0,
+          transactions: data?.transactions ?? [],
+          myTrips: data?.myTrips ?? [],
+          points: data?.points ?? 0,
+          subscription: data?.subscription ?? 'none',
         });
 
+        lastRefreshAtRef.current = Date.now();
+        applyAppState(normalized);
+        setBackendReady(true);
+
+        log.debug('refresh_completed', {
+          userId,
+          wallet: normalized.wallet,
+          trips: normalized.myTrips.length,
+        });
+
+        return {
+          ok: true,
+          code: 'ok',
+          message: 'تم تحديث الحالة من السيرفر.',
+          data: normalized,
+        };
+      })();
+
+      refreshInFlightRef.current = task;
+
+      try {
+        return await task;
+      } finally {
+        refreshInFlightRef.current = null;
         if (!silent) setBackendLoading(false);
-        return;
       }
-
-      lastRefreshAtRef.current = Date.now();
-      applyAppState({
-        wallet: data?.wallet ?? 0,
-        transactions: data?.transactions ?? [],
-        myTrips: data?.myTrips ?? [],
-        points: data?.points ?? 0,
-        subscription: data?.subscription ?? 'none',
-      });
-      setBackendReady(true);
-
-      if (!silent) setBackendLoading(false);
-
-      log.debug('refresh_completed', {
-        userId,
-        wallet: data?.wallet ?? 0,
-        trips: (data?.myTrips || []).length,
-      });
     },
     [applyAppState, userId],
   );
@@ -113,13 +163,7 @@ export function useCloudAppState(userId) {
 
     (async () => {
       if (!userId) {
-        applyAppState({
-          wallet: 0,
-          transactions: [],
-          myTrips: [],
-          points: 0,
-          subscription: 'none',
-        });
+        applyAppState(EMPTY_APP_STATE);
         setBackendReady(false);
         setBackendLoading(false);
         return;
@@ -127,63 +171,20 @@ export function useCloudAppState(userId) {
 
       setBackendLoading(true);
 
-      const { data, error } = await loadSupabaseAppState(userId);
+      const result = await refreshCloudState({ force: true });
       if (!active) return;
 
-      if (error) {
-        log.error('initial_load_failed', {
-          userId,
-          error,
-        });
-
-        applyAppState({
-          wallet: 0,
-          transactions: [],
-          myTrips: [],
-          points: 0,
-          subscription: 'none',
-        });
-      } else {
-        applyAppState({
-          wallet: data?.wallet ?? 0,
-          transactions: data?.transactions ?? [],
-          myTrips: data?.myTrips ?? [],
-          points: data?.points ?? 0,
-          subscription: data?.subscription ?? 'none',
-        });
+      if (!result?.ok) {
+        applyAppState(EMPTY_APP_STATE);
+        setBackendReady(true);
+        setBackendLoading(false);
       }
-
-      setBackendReady(true);
-      setBackendLoading(false);
     })();
 
     return () => {
       active = false;
     };
-  }, [applyAppState, userId]);
-
-  useEffect(() => {
-    if (!backendReady) return;
-    if (isHydratingCloudRef.current) {
-      isHydratingCloudRef.current = false;
-      return;
-    }
-
-    currentStateSignatureRef.current = buildStateSignature({
-      wallet,
-      transactions,
-      myTrips,
-      points,
-      subscription,
-    });
-    lastLocalMutationAtRef.current = Date.now();
-  }, [wallet, transactions, myTrips, points, subscription, backendReady, buildStateSignature]);
-
-  useEffect(() => {
-    if (!backendReady || !userId) return;
-
-    isSavingRef.current = false;
-  }, [userId, backendReady, wallet, transactions, myTrips, points, subscription]);
+  }, [applyAppState, refreshCloudState, userId]);
 
   useEffect(() => {
     if (!backendReady || !userId) return;
@@ -242,39 +243,6 @@ export function useCloudAppState(userId) {
       supabase.removeChannel(channel);
     };
   }, [backendReady, refreshCloudState, userId]);
-
-  useEffect(() => {
-    let changed = false;
-    let awardedPoints = 0;
-
-    const nextTrips = myTrips.map((trip) => {
-      if (trip.status !== 'upcoming') return trip;
-
-      const lifecycle = getTripLifecycleStatus(trip);
-      if (lifecycle.key !== 'arrived') return trip;
-
-      changed = true;
-      if (!trip.pointsAwarded && trip.earnedPointsPending > 0) {
-        awardedPoints += trip.earnedPointsPending;
-      }
-
-      return {
-        ...trip,
-        status: 'past',
-        pointsAwarded: true,
-      };
-    });
-
-    if (!changed) return;
-
-    setMyTrips(nextTrips);
-    if (awardedPoints > 0) setPoints((value) => value + awardedPoints);
-
-    log.info('trip_lifecycle_promoted_to_past', {
-      userId,
-      awardedPoints,
-    });
-  }, [myTrips, userId]);
 
   return {
     wallet,

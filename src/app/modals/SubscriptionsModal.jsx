@@ -4,26 +4,23 @@ import ModalShell from '../components/ui/ModalShell';
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
-import { createWalletTransaction } from '../../lib/wallet';
 import {
   createClientMoneyId,
-  isAuthoritativeRuntime,
   purchaseSubscriptionAtomic,
 } from '../../lib/moneyLifecycle';
 
 function SubscriptionsModal({
   closeModal,
   wallet,
-  setWallet,
-  setTransactions,
+  setWallet: _setWallet,
+  setTransactions: _setTransactions,
   subscription,
-  setSubscription,
+  setSubscription: _setSubscription,
   showToast,
-  runtimeMode = 'supabase',
+  runtimeMode: _runtimeMode = 'supabase',
   refreshCloudState,
 }) {
   const [buyingPlan, setBuyingPlan] = useState('');
-  const authoritative = isAuthoritativeRuntime(runtimeMode);
 
   const handleBuy = async (subType, price) => {
     if (buyingPlan) return;
@@ -36,23 +33,6 @@ function SubscriptionsModal({
     setBuyingPlan(subType);
 
     try {
-      if (!authoritative) {
-        setWallet((currentValue) => currentValue - price);
-        setTransactions((currentValue) => [
-          createWalletTransaction({
-            id: `SUB-${Date.now()}`,
-            type: 'debit',
-            amount: price,
-            description: `اشتراك باقة ${subType === 'student' ? 'الطالب' : 'VIP'}`,
-          }),
-          ...currentValue,
-        ]);
-        setSubscription(subType);
-        showToast('تم تفعيل الباقة بنجاح.', 'success');
-        closeModal();
-        return;
-      }
-
       const result = await purchaseSubscriptionAtomic({
         plan: subType,
         clientId: createClientMoneyId(`sub-${subType}`),
@@ -94,52 +74,80 @@ function SubscriptionsModal({
     <ModalShell
       onClose={closeModal}
       title="باقات التوفير"
-      subtitle="خطط بسيطة تقلل التكلفة على الرحلات المتكررة من غير ما تعقد تجربة الحجز."
+      subtitle="تفعيل الباقات بقى يعتمد بالكامل على السيرفر من غير أي خصم محلي مؤقت أو نهائي."
       icon={<Crown className="h-6 w-6" />}
       maxWidth="max-w-3xl"
     >
       <div className="space-y-5">
-        {authoritative ? (
-          <InlineNotice
-            tone="info"
-            title="تفعيل محمي على السيرفر"
-            text="في وضع الإنتاج، شراء الباقة لا يخصم محليًا. لازم العملية الذرية تنجح على السيرفر الأول لحماية الرصيد ومنع التكرار."
-            icon={ShieldCheck}
-          />
-        ) : null}
+        <InlineNotice
+          tone="info"
+          title="تفعيل حقيقي فقط"
+          text="تم إلغاء أي خصم محلي أو تفعيل محلي للباقة. لازم العملية الذرية تنجح على السيرفر الأول."
+          icon={ShieldCheck}
+        />
 
         <div className="grid gap-4 md:grid-cols-2">
           {plans.map((plan) => {
             const isActive = subscription === plan.key;
+            const disabled = Boolean(buyingPlan) || isActive;
+
             return (
-              <div key={plan.key} className={`rounded-[28px] border p-5 ${plan.tone}`}>
+              <div
+                key={plan.key}
+                className={`rounded-[28px] border p-5 shadow-sm transition ${plan.tone} ${
+                  isActive ? 'ring-2 ring-indigo-400/70 dark:ring-indigo-500/50' : ''
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <h4 className="text-xl font-black text-slate-900 dark:text-white">{plan.title}</h4>
-                    <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{formatCurrency(plan.price)} / شهريًا</p>
+                    <p className="text-xl font-black text-slate-900 dark:text-white">{plan.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                      {plan.points.join(' • ')}
+                    </p>
                   </div>
-                  {isActive ? <MetaChip label="مفعلة حالياً" tone="success" /> : null}
+                  <MetaChip label={formatCurrency(plan.price)} tone="brand" />
                 </div>
+
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {plan.chips.map((chip) => <MetaChip key={chip} label={chip} tone="brand" />)}
-                </div>
-                <ul className="mt-4 space-y-2 text-sm font-bold text-slate-600 dark:text-slate-300">
-                  {plan.points.map((point) => (
-                    <li key={point}>• {point}</li>
+                  {plan.chips.map((chip) => (
+                    <MetaChip key={chip} label={chip} tone="success" />
                   ))}
-                </ul>
-                <div className="mt-5">
-                  {isActive ? (
-                    <SecondaryButton className="w-full" onClick={closeModal}>تمام</SecondaryButton>
-                  ) : (
-                    <PrimaryButton className="w-full" onClick={() => handleBuy(plan.key, plan.price)} disabled={Boolean(buyingPlan)}>
-                      {buyingPlan === plan.key ? 'جاري التفعيل…' : 'فعّل الباقة'}
-                    </PrimaryButton>
-                  )}
+                  {isActive ? <MetaChip label="مفعلة حاليًا" tone="warning" /> : null}
+                </div>
+
+                <div className="mt-6">
+                  <PrimaryButton
+                    className="w-full"
+                    onClick={() => handleBuy(plan.key, plan.price)}
+                    disabled={disabled}
+                    loading={buyingPlan === plan.key}
+                    loadingText="جاري التفعيل…"
+                  >
+                    {isActive ? 'مفعلة بالفعل' : `فعّل الآن بـ ${formatCurrency(plan.price)}`}
+                  </PrimaryButton>
                 </div>
               </div>
             );
           })}
+        </div>
+
+        <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-indigo-100 p-3 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div className="space-y-2">
+              <p className="text-base font-black text-slate-900 dark:text-white">الخطوة دلوقتي أوضح</p>
+              <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
+                التطبيق يطلب شراء الباقة من السيرفر، وبعد النجاح يعمل تحديث للحالة علشان الرصيد
+                والباقات ييجوا من المصدر الحقيقي.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <SecondaryButton onClick={closeModal}>رجوع</SecondaryButton>
         </div>
       </div>
     </ModalShell>

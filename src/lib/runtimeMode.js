@@ -9,23 +9,21 @@ export function isDemoRuntimeRequested(runtimeMode = 'supabase') {
   return DEMO_RUNTIME_MODES.has(normalizeRuntimeMode(runtimeMode));
 }
 
-export function isDemoRuntimeEnabled(runtimeMode = 'supabase') {
-  return import.meta.env.DEV && isDemoRuntimeRequested(runtimeMode);
+export function isDemoRuntimeEnabled(_runtimeMode = 'supabase') {
+  return false;
 }
 
-export function isBackendAuthoritativeRuntime(runtimeMode = 'supabase') {
-  return !isDemoRuntimeEnabled(runtimeMode);
+export function isBackendAuthoritativeRuntime(_runtimeMode = 'supabase') {
+  return true;
 }
 
 export function getRuntimeAuthority(runtimeMode = 'supabase') {
   const normalizedMode = normalizeRuntimeMode(runtimeMode);
-  const demoRuntimeRequested = isDemoRuntimeRequested(normalizedMode);
-  const demoRuntimeEnabled = isDemoRuntimeEnabled(normalizedMode);
 
   return {
     mode: normalizedMode,
-    demoRuntimeRequested,
-    demoRuntimeEnabled,
-    backendAuthoritative: !demoRuntimeEnabled,
+    demoRuntimeRequested: isDemoRuntimeRequested(normalizedMode),
+    demoRuntimeEnabled: false,
+    backendAuthoritative: true,
   };
 }

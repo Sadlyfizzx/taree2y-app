@@ -122,48 +122,12 @@ export async function loadSupabaseAppState(userId) {
   return { data: { wallet: asNumber(walletRes.data?.balance, 0), points: asNumber(walletRes.data?.points, 0), subscription: walletRes.data?.subscription || 'none', transactions, myTrips }, error: null };
 }
 
-export async function saveSupabaseAppState(userId, state) {
-  if (!userId) return { error: null };
-  const nowIso = new Date().toISOString();
-
-  const walletPayload = { user_id: userId, balance: asNumber(state?.wallet, 0), points: asNumber(state?.points, 0), subscription: state?.subscription || 'none', updated_at: nowIso };
-  const txPayload = dedupeBy(asArray(state?.transactions).map((txn, index) => normalizeTransaction(txn, index)), (item) => item.client_id).map((txn) => ({
-    user_id: userId, client_id: txn.client_id, type: txn.type, amount: txn.amount, txn_date: txn.date, description: txn.desc, payload: txn.payload, created_at: txn.created_at || nowIso, updated_at: nowIso,
-  }));
-  const bookingsPayload = dedupeBy(asArray(state?.myTrips).map((booking, index) => normalizeBooking(booking, index)), (item) => item.client_id).map((booking) => ({
-    user_id: userId, client_id: booking.client_id, pnr: booking.pnr, status: booking.status, booking_date: booking.booking_date, final_total: booking.final_total, payment_method: booking.payment_method, selected_seats: booking.selected_seats, ticket_token: booking.ticket_token, qr_payload: booking.qr_payload, trip_data: booking.trip_data, updated_at: nowIso,
-  }));
-
-  const walletResult = await supabase.from('app_wallets').upsert(walletPayload, { onConflict: 'user_id' });
-  if (walletResult.error) throw walletResult.error;
-
-  if (txPayload.length > 0) {
-    const txResult = await supabase.from('app_wallet_transactions').upsert(txPayload, { onConflict: 'client_id' });
-    if (txResult.error) {
-      if (isMissingColumnError(txResult.error, 'type')) {
-        warnOnce('app_wallet_transactions.type', 'Legacy app_wallet_transactions schema detected. Transaction rows will be written in payload-only compatibility mode until you apply the migration.', txResult.error);
-        const legacyPayload = txPayload.map((txn) => ({ user_id: userId, client_id: txn.client_id, payload: txn.payload, created_at: txn.created_at || nowIso, updated_at: nowIso }));
-        const legacyResult = await supabase.from('app_wallet_transactions').upsert(legacyPayload, { onConflict: 'client_id' });
-        if (legacyResult.error) warnOnce('app_wallet_transactions.legacy', 'Legacy write also failed for app_wallet_transactions. Keeping local state only for now.', legacyResult.error);
-      } else {
-        throw txResult.error;
-      }
-    }
-  }
-
-  if (bookingsPayload.length > 0) {
-    const bookingsResult = await supabase.from('bookings').upsert(bookingsPayload, { onConflict: 'client_id' });
-    if (bookingsResult.error) {
-      if (isMissingColumnError(bookingsResult.error, 'pnr') || isMissingColumnError(bookingsResult.error, 'status')) {
-        warnOnce('bookings.legacy', 'Legacy bookings schema detected. Booking snapshots will be stored in payload-only compatibility mode until you apply the migration.', bookingsResult.error);
-        const legacyPayload = bookingsPayload.map((booking) => ({ user_id: userId, client_id: booking.client_id, trip_data: booking.trip_data, updated_at: nowIso }));
-        const legacyResult = await supabase.from('bookings').upsert(legacyPayload, { onConflict: 'client_id' });
-        if (legacyResult.error) warnOnce('bookings.legacy.write', 'Legacy write also failed for bookings. Keeping local state only for now.', legacyResult.error);
-      } else {
-        throw bookingsResult.error;
-      }
-    }
-  }
-
-  return { error: null };
+export async function saveSupabaseAppState(_userId, _state) {
+  return {
+    ok: false,
+    code: 'backend_required',
+    message:
+      'تم إيقاف حفظ snapshot شامل من الفرونت بعد Phase 6.5. استخدم عمليات الباك إند الذرية ثم اعمل refresh للحالة.',
+    error: null,
+  };
 }

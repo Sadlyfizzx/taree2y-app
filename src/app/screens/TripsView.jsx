@@ -17,7 +17,7 @@ import {
 } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency, formatSeatsText } from '../utils/formatting';
-import { getCancellationPolicy, getTripLifecycleStatus } from '../utils/travel';
+import { getCancellationPolicy } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
 
 function TripsView({
@@ -33,13 +33,7 @@ function TripsView({
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
   const computedTrips = useMemo(
-    () =>
-      trips.map((trip) => {
-        if (trip.status !== 'upcoming') return withStationNames(trip);
-        const lifecycle = getTripLifecycleStatus(trip);
-        if (lifecycle.key === 'arrived') return withStationNames({ ...trip, status: 'past' });
-        return withStationNames(trip);
-      }),
+    () => trips.map((trip) => withStationNames(trip)),
     [trips],
   );
 

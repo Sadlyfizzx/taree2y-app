@@ -21,7 +21,6 @@ import {
 } from '../../lib/engagement';
 import { markOfferPopupSeen } from '../../lib/account';
 import { signOutCurrentUser } from '../../lib/auth';
-import { createWalletTransaction } from '../../lib/wallet';
 import { getPromoPopupOffer } from '../../lib/promoEngine';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
@@ -663,13 +662,6 @@ export default function UserApp({
     setPendingCancellationBookingIds((prev) =>
       prev.includes(bookingId) ? prev : [...prev, bookingId],
     );
-    setMyTrips((prev) =>
-      prev.map((trip) => {
-        const tripKey = trip.bookingId || trip.id || null;
-        if (tripKey !== bookingId) return trip;
-        return { ...trip, status: 'refund_pending' };
-      }),
-    );
 
     log.info('booking_cancel_requested', {
       bookingId,
@@ -738,32 +730,29 @@ export default function UserApp({
       },
       async seedWallet(amount = 500, desc = 'شحن رصيد تجريبي (QA)') {
         const numericAmount = Math.max(0, Number(amount) || 0);
-        if (!numericAmount) return 0;
-        setWallet((prev) => prev + numericAmount);
-        setTransactions((prev) => [
-          createWalletTransaction({
-            id: `QA-TOPUP-${Date.now()}`,
-            type: 'credit',
-            amount: numericAmount,
-            date: getLocalDateInputValue(),
-            description: desc,
-          }),
-          ...prev,
-        ]);
         await wait();
-        return numericAmount;
+        return {
+          ok: false,
+          code: 'backend_required',
+          amount: numericAmount,
+          message:
+            'تم تعطيل شحن QA المحلي بعد Phase 6.5. استخدم شحن حقيقي أو mutation حقيقية على الباك إند.',
+          description: desc,
+        };
       },
       async resetDemoState() {
-        setWallet(0);
-        setTransactions([]);
-        setMyTrips([]);
-        setPoints(0);
-        setSubscription('none');
         setSelectedTrip(null);
         setSelectedSeats([]);
         setCurrentInvoice(null);
         setViewedTicket(null);
         navigateTo('main', 'home');
+
+        try {
+          await refreshCloudState({ silent: true, force: true });
+        } catch (error) {
+          log.warn('qa_reset_refresh_failed', { error });
+        }
+
         await wait();
         return true;
       },
