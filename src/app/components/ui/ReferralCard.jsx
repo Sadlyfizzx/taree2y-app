@@ -54,7 +54,7 @@ export default function ReferralCard({
       await onApplyCode(inputCode);
       setInputCode('');
     } finally {
-      setBusyAction('');
+      setBusyAction('')
     }
   };
 
@@ -64,9 +64,9 @@ export default function ReferralCard({
     setBusyAction('refresh');
     try {
       await onRefresh();
-      showToast('تم تحديث حالة الإحالات.', 'success');
+      showToast('تم تحديث حالة الدعوات.', 'success');
     } catch {
-      showToast('تعذر تحديث حالة الإحالات حالياً.', 'error');
+      showToast('تعذر تحديث الحالة حالياً.', 'error');
     } finally {
       setBusyAction('');
     }
@@ -76,19 +76,19 @@ export default function ReferralCard({
     <AppSurface className={`p-6 ${className}`.trim()}>
       <SectionHeader
         title="الدعوات والإحالة"
-        subtitle="شارك كودك مع أصحابك أو اربط حسابك بكود دعوة قبل أول حجز فعلي."
+        subtitle="شارك الكود الخاص بيك أو اربط حسابك بكود دعوة قبل أول حجز فعلي."
       />
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="mt-5 grid gap-5 lg:grid-cols-[1.08fr_0.92fr]">
         <div className="rounded-[28px] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-black text-slate-900 dark:text-white">كود الدعوة الخاص بيك</p>
+              <p className="text-sm font-black text-slate-900 dark:text-white">كود الدعوة</p>
               <p className="mt-2 text-3xl font-black tracking-[0.18em] text-indigo-700 dark:text-indigo-300">
                 {referralCode || '— — — —'}
               </p>
               <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-                شاركه مع أصحابك. أول رحلة ناجحة للمستخدم المُحال تنقل الحالة لـ qualified عشان تبدأ المتابعة والاحتفاظ.
+                شاركه مع أصحابك. لما أول رحلة لهم تكتمل، الحالة هتتحدث تلقائيًا.
               </p>
             </div>
             <span className="grid h-12 w-12 place-items-center rounded-[22px] bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
@@ -98,9 +98,9 @@ export default function ReferralCard({
 
           <div className="mt-4 flex flex-wrap gap-2">
             <MetaChip label={`${safeNumber(summary?.totalInvites)} دعوة`} tone="brand" />
-            <MetaChip label={`${safeNumber(summary?.pendingInvites)} pending`} tone="warning" />
-            <MetaChip label={`${safeNumber(summary?.qualifiedInvites)} qualified`} tone="success" />
-            <MetaChip label={`${safeNumber(summary?.rewardedInvites)} rewarded`} tone="neutral" />
+            <MetaChip label={`${safeNumber(summary?.pendingInvites)} قيد الاكتمال`} tone="warning" />
+            <MetaChip label={`${safeNumber(summary?.qualifiedInvites)} مكتملة`} tone="success" />
+            <MetaChip label={`${safeNumber(summary?.rewardedInvites)} تم احتسابها`} tone="neutral" />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -131,9 +131,9 @@ export default function ReferralCard({
         <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/60">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-black text-slate-900 dark:text-white">اربط الحساب بكود دعوة</p>
+              <p className="text-sm font-black text-slate-900 dark:text-white">استخدم كود دعوة</p>
               <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-                لو جالك كود من صديق، استخدمه مرة واحدة قبل أول حجز. بعد الربط هتفضل الحالة محفوظة على السيرفر.
+                لو وصلك كود من صديق، استخدمه مرة واحدة قبل أول حجز.
               </p>
             </div>
             <span className="grid h-12 w-12 place-items-center rounded-[22px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
@@ -145,7 +145,7 @@ export default function ReferralCard({
             <InlineNotice
               tone="success"
               title="تم ربط الحساب بالفعل"
-              text={`الكود المرتبط حالياً: ${appliedCode}`}
+              text={`الكود المرتبط حاليًا: ${appliedCode}`}
             />
           ) : null}
 

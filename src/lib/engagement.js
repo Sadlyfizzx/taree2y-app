@@ -11,13 +11,30 @@ const REFERRAL_PENDING_KEY = 'taree2y_pending_referral_code';
 const DISABLED_ENGAGEMENT_RPCS_KEY = 'taree2y_disabled_engagement_rpcs';
 
 function readDisabledEngagementRpcs() {
-  return [];
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(DISABLED_ENGAGEMENT_RPCS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 const disabledEngagementRpcs = new Set(readDisabledEngagementRpcs());
 
 function persistDisabledEngagementRpcs() {
-  // backend-only mode: do not persist client capability state in browser storage
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(
+      DISABLED_ENGAGEMENT_RPCS_KEY,
+      JSON.stringify(Array.from(disabledEngagementRpcs)),
+    );
+  } catch {
+    // ignore storage errors
+  }
 }
 
 function markEngagementRpcUnavailable(rpcName) {
@@ -208,15 +225,38 @@ export function getReferralCodeFromUrl() {
 }
 
 export function stashPendingReferralCode(code) {
-  return normalizeUpperText(code);
+  const safeCode = normalizeUpperText(code);
+  if (!safeCode) return '';
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.setItem(REFERRAL_PENDING_KEY, safeCode);
+    } catch {
+      // ignore storage errors and still return the normalized code
+    }
+  }
+
+  return safeCode;
 }
 
 export function readPendingReferralCode() {
-  return '';
+  if (typeof window === 'undefined') return '';
+
+  try {
+    return normalizeUpperText(window.sessionStorage.getItem(REFERRAL_PENDING_KEY));
+  } catch {
+    return '';
+  }
 }
 
 export function clearPendingReferralCode() {
-  // backend-only mode: do not persist referral codes in browser storage
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.removeItem(REFERRAL_PENDING_KEY);
+  } catch {
+    // ignore storage errors
+  }
 }
 
 export async function syncUserEngagement({ userId, context = {} }) {
@@ -417,33 +457,96 @@ export async function getTargetedPromoOffer({ userId, context = {} }) {
   }
 }
 
-export async function getReferralSummary({ userId }) {
-  if (!userId) return null;
 
-  if (isEngagementRpcDisabled('get_referral_summary')) {
-    return null;
+async function readOwnReferralCodeRow(userId) {
+  if (!userId) return '';
+
+  try {
+    const { data, error } = await supabase
+      .from('app_referral_codes')
+      .select('referral_code')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return normalizeUpperText(data?.referral_code);
+  } catch (error) {
+    log.warn('referral_code_row_read_failed', {
+      userId,
+      error: normalizeSupabaseError(error),
+    });
+    return '';
+  }
+}
+
+async function ensureReferralCodeDirect(userId) {
+  if (!userId || isEngagementRpcDisabled('ensure_referral_code')) {
+    return '';
   }
 
   try {
-    const { data, error } = await supabase.rpc('get_referral_summary', {
+    const { data, error } = await supabase.rpc('ensure_referral_code', {
       p_user_id: userId,
     });
 
     if (error) throw error;
-    return normalizeReferralSummary(data || {});
+    return normalizeUpperText(data);
   } catch (error) {
-    if (isMissingOrUnavailableRpc(error, 'get_referral_summary')) {
-      markEngagementRpcUnavailable('get_referral_summary');
-      return null;
+    if (isMissingOrUnavailableRpc(error, 'ensure_referral_code')) {
+      markEngagementRpcUnavailable('ensure_referral_code');
+      return '';
     }
 
-    log.warn('get_referral_summary_failed', {
+    log.warn('ensure_referral_code_failed', {
       userId,
       error: normalizeSupabaseError(error),
     });
 
+    return '';
+  }
+}
+
+export async function getReferralSummary({ userId }) {
+  if (!userId) return null;
+
+  let summary = null;
+
+  if (!isEngagementRpcDisabled('get_referral_summary')) {
+    try {
+      const { data, error } = await supabase.rpc('get_referral_summary', {
+        p_user_id: userId,
+      });
+
+      if (error) throw error;
+      summary = normalizeReferralSummary(data || {});
+    } catch (error) {
+      if (isMissingOrUnavailableRpc(error, 'get_referral_summary')) {
+        markEngagementRpcUnavailable('get_referral_summary');
+      } else {
+        log.warn('get_referral_summary_failed', {
+          userId,
+          error: normalizeSupabaseError(error),
+        });
+      }
+    }
+  }
+
+  if (summary?.code) {
+    return summary;
+  }
+
+  const ensuredCode = await ensureReferralCodeDirect(userId);
+  const rowCode = ensuredCode ? '' : await readOwnReferralCodeRow(userId);
+  const finalCode = summary?.code || ensuredCode || rowCode;
+
+  if (!summary && !finalCode) {
     return null;
   }
+
+  return normalizeReferralSummary({
+    ...(summary || {}),
+    code: finalCode,
+  });
 }
 
 export async function applyReferralCode({ userId, code }) {
@@ -473,7 +576,9 @@ export async function applyReferralCode({ userId, code }) {
     });
 
     if (error) throw error;
-    return normalizeRpcResult(data, 'تم ربط الحساب بكود الدعوة.');
+    const result = normalizeRpcResult(data, 'تم ربط الحساب بكود الدعوة.');
+    if (result?.ok) clearPendingReferralCode();
+    return result;
   } catch (error) {
     if (!isMissingRpcError(error, 'apply_referral_code')) {
       log.warn('apply_referral_code_failed', {

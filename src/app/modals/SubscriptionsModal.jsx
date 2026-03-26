@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { Crown, ShieldCheck } from 'lucide-react';
+import { Crown } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
-import { InlineNotice } from '../components/ui/StateBlocks';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
 import {
@@ -65,7 +64,7 @@ function SubscriptionsModal({
       title: 'باقة VIP',
       price: 300,
       tone: 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20',
-      chips: ['خصم 25%', 'أولوية أكبر'],
+      chips: ['خصم 25%', 'أولوية أعلى'],
       points: ['خصم أعلى على كل الحجز', 'أنسب للمستخدم النشط جدًا'],
     },
   ];
@@ -74,18 +73,11 @@ function SubscriptionsModal({
     <ModalShell
       onClose={closeModal}
       title="باقات التوفير"
-      subtitle="تفعيل الباقات بقى يعتمد بالكامل على السيرفر من غير أي خصم محلي مؤقت أو نهائي."
+      subtitle="اختَر الباقة المناسبة وفعّلها من نفس المكان."
       icon={<Crown className="h-6 w-6" />}
       maxWidth="max-w-3xl"
     >
       <div className="space-y-5">
-        <InlineNotice
-          tone="info"
-          title="تفعيل حقيقي فقط"
-          text="تم إلغاء أي خصم محلي أو تفعيل محلي للباقة. لازم العملية الذرية تنجح على السيرفر الأول."
-          icon={ShieldCheck}
-        />
-
         <div className="grid gap-4 md:grid-cols-2">
           {plans.map((plan) => {
             const isActive = subscription === plan.key;
@@ -129,21 +121,6 @@ function SubscriptionsModal({
               </div>
             );
           })}
-        </div>
-
-        <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-indigo-100 p-3 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div className="space-y-2">
-              <p className="text-base font-black text-slate-900 dark:text-white">الخطوة دلوقتي أوضح</p>
-              <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
-                التطبيق يطلب شراء الباقة من السيرفر، وبعد النجاح يعمل تحديث للحالة علشان الرصيد
-                والباقات ييجوا من المصدر الحقيقي.
-              </p>
-            </div>
-          </div>
         </div>
 
         <div className="flex justify-end">

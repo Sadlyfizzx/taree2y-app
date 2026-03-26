@@ -119,8 +119,8 @@ function LoginScreen({ isDark, setIsDark }) {
       : 'اعمل الحساب';
 
   return (
-    <div className={`min-h-[100dvh] bg-[var(--bg)] p-4 md:p-8 ${isDark ? 'dark' : ''}`} dir="rtl">
-      <div className="mx-auto grid min-h-[calc(100dvh-2rem)] max-w-6xl overflow-hidden rounded-[40px] border border-slate-200 bg-white shadow-[0_30px_60px_-36px_rgba(16,35,63,0.45)] dark:border-slate-800 dark:bg-slate-950 lg:grid-cols-[1.05fr_0.95fr]">
+    <div className={`min-h-[100svh] bg-[var(--bg)] px-0 py-0 sm:p-4 md:min-h-[100dvh] md:p-8 ${isDark ? 'dark' : ''}`} dir="rtl">
+      <div className="mx-auto grid min-h-[100svh] max-w-6xl overflow-hidden rounded-none border-0 bg-white shadow-none sm:min-h-[calc(100svh-2rem)] sm:rounded-[40px] sm:border sm:border-slate-200 sm:shadow-[0_30px_60px_-36px_rgba(16,35,63,0.45)] dark:bg-slate-950 dark:sm:border-slate-800 md:min-h-[calc(100dvh-2rem)] lg:grid-cols-[1.05fr_0.95fr]">
         <section className="relative overflow-hidden bg-[linear-gradient(135deg,#10233f_0%,#163c98_48%,#2156d9_100%)] px-6 py-7 text-white md:px-8 md:py-9">
           <div className="pointer-events-none absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(255,255,255,0.28), transparent 28%), linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)', backgroundSize: 'auto, 24px 24px, 24px 24px' }} />
           <div className="relative z-10 flex h-full flex-col justify-between gap-10">

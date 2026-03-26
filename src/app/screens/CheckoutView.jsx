@@ -4,6 +4,7 @@ import {
   Check,
   Clock,
   CreditCard,
+  ShieldCheck,
   Tag,
 } from 'lucide-react';
 import { createLogger } from '../../lib/logger';
@@ -86,6 +87,55 @@ function mapPromoResultToState(result, normalizedCode) {
   };
 }
 
+function OptionCard({
+  active,
+  tone = 'brand',
+  title,
+  text,
+  price,
+  icon,
+  onClick,
+}) {
+  const activeClassName =
+    tone === 'success'
+      ? active
+        ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30'
+        : 'border-[var(--line)] bg-[var(--surface-strong)]'
+      : active
+      ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-900/40 dark:bg-indigo-950/30'
+      : 'border-[var(--line)] bg-[var(--surface-strong)]';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`interactive-press flex w-full items-start justify-between gap-3 rounded-[24px] border p-4 text-right transition ${activeClassName}`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-0.5 grid h-6 w-6 place-items-center rounded-lg border ${
+            active
+              ? tone === 'success'
+                ? 'border-emerald-600 bg-emerald-600 text-white'
+                : 'border-indigo-600 bg-indigo-600 text-white'
+              : 'border-[var(--line-strong)] bg-[var(--surface-strong)] text-transparent'
+          }`}
+        >
+          <Check className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="flex items-center gap-2 text-sm font-black text-[var(--ink)]">
+            {title}
+            {icon}
+          </p>
+          <p className="mt-1 text-sm font-bold leading-6 text-[var(--ink-muted)]">{text}</p>
+        </div>
+      </div>
+      <span className="shrink-0 text-sm font-black text-[var(--ink)]">{price}</span>
+    </button>
+  );
+}
+
 function CheckoutView({
   userId,
   trip,
@@ -108,18 +158,22 @@ function CheckoutView({
     getRemainingHoldMs(trip?.holdExpiresAt),
   );
 
-  const data = withStationNames(trip) || {
-    from: '',
-    to: '',
-    date: '',
-    departureTime: '23:59',
-    arrivalTime: '23:59',
-    durationHour: 0,
-    price: 0,
-    company: 'جو باص',
-    class: 'اقتصادي مميز',
-    status: 'upcoming',
-  };
+  const data = useMemo(
+    () =>
+      withStationNames(trip) || {
+        from: '',
+        to: '',
+        date: '',
+        departureTime: '23:59',
+        arrivalTime: '23:59',
+        durationHour: 0,
+        price: 0,
+        company: 'جو باص',
+        class: 'اقتصادي مميز',
+        status: 'upcoming',
+      },
+    [trip],
+  );
 
   const supportsRealPromo = Boolean(data?.instanceId);
   const subDiscountRate =
@@ -186,7 +240,7 @@ function CheckoutView({
         status: 'rejected',
         resultCode: 'promo_backend_required',
         code: normalizedCode,
-        message: 'أكواد الخصم الحقيقية متاحة فقط على الرحلات المرتبطة بالسيرفر.',
+        message: 'كود الخصم غير متاح على الرحلة دي حالياً.',
       };
       setPromoState(rejectedState);
       if (!silent) showToast(rejectedState.message, 'error');
@@ -223,11 +277,7 @@ function CheckoutView({
 
       return nextState;
     } catch (error) {
-      log.error('promo_validation_failed', {
-        userId,
-        code: normalizedCode,
-        error,
-      });
+      log.error('promo_validation_failed', { userId, code: normalizedCode, error });
 
       const failedState = {
         ...defaultPromoState,
@@ -238,7 +288,6 @@ function CheckoutView({
       };
 
       setPromoState(failedState);
-
       if (!silent) showToast(failedState.message, 'error');
       return failedState;
     } finally {
@@ -288,7 +337,10 @@ function CheckoutView({
 
     const backendFinalTotalPreview = Math.max(
       0,
-      baseTotal + luggageFee - autoDiscount - (latestPromoState.applied ? latestPromoState.discountAmount : 0),
+      baseTotal +
+        luggageFee -
+        autoDiscount -
+        (latestPromoState.applied ? latestPromoState.discountAmount : 0),
     );
 
     if (wallet < backendFinalTotalPreview) {
@@ -334,24 +386,12 @@ function CheckoutView({
     }
   };
 
-  const optionCardClassName = (active, tone = 'indigo') => {
-    if (tone === 'emerald') {
-      return active
-        ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20'
-        : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900';
-    }
-
-    return active
-      ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-900/20'
-      : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900';
-  };
-
   return (
-    <div className="space-y-5">
+    <div className="app-page-frame min-w-0 overflow-x-clip space-y-5">
       <PageHeading
         eyebrow="الخطوة ٣ من ٤"
         title="راجع الدفع وأكد الحجز"
-        subtitle="هنا بتراجع الرحلة والمقاعد والإضافات، وتشوف السعر النهائي والخصومات قبل أي خصم فعلي."
+        subtitle="كل المعلومات المهمة قدامك: الرحلة، المقاعد، الخصومات، والمحفظة قبل ما يحصل أي خصم فعلي."
       />
 
       <AppSurface className="p-4 sm:p-5">
@@ -361,8 +401,14 @@ function CheckoutView({
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <MetaChip label={`المقاعد: ${seats.join('، ')}`} tone="brand" />
-          <MetaChip label={`${passengers} ${passengers === 1 ? 'راكب' : 'ركاب'}`} tone="neutral" />
-          <MetaChip label={formatCurrency(wallet)} tone={isWalletSufficient ? 'success' : 'warning'} />
+          <MetaChip
+            label={`${passengers} ${passengers === 1 ? 'راكب' : 'ركاب'}`}
+            tone="neutral"
+          />
+          <MetaChip
+            label={`رصيدك ${formatCurrency(wallet)}`}
+            tone={isWalletSufficient ? 'success' : 'warning'}
+          />
         </div>
       </AppSurface>
 
@@ -380,56 +426,41 @@ function CheckoutView({
       ) : null}
 
       {!tripBookability.canBook ? (
-        <InlineNotice tone="danger" title="الحجز غير متاح حالياً" text={tripBookability.reason} icon={Clock} />
+        <InlineNotice
+          tone="danger"
+          title="الحجز غير متاح حالياً"
+          text={tripBookability.reason}
+          icon={Clock}
+        />
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="app-page-frame min-w-0 overflow-x-clip space-y-5">
           <AppSurface className="p-5">
-            <h3 className="text-lg font-black text-slate-900 dark:text-white">إضافات الرحلة</h3>
+            <h3 className="text-lg font-black text-[var(--ink)]">إضافات الرحلة</h3>
             <div className="mt-4 space-y-3">
-              <button
-                type="button"
+              <OptionCard
+                active={hasLuggage}
+                title="وزن إضافي فوق 20 كجم"
+                text="مناسب لو معاك شنط زيادة وعايز كل حاجة تبقى محسوبة من الأول."
+                price="+50 ج.م"
                 onClick={() => setHasLuggage((currentValue) => !currentValue)}
-                className={`flex w-full items-start justify-between gap-3 rounded-[24px] border p-4 text-right transition ${optionCardClassName(hasLuggage)}`}
-              >
-                <div className="flex items-start gap-3">
-                  <span className={`mt-0.5 grid h-6 w-6 place-items-center rounded-lg border ${hasLuggage ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white text-transparent dark:border-slate-700 dark:bg-slate-900'}`}>
-                    <Check className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-black text-slate-900 dark:text-white">وزن إضافي فوق 20 كجم</p>
-                    <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">مناسب لو معاك شنط زيادة وعايز كل حاجة تبقى محسوبة من الأول.</p>
-                  </div>
-                </div>
-                <span className="shrink-0 text-sm font-black text-indigo-700 dark:text-indigo-300">+50 ج.م</span>
-              </button>
-
-              <button
-                type="button"
+              />
+              <OptionCard
+                active={needsAccess}
+                tone="success"
+                title="مساعدة وقت الصعود"
+                text="للمساعدة في الصعود أو تجهيز طلب وصول أسهل عند الحاجة."
+                price="بدون رسوم"
+                icon={<Accessibility className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />}
                 onClick={() => setNeedsAccess((currentValue) => !currentValue)}
-                className={`flex w-full items-start justify-between gap-3 rounded-[24px] border p-4 text-right transition ${optionCardClassName(needsAccess, 'emerald')}`}
-              >
-                <div className="flex items-start gap-3">
-                  <span className={`mt-0.5 grid h-6 w-6 place-items-center rounded-lg border ${needsAccess ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-transparent dark:border-slate-700 dark:bg-slate-900'}`}>
-                    <Check className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
-                      مساعدة وقت الصعود
-                      <Accessibility className="h-4 w-4 text-emerald-500" />
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">للمساعدة في الصعود أو طلب تجهيز كرسي متحرك عند الحاجة.</p>
-                  </div>
-                </div>
-                <span className="shrink-0 text-sm font-black text-emerald-700 dark:text-emerald-300">بدون رسوم</span>
-              </button>
+              />
             </div>
           </AppSurface>
 
           <AppSurface className="p-5">
-            <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-white">
-              <Tag className="h-5 w-5 text-indigo-600 dark:text-indigo-300" />
+            <h3 className="flex items-center gap-2 text-lg font-black text-[var(--ink)]">
+              <Tag className="h-5 w-5 text-[var(--brand-strong)] dark:text-[var(--brand)]" />
               كود خصم
             </h3>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -437,12 +468,12 @@ function CheckoutView({
                 type="text"
                 value={promoInput}
                 onChange={(event) => setPromoInput(event.target.value)}
-                placeholder={supportsRealPromo ? 'اكتب الكود لو عندك' : 'الكود الحقيقي متاح على رحلات السيرفر فقط'}
+                placeholder={supportsRealPromo ? 'اكتب الكود لو عندك' : 'الكود غير متاح على الرحلة دي'}
                 disabled={!supportsRealPromo}
-                className="h-14 w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 text-base font-black text-slate-800 outline-none transition focus:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                className="app-input"
               />
               <SecondaryButton
-                className="sm:min-w-[120px]"
+                className="sm:min-w-[132px]"
                 onClick={() => {
                   applyPromo();
                 }}
@@ -453,18 +484,20 @@ function CheckoutView({
                 تفعيل الكود
               </SecondaryButton>
             </div>
-            <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+            <p className="mt-3 text-sm font-bold text-[var(--ink-muted)]">
               {supportsRealPromo
-                ? 'الكود بيتراجع من السيرفر في المعاينة، وبيتراجع مرة أخيرة وقت التأكيد النهائي.'
-                : 'الرحلة الحالية شغالة في وضع تجريبي، لذلك الكود الحقيقي غير متاح عليها.'}
+                ? 'لو الكود صالح، الخصم هيتطبق قبل التأكيد النهائي.'
+                : 'الكود غير متاح على هذه الرحلة حالياً.'}
             </p>
 
             {promoState.status !== 'idle' ? (
-              <div className={`mt-4 rounded-[24px] border px-4 py-4 text-sm font-bold ${
-                promoState.applied
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300'
-                  : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300'
-              }`}>
+              <div
+                className={`mt-4 rounded-[24px] border px-4 py-4 text-sm font-bold ${
+                  promoState.applied
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-200'
+                    : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200'
+                }`}
+              >
                 <p className="font-black">
                   {promoState.applied
                     ? promoState.title || `تم قبول الكود ${promoState.code}`
@@ -476,42 +509,75 @@ function CheckoutView({
               </div>
             ) : null}
           </AppSurface>
+
+          <InlineNotice
+            tone="info"
+            title="تأكيد من غير مفاجآت"
+            text="السعر النهائي بيتراجع هنا بالكامل، ولو الرصيد مش كفاية أو الكود مش صالح، هتعرف قبل تأكيد الحجز."
+            icon={ShieldCheck}
+          />
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-5 xl:sticky xl:top-24 xl:self-start">
           <AppSurface className="p-5">
-            <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-white">
-              <CreditCard className="h-5 w-5 text-indigo-600 dark:text-indigo-300" />
-              ملخص الحساب
+            <h3 className="flex items-center gap-2 text-lg font-black text-[var(--ink)]">
+              <CreditCard className="h-5 w-5 text-[var(--brand-strong)] dark:text-[var(--brand)]" />
+              ملخص المبلغ
             </h3>
             <div className="mt-4 space-y-3">
               <KeyValueRow label={`تذاكر × ${passengers}`} value={formatCurrency(baseTotal)} />
               {luggageFee > 0 ? <KeyValueRow label="وزن إضافي" value={formatCurrency(luggageFee)} /> : null}
               {autoDiscount > 0 ? (
-                <KeyValueRow label="خصم الباقة" value={`- ${formatCurrency(autoDiscount)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
+                <KeyValueRow
+                  label="خصم الباقة"
+                  value={`- ${formatCurrency(autoDiscount)}`}
+                  valueClassName="text-emerald-700 dark:text-emerald-300"
+                />
               ) : null}
               {promoDiscount > 0 ? (
-                <KeyValueRow label="خصم الكود" value={`- ${formatCurrency(promoDiscount)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
+                <KeyValueRow
+                  label="خصم الكود"
+                  value={`- ${formatCurrency(promoDiscount)}`}
+                  valueClassName="text-emerald-700 dark:text-emerald-300"
+                />
               ) : null}
-              <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
-                <KeyValueRow label="الإجمالي المطلوب" value={formatCurrency(finalTotalPreview)} valueClassName="text-lg font-black text-indigo-700 dark:text-indigo-300" />
+              <div className="app-dashed-divider pt-3">
+                <KeyValueRow
+                  label="الإجمالي المطلوب"
+                  value={formatCurrency(finalTotalPreview)}
+                  valueClassName="text-lg font-black text-[var(--brand-strong)] dark:text-[var(--brand)]"
+                />
               </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <MetaChip label={`رصيدك الحالي ${formatCurrency(wallet)}`} tone={isWalletSufficient ? 'success' : 'warning'} />
-              <MetaChip label={`نقاط بعد الرحلة: ${pointsToAwardLater}`} tone="brand" />
+              <MetaChip
+                label={`رصيدك الحالي ${formatCurrency(wallet)}`}
+                tone={isWalletSufficient ? 'success' : 'warning'}
+              />
+              <MetaChip label={`نقاط بعد الرحلة ${pointsToAwardLater}`} tone="brand" />
             </div>
           </AppSurface>
 
           <AppSurface className="p-5">
-            <h3 className="text-lg font-black text-slate-900 dark:text-white">سياسة الإلغاء والاسترداد</h3>
+            <h3 className="text-lg font-black text-[var(--ink)]">الإلغاء والاسترداد</h3>
             <div className="mt-4 space-y-3">
               <KeyValueRow label="آخر ميعاد للإلغاء" value="قبل التحرك بساعتين على الأقل" />
-              <KeyValueRow label="الرسوم المتوقعة" value={cancellationPreview.allowed ? `${Math.round(cancellationPreview.feeRatio * 100)}%` : 'غير متاح'} />
+              <KeyValueRow
+                label="الرسوم المتوقعة"
+                value={
+                  cancellationPreview.allowed
+                    ? `${Math.round(cancellationPreview.feeRatio * 100)}%`
+                    : 'غير متاح'
+                }
+              />
               <KeyValueRow
                 label="المبلغ المتوقع يرجع"
-                value={cancellationPreview.allowed ? formatCurrency(cancellationPreview.refundAmount) : 'غير متاح'}
+                value={
+                  cancellationPreview.allowed
+                    ? formatCurrency(cancellationPreview.refundAmount)
+                    : 'غير متاح'
+                }
                 valueClassName="text-emerald-700 dark:text-emerald-300"
               />
             </div>
@@ -533,12 +599,14 @@ function CheckoutView({
       <StickyActionBar>
         <AppSurface className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-black text-slate-900 dark:text-white">إجمالي الدفع الآن: {formatCurrency(finalTotalPreview)}</p>
-            <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">
-              لو ظهر خطأ أثناء العملية، التطبيق بيرجع الحالة بدون تأكيد جزئي للحجز.
+            <p className="text-sm font-black text-[var(--ink)]">
+              إجمالي الدفع الآن: {formatCurrency(finalTotalPreview)}
+            </p>
+            <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">
+              الحجز بيتأكد بعد المراجعة النهائية فقط، ولو فيه مشكلة هتعرفها بوضوح.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[240px]">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[260px]">
             <PrimaryButton
               onClick={handlePayment}
               disabled={!isWalletSufficient || !tripBookability.canBook || holdExpired || promoLoading}

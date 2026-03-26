@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, CreditCard, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, CreditCard, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { AppSurface, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
 import {
   buildWalletTopupClientId,
+  calculateWalletTopupBreakdown,
   markWalletTopupPaid,
   publicTopupWallet,
   readWalletTopupPaidState,
@@ -35,27 +36,51 @@ function isDuplicatePaidError(error) {
   );
 }
 
+function amountsMatch(expectedValue, actualValue) {
+  return Math.abs(Number(expectedValue || 0) - Number(actualValue || 0)) < 0.01;
+}
+
 export default function PublicWalletTopUpView() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const userId = params.get('uid') || '';
+  const userId = String(params.get('uid') || '').trim();
   const grossAmount = Number(params.get('amount') || 0);
   const feeAmount = Number(params.get('fee') || 0);
   const creditAmount = Number(params.get('credit') || 0);
-  const requestId = params.get('req') || '';
+  const requestId = String(params.get('req') || '').trim();
 
-  const [status, setStatus] = useState('idle');
-  const [message, setMessage] = useState('');
+  const expectedBreakdown = useMemo(
+    () => calculateWalletTopupBreakdown(grossAmount),
+    [grossAmount],
+  );
 
-  const isReady = Boolean(userId && requestId && creditAmount > 0);
+  const paramsAreValid = useMemo(() => {
+    if (!userId || !requestId) return false;
+    if (!Number.isFinite(grossAmount) || grossAmount < 50) return false;
+    if (!Number.isFinite(feeAmount) || feeAmount < 0) return false;
+    if (!Number.isFinite(creditAmount) || creditAmount <= 0) return false;
+    return (
+      amountsMatch(expectedBreakdown.feeAmount, feeAmount) &&
+      amountsMatch(expectedBreakdown.netAmount, creditAmount)
+    );
+  }, [creditAmount, expectedBreakdown.feeAmount, expectedBreakdown.netAmount, feeAmount, grossAmount, requestId, userId]);
+
+  const [status, setStatus] = useState(paramsAreValid ? 'idle' : 'error');
+  const [message, setMessage] = useState(
+    paramsAreValid ? '' : 'رابط الشحن غير صالح أو فيه بيانات ناقصة. اطلب رابط جديد من داخل التطبيق.'
+  );
+
+  const isReady = Boolean(paramsAreValid && status !== 'loading' && status !== 'success');
   const clientId = useMemo(() => buildWalletTopupClientId(requestId), [requestId]);
 
   useEffect(() => {
+    if (!paramsAreValid) return;
+
     const paidState = readWalletTopupPaidState(requestId);
     if (paidState?.paid) {
       setStatus('success');
       setMessage('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
     }
-  }, [requestId]);
+  }, [paramsAreValid, requestId]);
 
   const markAsPaid = (text) => {
     markWalletTopupPaid(requestId, {
@@ -70,7 +95,13 @@ export default function PublicWalletTopUpView() {
   };
 
   const handleConfirm = async () => {
-    if (!isReady || status === 'loading' || status === 'success') return;
+    if (!paramsAreValid) {
+      setStatus('error');
+      setMessage('رابط الشحن غير صالح أو انتهى. ارجع للتطبيق وابدأ طلب شحن جديد.');
+      return;
+    }
+
+    if (!isReady) return;
 
     const alreadyPaid = readWalletTopupPaidState(requestId);
     if (alreadyPaid?.paid) {
@@ -95,7 +126,7 @@ export default function PublicWalletTopUpView() {
         return;
       }
 
-      markAsPaid('تم تأكيد الشحن بنجاح. ارجع للتطبيق وستجد صافي المبلغ مضافاً لنفس الحساب.');
+      markAsPaid(`تم تأكيد الشحن بنجاح. رجع للتطبيق وهتلاقي ${formatCurrency(creditAmount)} اتضافت لنفس الحساب.`);
     } catch (error) {
       if (isDuplicatePaidError(error)) {
         markAsPaid('تم دفع العملية دي بالفعل. منعنا تكرار الخصم أو التسجيل مرة تانية.');
@@ -154,12 +185,22 @@ export default function PublicWalletTopUpView() {
             </div>
           </div>
 
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+          <div className={`rounded-[24px] border px-4 py-4 ${paramsAreValid ? 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60' : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20'}`}>
             <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
-              <p className="text-sm font-black text-slate-900 dark:text-white">العملية مرتبطة بنفس الحساب</p>
+              {paramsAreValid ? (
+                <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
+              ) : (
+                <TriangleAlert className="h-5 w-5 text-amber-700 dark:text-amber-300" />
+              )}
+              <p className="text-sm font-black text-slate-900 dark:text-white">
+                {paramsAreValid ? 'العملية مرتبطة بنفس الحساب' : 'الرابط محتاج إعادة إصدار'}
+              </p>
             </div>
-            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">لو العملية دي اتدفعت قبل كده، الصفحة هتمنع تكرار التأكيد وتوضح لك إنها مدفوعة بالفعل.</p>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
+              {paramsAreValid
+                ? 'لو العملية دي اتدفعت قبل كده، الصفحة هتمنع تكرار التأكيد وتوضح لك إنها مدفوعة بالفعل.'
+                : 'البيانات المرسلة في الرابط لا تطابق حسابات الرسوم الحالية أو فيها قيم ناقصة.'}
+            </p>
           </div>
 
           {message ? (
@@ -172,7 +213,7 @@ export default function PublicWalletTopUpView() {
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={() => window.close()}>إغلاق</SecondaryButton>
-          <PrimaryButton onClick={handleConfirm} disabled={!isReady || status === 'loading' || status === 'success'}>
+          <PrimaryButton onClick={handleConfirm} disabled={!isReady}>
             {actionLabel}
           </PrimaryButton>
         </div>

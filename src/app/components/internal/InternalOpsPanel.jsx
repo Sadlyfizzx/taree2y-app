@@ -3,7 +3,6 @@ import {
   Bug,
   Copy,
   ExternalLink,
-  RefreshCcw,
   Route,
   Ticket,
   WalletCards,
@@ -271,7 +270,7 @@ export default function InternalOpsPanel({
 
         <InlineNotice
           tone="info"
-          title="أفضل استخدام الآن"
+          title="معلومة سريعة"
           text="استخدم الطبقة دي لتحديث الحالة، نسخ المعرفات، توليد روابط المشاركة، وفتح صفحة شحن عامة لنفس المستخدم من غير ما تبني Dashboard كامل من البداية."
         />
       </div>

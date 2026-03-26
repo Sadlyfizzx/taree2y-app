@@ -66,20 +66,20 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
 
   const handleCopy = async () => {
     const copied = await copyTextWithFallback(payUrl, 'رابط الشحن');
-    showToast(copied ? 'تم تجهيز رابط الشحن.' : 'تعذر تجهيز رابط الشحن حالياً.', copied ? 'success' : 'error');
+    showToast(copied ? 'تم نسخ رابط الشحن.' : 'تعذر نسخ الرابط حالياً.', copied ? 'success' : 'error');
   };
 
   return (
     <ModalShell
       onClose={closeModal}
       title="شحن المحفظة بـ QR"
-      subtitle="حدد المبلغ، ثم افتح الرابط أو امسح الكود من أي جهاز لتأكيد الشحن لنفس الحساب."
+      subtitle="حدّد المبلغ، ثم افتح الرابط أو امسح الكود لإكمال الدفع."
       icon={<QrCode className="h-6 w-6" />}
       maxWidth="max-w-xl"
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>إغلاق</SecondaryButton>
-          <SecondaryButton onClick={handleCopy}>نسخ رابط الشحن</SecondaryButton>
+          <SecondaryButton onClick={handleCopy}>نسخ الرابط</SecondaryButton>
           <PrimaryButton onClick={() => window.open(payUrl, '_blank', 'noopener,noreferrer')} icon={<ExternalLink className="h-4 w-4" />}>
             افتح صفحة الدفع
           </PrimaryButton>
@@ -89,8 +89,8 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
       <div className="space-y-5">
         <InlineNotice
           tone="info"
-          title="الرصيد يتحدث بعد الدفع الحقيقي"
-          text="طالما العملية لسه ما اتأكدتش في صفحة الشحن، التطبيق مش هيضيف الرصيد محليًا. ده مقصود لحماية المحفظة ومنع الازدواج."
+          title="متى يظهر الرصيد؟"
+          text="بعد تأكيد الدفع بنجاح، الرصيد هيتحدث تلقائيًا على نفس الحساب."
           icon={ShieldCheck}
         />
 
@@ -145,13 +145,13 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
               <span>- {formatCurrency(feeAmount)}</span>
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-sm font-black text-emerald-700 dark:border-slate-700 dark:text-emerald-300">
-              <span>الصافي الذي سيُضاف</span>
+              <span>الصافي المضاف للمحفظة</span>
               <span>{formatCurrency(netAmount)}</span>
             </div>
           </div>
 
           <div className="mt-3 flex flex-wrap justify-center gap-2">
-            <MetaChip label="ينفتح من أي جهاز" tone="brand" />
+            <MetaChip label="يفتح من أي جهاز" tone="brand" />
             <MetaChip label="ينزل على نفس الحساب" tone="success" />
           </div>
         </div>

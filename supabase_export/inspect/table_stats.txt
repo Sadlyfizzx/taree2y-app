@@ -1,0 +1,32 @@
+
+  
+   Name                                                        | Table size | Index size | Total size | Estimated row count | Seq scans 
+  -------------------------------------------------------------|------------|------------|------------|---------------------|-----------
+   public.trip_seats                                           | 456 kB     | 696 kB     | 1152 kB    | 4000                | 29        
+   public.bookings                                             | 120 kB     | 112 kB     | 232 kB     | 9                   | 2473      
+   public.trip_instances                                       | 112 kB     | 64 kB      | 176 kB     | 100                 | 604       
+   admin_backups.trip_seats_reset_20260323_172817              | 176 kB     | 0 bytes    | 176 kB     | 1280                | 0         
+   public.app_wallet_transactions                              | 64 kB      | 80 kB      | 144 kB     | 23                  | 7921      
+   public.route_templates                                      | 64 kB      | 56 kB      | 120 kB     | 128                 | 9         
+   public.app_promo_campaigns                                  | 56 kB      | 64 kB      | 120 kB     | 19                  | 840       
+   public.app_wallets                                          | 48 kB      | 32 kB      | 80 kB      | 3                   | 22086     
+   public.public_trip_shares                                   | 48 kB      | 32 kB      | 80 kB      | 15                  | 2         
+   public.app_promo_route_rules                                | 16 kB      | 64 kB      | 80 kB      | 12                  | 4         
+   public.routes                                               | 48 kB      | 32 kB      | 80 kB      | 32                  | 82        
+   public.profiles                                             | 48 kB      | 32 kB      | 80 kB      | 3                   | 10696     
+   public.app_promo_redemptions                                | 8192 bytes | 56 kB      | 64 kB      | 0                   | 16        
+   public.app_campaign_events                                  | 16 kB      | 48 kB      | 64 kB      | 13                  | 3         
+   public.booking_passengers                                   | 16 kB      | 48 kB      | 64 kB      | 17                  | 12        
+   public.cities                                               | 16 kB      | 48 kB      | 64 kB      | 16                  | 11        
+   public.wallet_topup_requests                                | 8192 bytes | 40 kB      | 48 kB      | 0                   | 7         
+   public.stations                                             | 16 kB      | 32 kB      | 48 kB      | 19                  | 4618      
+   public.app_user_notifications                               | 8192 bytes | 32 kB      | 40 kB      | 0                   | 4         
+   public.booking_confirmation_requests                        | 8192 bytes | 24 kB      | 32 kB      | 0                   | 3         
+   admin_backups.trip_instances_reset_20260323_172817          | 24 kB      | 0 bytes    | 24 kB      | 32                  | 0         
+   admin_backups.bookings_reset_20260323_172817                | 24 kB      | 0 bytes    | 24 kB      | 8                   | 0         
+   public.app_referral_claims                                  | 8192 bytes | 16 kB      | 24 kB      | 0                   | 3         
+   public.app_referral_codes                                   | 8192 bytes | 16 kB      | 24 kB      | 0                   | 2         
+   admin_backups.app_wallet_transactions_reset_20260323_172817 | 16 kB      | 0 bytes    | 16 kB      | 14                  | 0         
+   public.promo_codes                                          | 8192 bytes | 8192 bytes | 16 kB      | 0                   | 10        
+   admin_backups.app_wallets_reset_20260323_172817             | 16 kB      | 0 bytes    | 16 kB      | 1                   | 0         
+

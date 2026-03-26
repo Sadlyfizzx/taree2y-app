@@ -1,0 +1,47 @@
+
+  
+   Type  | Name                                                                           | Bloat | Waste      
+  -------|--------------------------------------------------------------------------------|-------|------------
+   table | public.bookings                                                                | 5.5   | 72 kB      
+   table | public.trip_instances                                                          | 1.6   | 24 kB      
+   table | public.app_promo_campaigns                                                     | 3.0   | 16 kB      
+   index | public.route_templates::route_templates_route_slot_key                         | 1.7   | 16 kB      
+   index | public.routes::routes_station_pair_key                                         | 2.0   | 8192 bytes 
+   table | public.routes                                                                  | 2.0   | 8192 bytes 
+   index | public.app_promo_campaigns::app_promo_campaigns_pkey                           | 2.0   | 8192 bytes 
+   index | public.profiles::profiles_pkey                                                 | 2.0   | 8192 bytes 
+   index | public.profiles::profiles_username_key                                         | 2.0   | 8192 bytes 
+   index | public.routes::routes_pkey                                                     | 2.0   | 8192 bytes 
+   index | public.app_wallets::app_wallets_user_id_key                                    | 2.0   | 8192 bytes 
+   index | public.app_promo_campaigns::app_promo_campaigns_active_window_idx              | 2.0   | 8192 bytes 
+   index | public.app_promo_campaigns::app_promo_campaigns_code_key                       | 2.0   | 8192 bytes 
+   index | public.app_promo_campaigns::app_promo_campaigns_code_uidx                      | 2.0   | 8192 bytes 
+   index | public.app_wallets::app_wallets_pkey                                           | 2.0   | 8192 bytes 
+   table | public.app_wallet_transactions                                                 | 1.5   | 8192 bytes 
+   table | public.route_templates                                                         | 1.3   | 8192 bytes 
+   index | public.bookings::bookings_trip_instance_id_idx                                 | 1.0   | 0 bytes    
+   index | public.app_wallet_transactions::app_wallet_transactions_client_id_idx          | 1.0   | 0 bytes    
+   index | public.app_wallet_transactions::app_wallet_transactions_client_id_key          | 1.0   | 0 bytes    
+   index | public.app_wallet_transactions::app_wallet_transactions_pkey                   | 1.0   | 0 bytes    
+   index | public.app_wallet_transactions::app_wallet_transactions_reference_id_idx       | 1.0   | 0 bytes    
+   index | public.app_wallet_transactions::app_wallet_transactions_user_id_created_at_idx | 1.0   | 0 bytes    
+   index | public.bookings::bookings_client_id_idx                                        | 1.0   | 0 bytes    
+   index | public.bookings::bookings_client_id_key                                        | 1.0   | 0 bytes    
+   index | public.bookings::bookings_pkey                                                 | 1.0   | 0 bytes    
+   index | public.bookings::bookings_pnr_key                                              | 1.0   | 0 bytes    
+   index | public.bookings::bookings_ticket_token_key                                     | 1.0   | 0 bytes    
+   index | public.bookings::bookings_user_created_idx                                     | 1.0   | 0 bytes    
+   table | public.app_wallets                                                             | 1.0   | 0 bytes    
+   table | public.profiles                                                                | 1.0   | 0 bytes    
+   table | public.trip_seats                                                              | 0.9   | 0 bytes    
+   table | admin_backups.trip_seats_reset_20260323_172817                                 | 0.9   | 0 bytes    
+   index | public.trip_seats::trip_seats_trip_seat_index_key                              | 0.8   | 0 bytes    
+   index | public.trip_seats::trip_seats_trip_seat_number_key                             | 0.8   | 0 bytes    
+   index | public.route_templates::route_templates_pkey                                   | 0.7   | 0 bytes    
+   index | public.trip_seats::trip_seats_pkey                                             | 0.6   | 0 bytes    
+   index | public.trip_instances::trip_instances_template_date_key                        | 0.4   | 0 bytes    
+   index | public.trip_instances::trip_instances_trip_code_key                            | 0.4   | 0 bytes    
+   index | public.trip_instances::trip_instances_pkey                                     | 0.4   | 0 bytes    
+   index | public.trip_instances::trip_instances_city_date_idx                            | 0.4   | 0 bytes    
+   index | public.trip_seats::trip_seats_trip_status_idx                                  | 0.2   | 0 bytes    
+

@@ -1,5 +1,12 @@
-import { Armchair, Briefcase, Clock3, Map, ShieldCheck, Tag } from 'lucide-react';
-import { getTripBookability } from '../../utils/travel';
+import {
+  Armchair,
+  Briefcase,
+  Clock3,
+  Map,
+  ShieldCheck,
+  Tag,
+} from 'lucide-react';
+import { getCancellationPolicy, getTripBookability } from '../../utils/travel';
 import { withStationNames } from '../../utils/stations';
 import { formatCurrency } from '../../utils/formatting';
 import {
@@ -18,29 +25,52 @@ const badgeContent = {
 };
 
 const getAvailableSeatsCount = (trip) => {
-  if (Number.isFinite(Number(trip.availableSeatsCount))) return Number(trip.availableSeatsCount);
+  if (Number.isFinite(Number(trip.availableSeatsCount))) {
+    return Number(trip.availableSeatsCount);
+  }
+
   return trip.seats?.filter((seat) => seat.status === 'available').length || 0;
 };
 
-export default function TripCard({ trip, onSelect, showSecondary = false, secondaryLabel = 'تفاصيل أكثر' }) {
+export default function TripCard({
+  trip,
+  onSelect,
+  showSecondary = false,
+  secondaryLabel = 'تفاصيل أكثر',
+}) {
   const data = withStationNames(trip);
   const availableSeats = getAvailableSeatsCount(data);
-  const bookability = getTripBookability({ ...data, status: data.status || 'upcoming' });
+  const bookability = getTripBookability({
+    ...data,
+    status: data.status || 'upcoming',
+  });
+  const cancellationPolicy = getCancellationPolicy({
+    ...data,
+    status: 'upcoming',
+    finalTotal: data.price,
+  });
   const badge = data.badge ? badgeContent[data.badge] : null;
-  const seatsTone = availableSeats === 0 ? 'warning' : availableSeats <= 5 ? 'warning' : 'success';
+  const isSoldOut = availableSeats === 0;
+  const seatsTone = isSoldOut ? 'danger' : availableSeats <= 5 ? 'warning' : 'success';
 
   return (
-    <AppSurface className="px-5 py-5">
+    <AppSurface className="flex h-full flex-col overflow-hidden px-5 py-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-black tracking-[0.16em] text-slate-400 dark:text-slate-500">رحلة بين المحافظات</p>
-          <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">{data.company}</h3>
-          <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{data.class}</p>
+          <p className="text-xs font-black tracking-[0.16em] text-[var(--ink-soft)]">
+            رحلة بين المحافظات
+          </p>
+          <h3 className="mt-1 text-lg font-black text-[var(--ink)]">{data.company}</h3>
+          <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">{data.class}</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {badge ? <StatusBadge label={badge.label} tone={badge.tone} /> : null}
           {!bookability.canBook ? (
-            <StatusBadge label={bookability.reason} tone="danger" className="max-w-[180px] text-center" />
+            <StatusBadge
+              label={bookability.reason}
+              tone="danger"
+              className="max-w-[180px] text-center"
+            />
           ) : null}
         </div>
       </div>
@@ -52,12 +82,12 @@ export default function TripCard({ trip, onSelect, showSecondary = false, second
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <MetaChip
           icon={<Armchair className="h-3.5 w-3.5" />}
-          label={availableSeats === 0 ? 'امتلأت - ممكن تسجل انتظار' : `فاضل ${availableSeats} كرسي`}
+          label={isSoldOut ? 'ممتلئة حالياً' : availableSeats <= 5 ? `فاضل ${availableSeats} كراسي` : `${availableSeats} كرسي متاح`}
           tone={seatsTone}
         />
         <MetaChip
           icon={<Clock3 className="h-3.5 w-3.5" />}
-          label="الحجز يقفل قبل التحرك بساعتين"
+          label="الحجز متاح لحد قبل التحرك بساعتين"
           tone="neutral"
         />
         <MetaChip
@@ -67,8 +97,8 @@ export default function TripCard({ trip, onSelect, showSecondary = false, second
         />
         <MetaChip
           icon={<ShieldCheck className="h-3.5 w-3.5" />}
-          label="الاسترداد للمحفظة حسب التوقيت"
-          tone="brand"
+          label={cancellationPolicy.allowed ? `استرداد متوقع ${formatCurrency(cancellationPolicy.refundAmount)}` : cancellationPolicy.message}
+          tone={cancellationPolicy.allowed ? 'brand' : 'warning'}
         />
         <MetaChip
           icon={<Map className="h-3.5 w-3.5" />}
@@ -77,25 +107,33 @@ export default function TripCard({ trip, onSelect, showSecondary = false, second
         />
         <MetaChip
           icon={<Tag className="h-3.5 w-3.5" />}
-          label="الصعود بالتذكرة والـ QR"
+          label="الصعود من المحطة والـ QR ظاهرين في التذكرة"
           tone="neutral"
         />
       </div>
 
-      <div className="mt-5 flex flex-col gap-4 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-black text-slate-400 dark:text-slate-500">السعر للراكب</p>
-          <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{formatCurrency(data.price)}</p>
-        </div>
-        <div className="flex flex-col gap-2 sm:w-auto sm:min-w-[190px]">
-          <PrimaryButton
-            onClick={() => onSelect(data)}
-            disabled={!bookability.canBook}
-            className={availableSeats === 0 ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/25' : ''}
-          >
-            {availableSeats === 0 ? 'سجل انتظار' : 'اختار الرحلة'}
-          </PrimaryButton>
-          {showSecondary ? <SecondaryButton>{secondaryLabel}</SecondaryButton> : null}
+      <div className="mt-5 app-dashed-divider pt-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-black text-[var(--ink-soft)]">السعر للراكب</p>
+            <p className="mt-1 text-2xl font-black text-[var(--ink)]">
+              {formatCurrency(data.price)}
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[210px]">
+            <PrimaryButton
+              onClick={() => onSelect(data)}
+              disabled={!bookability.canBook || isSoldOut}
+              className={isSoldOut ? 'disabled:!border-slate-300 disabled:!bg-slate-200 disabled:!text-slate-700 disabled:shadow-none' : !bookability.canBook ? 'disabled:!border-amber-200 disabled:!bg-amber-50 disabled:!text-amber-800 disabled:shadow-none dark:disabled:!border-amber-900/40 dark:disabled:!bg-amber-950/20 dark:disabled:!text-amber-200' : ''}
+            >
+              {isSoldOut
+                ? 'غير متاحة الآن'
+                : !bookability.canBook
+                ? 'الحجز مقفول'
+                : 'اختار الرحلة'}
+            </PrimaryButton>
+            {showSecondary ? <SecondaryButton>{secondaryLabel}</SecondaryButton> : null}
+          </div>
         </div>
       </div>
     </AppSurface>

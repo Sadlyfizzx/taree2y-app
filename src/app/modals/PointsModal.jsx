@@ -55,7 +55,7 @@ function PointsModal({
     <ModalShell
       onClose={closeModal}
       title="نقاط الولاء"
-      subtitle="كل رحلة منتهية بتضيف نقاط، والاستبدال دلوقتي يعتمد بالكامل على السيرفر من غير أي تعديل محلي."
+      subtitle="كل 500 نقطة تقدر تتحول إلى 50 ج.م في المحفظة."
       icon={<Award className="h-6 w-6" />}
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -69,8 +69,8 @@ function PointsModal({
       <div className="space-y-5">
         <InlineNotice
           tone="info"
-          title="استبدال حقيقي فقط"
-          text="تم إلغاء أي خصم أو إضافة محلية. لو السيرفر لم يؤكد العملية، الرصيد والنقاط لن يتغيروا."
+          title="الاستبدال ينعكس بعد نجاح العملية"
+          text="لو تمت العملية بنجاح، هتلاقي التحديث ظاهر في النقاط والمحفظة مباشرة."
           icon={ShieldCheck}
         />
 
@@ -79,22 +79,7 @@ function PointsModal({
           <p className="mt-3 text-5xl font-black text-indigo-700 dark:text-indigo-300">{points}</p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <MetaChip label="كل 500 نقطة = 50 ج.م" tone="brand" />
-            <MetaChip label="تأكيد من السيرفر" tone="success" />
-          </div>
-        </div>
-
-        <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-indigo-100 p-3 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div className="space-y-2">
-              <p className="text-base font-black text-slate-900 dark:text-white">إيه اللي هيحصل؟</p>
-              <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
-                لما تضغط استبدال، التطبيق هيطلب العملية من السيرفر. بعد النجاح، بنعمل تحديث للحالة
-                علشان النقاط والمحفظة ييجوا من المصدر الحقيقي.
-              </p>
-            </div>
+            <MetaChip label="تحديث مباشر بعد النجاح" tone="success" />
           </div>
         </div>
       </div>

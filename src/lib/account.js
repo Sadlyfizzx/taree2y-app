@@ -57,6 +57,7 @@ function buildBaseProfile(user) {
     updated_at: null,
     onboarding_completed_at: null,
     first_app_open_at: null,
+    last_app_open_at: null,
     last_offer_popup_at: null,
     email: user?.email || '',
     isFirstTimeUser: true,
@@ -78,6 +79,7 @@ export function normalizeProfileRow(row, user) {
     updated_at: safeRow.updated_at || null,
     onboarding_completed_at: safeRow.onboarding_completed_at || null,
     first_app_open_at: safeRow.first_app_open_at || null,
+    last_app_open_at: safeRow.last_app_open_at || null,
     last_offer_popup_at: safeRow.last_offer_popup_at || null,
     email: user?.email || safeRow.email || base.email,
     isFirstTimeUser: !safeRow.onboarding_completed_at,
@@ -112,6 +114,7 @@ function buildProfilePayload(user, currentProfile = {}, overrides = {}) {
     deleted_at: profile.deleted_at || null,
     onboarding_completed_at: profile.onboarding_completed_at || null,
     first_app_open_at: profile.first_app_open_at || nowIso,
+    last_app_open_at: profile.last_app_open_at || null,
     last_offer_popup_at: profile.last_offer_popup_at || null,
     updated_at: nowIso,
   });
@@ -242,38 +245,47 @@ export async function updateProfileDetails(
     updates.display_name !== undefined
       ? String(updates.display_name).trim() || undefined
       : undefined;
-  const nowIso = new Date().toISOString();
 
-  const payload = compactObject({
-    id: userId,
-    display_name: nextDisplayName,
-    phone:
-      updates.phone !== undefined ? normalizeText(updates.phone) : undefined,
-    account_status:
-      updates.account_status !== undefined
-        ? normalizeAccountStatus(updates.account_status)
-        : undefined,
-    deleted_at:
-      updates.deleted_at !== undefined ? updates.deleted_at : undefined,
-    onboarding_completed_at:
-      updates.onboarding_completed_at !== undefined
-        ? updates.onboarding_completed_at
-        : undefined,
-    first_app_open_at:
-      updates.first_app_open_at !== undefined
-        ? updates.first_app_open_at
-        : undefined,
-    last_offer_popup_at:
-      updates.last_offer_popup_at !== undefined
-        ? updates.last_offer_popup_at
-        : undefined,
-    updated_at: nowIso,
-  });
+  let currentRow = null;
+
+  try {
+    const currentResponse = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (currentResponse.data) {
+      currentRow = currentResponse.data;
+    }
+  } catch {
+    // ignore current profile read failures; payload builder will still fallback safely
+  }
+
+  const payload = buildProfilePayload(
+    { id: userId },
+    currentRow || {},
+    {
+      ...updates,
+      display_name:
+        nextDisplayName !== undefined
+          ? nextDisplayName
+          : currentRow?.display_name || 'مستخدم',
+    },
+  );
 
   const response = await upsertProfilePayload(payload, options);
 
   return {
-    data: response.data ? normalizeProfileRow(response.data, { id: userId }) : null,
+    data: response.data
+      ? normalizeProfileRow(response.data, {
+          id: userId,
+          user_metadata: {
+            display_name: payload.display_name,
+            phone: payload.phone,
+          },
+        })
+      : null,
     error: response.error,
   };
 }
@@ -315,6 +327,14 @@ export async function markOnboardingComplete(userId) {
 export async function markOfferPopupSeen(userId) {
   return updateProfileDetails(userId, {
     last_offer_popup_at: new Date().toISOString(),
+  });
+}
+
+export async function markAppOpen(userId, currentProfile = null) {
+  const nowIso = new Date().toISOString();
+  return updateProfileDetails(userId, {
+    first_app_open_at: currentProfile?.first_app_open_at || nowIso,
+    last_app_open_at: nowIso,
   });
 }
 

@@ -4,27 +4,42 @@ export const APP_TOKENS = {
     brandStrong: '#163C98',
     brandInk: '#10233F',
     accent: '#0F9F8A',
-    sand: '#F8F4EC',
-    paper: '#FFFFFF',
-    soft: '#EEF4FF',
-    success: '#047857',
-    warning: '#B45309',
-    danger: '#BE123C',
-    line: 'rgba(15, 23, 42, 0.08)',
-    lineStrong: 'rgba(15, 23, 42, 0.16)',
+    success: '#0D7F5F',
+    warning: '#B86A0E',
+    danger: '#C53652',
+    light: {
+      bg: '#F5F7FB',
+      bgMuted: '#EDF2FB',
+      surface: '#FFFFFF',
+      surfaceSoft: '#F7FAFF',
+      text: '#101828',
+      textMuted: '#546179',
+      line: 'rgba(15, 23, 42, 0.08)',
+    },
+    dark: {
+      bg: '#050B15',
+      bgMuted: '#08111D',
+      surface: '#0F1726',
+      surfaceSoft: '#111C2E',
+      text: '#EEF3FF',
+      textMuted: '#B7C3D8',
+      line: 'rgba(148, 163, 184, 0.16)',
+    },
   },
   radii: {
     card: '28px',
+    panel: '34px',
     sheet: '32px',
     pill: '999px',
   },
   shadows: {
-    card: '0 20px 45px -28px rgba(16, 35, 63, 0.35)',
-    floating: '0 24px 60px -28px rgba(16, 35, 63, 0.4)',
+    surface: '0 24px 60px -38px rgba(16,35,63,0.18), 0 10px 24px -18px rgba(16,35,63,0.12)',
+    elevated: '0 34px 80px -44px rgba(16,35,63,0.24), 0 18px 38px -24px rgba(16,35,63,0.18)',
+    floating: '0 42px 90px -48px rgba(16,35,63,0.44), 0 18px 40px -24px rgba(16,35,63,0.24)',
   },
   motion: {
-    fast: 180,
-    base: 240,
+    fast: 160,
+    base: 220,
     slow: 320,
   },
   tap: {
@@ -34,9 +49,9 @@ export const APP_TOKENS = {
 };
 
 export const BOOKING_FLOW_STEPS = [
-  { key: 'results', label: 'الرحلة' },
-  { key: 'seats', label: 'المقاعد' },
-  { key: 'checkout', label: 'الدفع' },
+  { key: 'results', label: 'اختيار الرحلة' },
+  { key: 'seats', label: 'اختيار المقاعد' },
+  { key: 'checkout', label: 'المراجعة والدفع' },
   { key: 'confirmation', label: 'التذكرة' },
 ];
 
@@ -49,7 +64,8 @@ export const STATUS_META = {
 
 export const MAIN_NAV_ITEMS = [
   { key: 'home', label: 'الرئيسية' },
-  { key: 'trips', label: 'رحلاتي' },
+  { key: 'bookings', label: 'رحلاتي' },
+  { key: 'tickets', label: 'التذاكر' },
   { key: 'wallet', label: 'المحفظة' },
-  { key: 'profile', label: 'حسابي' },
+  { key: 'profile', label: 'الحساب' },
 ];

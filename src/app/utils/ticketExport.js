@@ -14,248 +14,375 @@ function hasRenderableTrackingUrl(value) {
   return /^https?:\/\//i.test(String(value || '').trim());
 }
 
-function shortenTrackingUrl(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (raw.length <= 54) return raw;
-  return `${raw.slice(0, 36)}…${raw.slice(-12)}`;
-}
-
 async function ensureCairoFontReady() {
   if (typeof document === 'undefined' || !document.fonts?.load) return;
-
   try {
     await Promise.all([
       document.fonts.load('400 16px Cairo'),
-      document.fonts.load('600 16px Cairo'),
       document.fonts.load('700 16px Cairo'),
-      document.fonts.load('800 16px Cairo'),
       document.fonts.load('900 16px Cairo'),
     ]);
   } catch {
-    // silent fallback
+    // ignore font preload errors
   }
 }
 
-async function buildQrDataUrl(value) {
-  return QRCode.toDataURL(String(value || '').trim(), {
-    errorCorrectionLevel: 'M',
-    margin: 2,
-    width: 280,
-    color: {
-      dark: '#163C98',
-      light: '#F8FBFF',
-    },
+function roundRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+function fillRoundRect(ctx, x, y, width, height, radius, fillStyle) {
+  ctx.save();
+  roundRectPath(ctx, x, y, width, height, radius);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  ctx.restore();
+}
+
+function strokeRoundRect(ctx, x, y, width, height, radius, strokeStyle, lineWidth = 1) {
+  ctx.save();
+  roundRectPath(ctx, x, y, width, height, radius);
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawText(ctx, text, x, y, options = {}) {
+  const {
+    font = '700 24px Cairo',
+    color = '#10233f',
+    align = 'right',
+    baseline = 'alphabetic',
+  } = options;
+
+  ctx.save();
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  ctx.direction = 'rtl';
+  ctx.fillText(String(text || ''), x, y);
+  ctx.restore();
+}
+
+function drawWrappedText(ctx, text, x, y, maxWidth, options = {}) {
+  const {
+    font = '700 20px Cairo',
+    color = '#334155',
+    lineHeight = 30,
+    maxLines = 3,
+    align = 'right',
+  } = options;
+
+  ctx.save();
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'alphabetic';
+  ctx.direction = 'rtl';
+
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = '';
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    const width = ctx.measureText(candidate).width;
+    if (width <= maxWidth || !current) {
+      current = candidate;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+
+  if (current) lines.push(current);
+
+  const visible = lines.slice(0, maxLines);
+  visible.forEach((line, index) => {
+    ctx.fillText(line, x, y + index * lineHeight);
+  });
+
+  ctx.restore();
+}
+
+function createCanvas() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1240;
+  canvas.height = 1754;
+  return canvas;
+}
+
+async function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
   });
 }
 
-function buildTicketMarkup({ ticket, user, qrDataUrl, trackingUrl }) {
-  const pnr = normalizeCode(ticket?.pnr, 'TRQ');
-  const driverCode = normalizeCode(
-    ticket?.driverTripCode ||
-      ticket?.tripPublicCode ||
-      ticket?.tripCode ||
-      ticket?.ticketToken,
-    'DRV',
-  );
-  const travelTips = 'وصل المحطة قبل التحرك بـ 20 دقيقة على الأقل.';
-  const hasTrackingUrl = hasRenderableTrackingUrl(trackingUrl);
-  const trackingUrlText = hasTrackingUrl ? shortenTrackingUrl(trackingUrl) : '';
-
-  return `
-    <div style="width:100%;background:#eef4ff;padding:24px;font-family:'Cairo','Segoe UI',Tahoma,Arial,system-ui,sans-serif;direction:rtl;box-sizing:border-box;">
-      <div style="max-width:860px;margin:0 auto;background:#ffffff;border-radius:32px;overflow:hidden;box-shadow:0 24px 60px -32px rgba(16,35,63,.35);border:1px solid rgba(15,23,42,.08);">
-        <div style="background:linear-gradient(135deg,#10233f 0%,#163c98 48%,#2156d9 100%);color:#fff;padding:28px 28px 24px;">
-          <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;">
-            <div>
-              <div style="font-size:12px;font-weight:800;opacity:.78;">اسم الراكب</div>
-              <div style="margin-top:8px;font-size:28px;font-weight:900;line-height:1.2;">${user?.name || 'راكب طريقي'}</div>
-            </div>
-            <div style="text-align:left;">
-              <div style="font-size:34px;font-weight:900;line-height:1;">طريقي</div>
-              <div style="margin-top:8px;font-size:13px;font-weight:700;opacity:.84;">تذكرة سفر رقمية حديثة وواضحة</div>
-            </div>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">
-            <span style="display:inline-flex;align-items:center;padding:10px 14px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;font-weight:900;">${driverCode}</span>
-            <span style="display:inline-flex;align-items:center;padding:10px 14px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;font-weight:900;">${pnr}</span>
-          </div>
-        </div>
-
-        <div style="padding:22px;">
-          <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:22px;border:1px solid rgba(15,23,42,.08);border-radius:24px;background:#fbfdff;">
-            <div style="text-align:right;">
-              <div style="font-size:13px;font-weight:800;color:#475569;">من</div>
-              <div style="margin-top:6px;font-size:36px;font-weight:900;color:#10233f;line-height:1.1;">${ticket?.from || '—'}</div>
-              <div style="margin-top:6px;font-size:14px;font-weight:700;color:#334155;">${ticket?.fromStationName || 'المحطة الرئيسية'}</div>
-            </div>
-            <div style="display:flex;align-items:center;justify-content:center;">
-              <div style="display:flex;align-items:center;gap:12px;min-width:120px;justify-content:center;">
-                <span style="width:32px;height:2px;background:#dbe4f4;border-radius:999px;"></span>
-                <span style="display:grid;place-items:center;width:44px;height:44px;border-radius:999px;background:#2156d9;color:#fff;font-size:20px;font-weight:900;">←</span>
-                <span style="width:32px;height:2px;background:#dbe4f4;border-radius:999px;"></span>
-              </div>
-            </div>
-            <div style="text-align:left;">
-              <div style="font-size:13px;font-weight:800;color:#475569;">إلى</div>
-              <div style="margin-top:6px;font-size:36px;font-weight:900;color:#10233f;line-height:1.1;">${ticket?.to || '—'}</div>
-              <div style="margin-top:6px;font-size:14px;font-weight:700;color:#334155;">${ticket?.toStationName || 'المحطة الرئيسية'}</div>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px;">
-            ${[
-              ['تاريخ الرحلة', ticket?.date || '—'],
-              ['ميعاد التحرك', ticket?.departureTime || '—'],
-              ['ميعاد الوصول', ticket?.arrivalTime || '—'],
-              ['مدة الرحلة', ticket?.durationHour ? `${ticket.durationHour} س` : '—'],
-              ['المقاعد', formatSeatsText(ticket?.selectedSeats || [])],
-              ['إجمالي الدفع', formatCurrency(ticket?.finalTotal || ticket?.price || 0)],
-              ['الدرجة', ticket?.class || '—'],
-              ['الشركة', ticket?.company || '—'],
-              ['اسم الراكب', user?.name || '—'],
-            ]
-              .map(
-                ([label, value]) => `
-              <div style="border:1px solid rgba(15,23,42,.08);border-radius:20px;background:#fff;padding:16px;min-height:94px;box-sizing:border-box;">
-                <div style="font-size:12px;font-weight:800;color:#475569;">${label}</div>
-                <div style="margin-top:10px;font-size:30px;font-weight:900;color:#10233f;line-height:1.2;word-break:break-word;overflow-wrap:anywhere;">${value}</div>
-              </div>
-            `,
-              )
-              .join('')}
-          </div>
-
-          <div style="display:grid;grid-template-columns:minmax(0,1.1fr) 292px;gap:16px;margin-top:18px;align-items:stretch;">
-            <div style="display:grid;gap:14px;align-content:start;">
-              <div style="border:1px solid rgba(15,23,42,.08);border-radius:24px;background:#fff;padding:18px;">
-                <div style="font-size:26px;font-weight:900;color:#10233f;">ملاحظة مهمة</div>
-                <div style="margin-top:12px;font-size:16px;font-weight:800;line-height:1.85;color:#334155;">${travelTips}</div>
-              </div>
-
-              <div style="border:1px solid rgba(15,23,42,.08);border-radius:24px;background:#fff;padding:18px;">
-                <div style="font-size:18px;font-weight:900;color:#10233f;">أكواد الرحلة</div>
-                <div style="margin-top:12px;display:grid;gap:10px;">
-                  <div style="padding:12px 14px;border-radius:18px;background:#f7faff;font-size:13px;font-weight:800;color:#10233f;word-break:break-word;overflow-wrap:anywhere;">كود التذكرة: ${pnr}</div>
-                  <div style="padding:12px 14px;border-radius:18px;background:#f7faff;font-size:13px;font-weight:800;color:#10233f;word-break:break-word;overflow-wrap:anywhere;">كود تشغيل الرحلة: ${driverCode}</div>
-                </div>
-              </div>
-            </div>
-
-            <div style="border-radius:28px;overflow:hidden;background:linear-gradient(160deg,#163c98 0%,#2156d9 56%,#0f9f8a 140%);color:#fff;padding:16px;box-sizing:border-box;min-height:100%;">
-              <div style="font-size:32px;font-weight:900;line-height:1.15;">QR متابعة الرحلة</div>
-              <div style="margin-top:8px;font-size:14px;font-weight:700;line-height:1.7;color:rgba(255,255,255,.88);">امسح الكود لفتح رابط المتابعة مباشرة.</div>
-              <div style="margin-top:14px;display:inline-flex;align-items:center;padding:9px 13px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px;font-weight:900;">${driverCode}</div>
-              <div style="margin-top:16px;border-radius:28px;background:#fff;padding:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.7);">
-                <div style="border-radius:24px;background:radial-gradient(circle at top right,rgba(33,86,217,.10),transparent 28%),linear-gradient(180deg,#fff 0%,#f4f8ff 100%);padding:14px;">
-                  <div style="margin:0 auto;max-width:224px;padding:10px;border-radius:22px;background:#fff;box-shadow:0 18px 40px -26px rgba(16,35,63,.28);">
-                    <img src="${qrDataUrl}" alt="QR" style="display:block;width:100%;border-radius:16px;background:#f8fbff;" />
-                  </div>
-                </div>
-              </div>
-              ${
-                hasTrackingUrl
-                  ? `<div style="margin-top:14px;padding:14px;border-radius:20px;background:rgba(255,255,255,.10);word-break:break-word;overflow-wrap:anywhere;">
-                <div style="font-size:12px;font-weight:900;opacity:.76;">رابط المتابعة</div>
-                <div style="margin-top:8px;font-size:12px;font-weight:800;line-height:1.9;">${trackingUrlText}</div>
-              </div>`
-                  : ''
-              }
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+function downloadDataUrl(dataUrl, filename) {
+  const anchor = document.createElement('a');
+  anchor.href = dataUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
 }
 
-async function renderMarkupToCanvas(markup) {
-  const container = document.createElement('div');
-  container.style.position = 'fixed';
-  container.style.top = '0';
-  container.style.left = '-20000px';
-  container.style.width = '920px';
-  container.style.zIndex = '-1';
-  container.innerHTML = markup;
-  document.body.appendChild(container);
+function drawInfoCard(ctx, x, y, width, height, label, value, options = {}) {
+  const { align = 'right', valueFont = '900 34px Cairo' } = options;
+  fillRoundRect(ctx, x, y, width, height, 22, '#ffffff');
+  strokeRoundRect(ctx, x, y, width, height, 22, 'rgba(16,35,63,0.08)');
+  const textX = align === 'left' ? x + 22 : x + width - 22;
+  drawText(ctx, label, textX, y + 28, {
+    font: '800 16px Cairo',
+    color: '#64748b',
+    align,
+  });
+  drawWrappedText(ctx, value, textX, y + 82, width - 44, {
+    font: valueFont,
+    color: '#10233f',
+    lineHeight: 34,
+    maxLines: 2,
+    align,
+  });
+}
 
-  try {
-    const { toPng } = await import('html-to-image');
-    const dataUrl = await toPng(container.firstElementChild, {
-      cacheBust: true,
-      pixelRatio: 2,
-      canvasWidth: 1840,
-      canvasHeight: 2480,
-      backgroundColor: '#eef4ff',
-      style: {
-        margin: '0',
-      },
+async function renderTicketCanvas({ ticket, user }) {
+  await ensureCairoFontReady();
+
+  const canvas = createCanvas();
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas_not_supported');
+
+  const trackingUrl = buildTripPublicTrackingUrl(ticket);
+  const pnr = normalizeCode(ticket?.pnr, 'TRQ');
+  const tripCode = normalizeCode(
+    ticket?.driverRunCode || ticket?.driverTripCode || ticket?.tripPublicCode || ticket?.tripCode || ticket?.ticketToken,
+    'DRV',
+  );
+  const qrValue = trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '';
+  const qrDataUrl = await QRCode.toDataURL(String(qrValue || '').trim(), {
+    errorCorrectionLevel: 'M',
+    margin: 2,
+    width: 320,
+    color: { dark: '#2156D9', light: '#F8FBFF' },
+  });
+  const qrImage = await loadImage(qrDataUrl);
+
+  ctx.fillStyle = '#edf1f7';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const shellX = 56;
+  const shellY = 70;
+  const shellWidth = canvas.width - 112;
+  const shellHeight = canvas.height - 140;
+
+  fillRoundRect(ctx, shellX, shellY, shellWidth, shellHeight, 34, '#ffffff');
+  strokeRoundRect(ctx, shellX, shellY, shellWidth, shellHeight, 34, 'rgba(16,35,63,0.06)', 2);
+
+  const headerGradient = ctx.createLinearGradient(shellX, shellY, shellX + shellWidth, shellY);
+  headerGradient.addColorStop(0, '#10233F');
+  headerGradient.addColorStop(0.5, '#163C98');
+  headerGradient.addColorStop(1, '#2156D9');
+  fillRoundRect(ctx, shellX, shellY, shellWidth, 172, 34, headerGradient);
+  fillRoundRect(ctx, shellX, shellY + 124, shellWidth, 48, 0, headerGradient);
+
+  drawText(ctx, 'طريقي', shellX + 34, shellY + 66, {
+    font: '900 58px Cairo',
+    color: '#ffffff',
+    align: 'left',
+  });
+  drawText(ctx, 'تذكرة سفر رقمية حديثة وواضحة', shellX + 34, shellY + 106, {
+    font: '700 18px Cairo',
+    color: 'rgba(255,255,255,0.82)',
+    align: 'left',
+  });
+
+  drawText(ctx, 'اسم الراكب', shellX + shellWidth - 40, shellY + 34, {
+    font: '800 16px Cairo',
+    color: 'rgba(255,255,255,0.72)',
+  });
+  drawText(ctx, user?.name || 'راكب طريقي', shellX + shellWidth - 40, shellY + 86, {
+    font: '900 40px Cairo',
+    color: '#ffffff',
+  });
+
+  fillRoundRect(ctx, shellX + shellWidth - 248, shellY + 116, 214, 42, 20, 'rgba(255,255,255,0.16)');
+  fillRoundRect(ctx, shellX + shellWidth - 470, shellY + 116, 190, 42, 20, 'rgba(255,255,255,0.16)');
+  drawText(ctx, pnr, shellX + shellWidth - 52, shellY + 144, {
+    font: '900 18px Cairo',
+    color: '#ffffff',
+  });
+  drawText(ctx, tripCode, shellX + shellWidth - 300, shellY + 144, {
+    font: '900 18px Cairo',
+    color: '#ffffff',
+  });
+
+  const routeY = shellY + 204;
+  fillRoundRect(ctx, shellX + 26, routeY, shellWidth - 52, 160, 26, '#ffffff');
+  strokeRoundRect(ctx, shellX + 26, routeY, shellWidth - 52, 160, 26, 'rgba(16,35,63,0.08)');
+
+  drawText(ctx, 'من', shellX + shellWidth - 90, routeY + 42, {
+    font: '800 16px Cairo',
+    color: '#475569',
+  });
+  drawText(ctx, ticket?.from || '—', shellX + shellWidth - 90, routeY + 98, {
+    font: '900 42px Cairo',
+    color: '#10233f',
+  });
+  drawText(ctx, ticket?.fromStationName || 'المحطة الرئيسية', shellX + shellWidth - 90, routeY + 132, {
+    font: '700 18px Cairo',
+    color: '#334155',
+  });
+
+  drawText(ctx, 'إلى', shellX + 90, routeY + 42, {
+    font: '800 16px Cairo',
+    color: '#475569',
+    align: 'left',
+  });
+  drawText(ctx, ticket?.to || '—', shellX + 90, routeY + 98, {
+    font: '900 42px Cairo',
+    color: '#10233f',
+    align: 'left',
+  });
+  drawText(ctx, ticket?.toStationName || 'المحطة الرئيسية', shellX + 90, routeY + 132, {
+    font: '700 18px Cairo',
+    color: '#334155',
+    align: 'left',
+  });
+
+  ctx.save();
+  ctx.strokeStyle = '#d6deef';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(shellX + 420, routeY + 82);
+  ctx.lineTo(shellX + shellWidth - 420, routeY + 82);
+  ctx.stroke();
+  ctx.restore();
+
+  fillRoundRect(ctx, shellX + shellWidth / 2 - 26, routeY + 56, 52, 52, 26, '#2156D9');
+  drawText(ctx, '←', shellX + shellWidth / 2, routeY + 92, {
+    font: '900 24px Cairo',
+    color: '#ffffff',
+    align: 'center',
+  });
+
+  const details = [
+    ['تاريخ الرحلة', ticket?.date || '—'],
+    ['ميعاد التحرك', ticket?.departureTime || '—'],
+    ['ميعاد الوصول', ticket?.arrivalTime || '—'],
+    ['مدة الرحلة', ticket?.durationHour ? `${ticket.durationHour} س` : '—'],
+    ['المقاعد', formatSeatsText(ticket?.selectedSeats || [])],
+    ['إجمالي الدفع', formatCurrency(ticket?.finalTotal || ticket?.price || 0)],
+    ['اسم الراكب', user?.name || 'راكب طريقي'],
+    ['الشركة', ticket?.company || '—'],
+    ['الدرجة', ticket?.class || '—'],
+  ];
+
+  const cardGap = 18;
+  const cardWidth = (shellWidth - 52 - cardGap * 2) / 3;
+  const infoTop = routeY + 188;
+  details.forEach(([label, value], index) => {
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    drawInfoCard(ctx, shellX + 26 + col * (cardWidth + cardGap), infoTop + row * 104, cardWidth, 84, label, value, {
+      valueFont: '900 24px Cairo',
     });
-    return dataUrl;
-  } finally {
-    document.body.removeChild(container);
-  }
+  });
+
+  const bottomTop = infoTop + 3 * 104 + 24;
+  const qrPanelX = shellX + 26;
+  const qrPanelWidth = 380;
+  const noteX = qrPanelX + qrPanelWidth + 18;
+  const noteWidth = shellWidth - 52 - qrPanelWidth - 18;
+
+  const qrGradient = ctx.createLinearGradient(qrPanelX, bottomTop, qrPanelX + qrPanelWidth, bottomTop + 320);
+  qrGradient.addColorStop(0, '#163C98');
+  qrGradient.addColorStop(1, '#2156D9');
+  fillRoundRect(ctx, qrPanelX, bottomTop, qrPanelWidth, 388, 26, qrGradient);
+  drawText(ctx, 'QR متابعة الرحلة', qrPanelX + qrPanelWidth - 28, bottomTop + 48, {
+    font: '900 30px Cairo',
+    color: '#ffffff',
+  });
+  drawText(ctx, 'امسح الكود لفتح رابط المتابعة مباشرة.', qrPanelX + qrPanelWidth - 28, bottomTop + 82, {
+    font: '700 16px Cairo',
+    color: 'rgba(255,255,255,0.84)',
+  });
+  fillRoundRect(ctx, qrPanelX + 42, bottomTop + 118, 296, 220, 24, '#ffffff');
+  fillRoundRect(ctx, qrPanelX + 64, bottomTop + 140, 252, 176, 22, '#f8fbff');
+  ctx.drawImage(qrImage, qrPanelX + 94, bottomTop + 150, 192, 192);
+
+  fillRoundRect(ctx, noteX, bottomTop, noteWidth, 164, 24, '#ffffff');
+  strokeRoundRect(ctx, noteX, bottomTop, noteWidth, 164, 24, 'rgba(16,35,63,0.08)');
+  drawText(ctx, 'ملاحظة مهمة', noteX + noteWidth - 24, bottomTop + 42, {
+    font: '900 28px Cairo',
+    color: '#10233f',
+  });
+  drawWrappedText(
+    ctx,
+    'وصل المحطة قبل التحرك بـ 20 دقيقة على الأقل وتأكد من اسم المحطة الظاهر على التذكرة.',
+    noteX + noteWidth - 24,
+    bottomTop + 90,
+    noteWidth - 48,
+    { font: '700 18px Cairo', color: '#334155', lineHeight: 28, maxLines: 3 },
+  );
+
+  fillRoundRect(ctx, noteX, bottomTop + 184, noteWidth, 204, 24, '#ffffff');
+  strokeRoundRect(ctx, noteX, bottomTop + 184, noteWidth, 204, 24, 'rgba(16,35,63,0.08)');
+  drawText(ctx, 'أكواد الرحلة', noteX + noteWidth - 24, bottomTop + 226, {
+    font: '900 28px Cairo',
+    color: '#10233f',
+  });
+  fillRoundRect(ctx, noteX + 24, bottomTop + 252, noteWidth - 48, 40, 18, '#f4f7fb');
+  fillRoundRect(ctx, noteX + 24, bottomTop + 308, noteWidth - 48, 40, 18, '#f4f7fb');
+  drawText(ctx, `كود التذكرة: ${pnr}`, noteX + noteWidth - 40, bottomTop + 280, {
+    font: '800 16px Cairo',
+    color: '#10233f',
+  });
+  drawText(ctx, `كود تشغيل الرحلة: ${tripCode}`, noteX + noteWidth - 40, bottomTop + 336, {
+    font: '800 16px Cairo',
+    color: '#10233f',
+  });
+
+  return { canvas, trackingUrl };
 }
 
 export async function exportTicketPng({ ticket, user }) {
-  await ensureCairoFontReady();
-  const trackingUrl = buildTripPublicTrackingUrl(ticket);
-  const qrDataUrl = await buildQrDataUrl(
-    trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '',
-  );
-  const markup = buildTicketMarkup({
-    ticket,
-    user,
-    qrDataUrl,
-    trackingUrl: trackingUrl || '',
-  });
-  const pngDataUrl = await renderMarkupToCanvas(markup);
-  const anchor = document.createElement('a');
-  anchor.href = pngDataUrl;
-  anchor.download = `${ticket?.pnr || 'taree2y-ticket'}.png`;
-  anchor.click();
+  const { canvas } = await renderTicketCanvas({ ticket, user });
+  const pngDataUrl = canvas.toDataURL('image/png');
+  downloadDataUrl(pngDataUrl, `${ticket?.pnr || 'taree2y-ticket'}.png`);
 }
 
 export async function exportTicketPdf({ ticket, user }) {
-  await ensureCairoFontReady();
-  const trackingUrl = buildTripPublicTrackingUrl(ticket);
-  const qrDataUrl = await buildQrDataUrl(
-    trackingUrl || ticket?.qrPayload || ticket?.ticketToken || ticket?.pnr || '',
-  );
-  const markup = buildTicketMarkup({
-    ticket,
-    user,
-    qrDataUrl,
-    trackingUrl: trackingUrl || '',
-  });
-  const pngDataUrl = await renderMarkupToCanvas(markup);
+  const { canvas, trackingUrl } = await renderTicketCanvas({ ticket, user });
+  const pngDataUrl = canvas.toDataURL('image/png');
 
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 18;
   const imageWidth = pageWidth - margin * 2;
-  const imageHeight = pageHeight - margin * 2 - 18;
+  const imageHeight = (canvas.height / canvas.width) * imageWidth;
+  const offsetY = Math.max(margin, (pageHeight - imageHeight) / 2);
 
-  pdf.addImage(
-    pngDataUrl,
-    'PNG',
-    margin,
-    margin,
-    imageWidth,
-    imageHeight,
-    undefined,
-    'FAST',
-  );
+  pdf.addImage(pngDataUrl, 'PNG', margin, offsetY, imageWidth, imageHeight, undefined, 'FAST');
 
   if (hasRenderableTrackingUrl(trackingUrl)) {
-    const displayUrl = shortenTrackingUrl(trackingUrl);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(9);
     pdf.setTextColor(33, 86, 217);
-    pdf.textWithLink(displayUrl, margin + 2, pageHeight - 10, {
-      url: trackingUrl,
-    });
+    pdf.textWithLink('فتح رابط المتابعة', pageWidth - 92, pageHeight - 10, { url: trackingUrl });
   }
 
   pdf.save(`${ticket?.pnr || 'taree2y-ticket'}.pdf`);

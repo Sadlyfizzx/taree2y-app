@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  ReceiptText,
   Ticket,
 } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
@@ -20,9 +21,8 @@ import { formatCurrency, formatSeatsText } from '../utils/formatting';
 import { getCancellationPolicy } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
 
-function TripsView({
+export default function TripsView({
   trips,
-  _setMyTrips,
   processRefund,
   pendingCancellationBookingIds = [],
   onViewTicket,
@@ -33,7 +33,7 @@ function TripsView({
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
   const computedTrips = useMemo(
-    () => trips.map((trip) => withStationNames(trip)),
+    () => (Array.isArray(trips) ? trips : []).map((trip) => withStationNames(trip)),
     [trips],
   );
 
@@ -53,16 +53,12 @@ function TripsView({
   });
 
   useEffect(() => {
-    if (!cancelingTrip) {
-      setIsCancelSubmitting(false);
-    }
+    if (!cancelingTrip) setIsCancelSubmitting(false);
   }, [cancelingTrip]);
 
   const confirmCancel = async () => {
     if (!cancelingTrip || isCancelSubmitting) return;
-
     setIsCancelSubmitting(true);
-
     try {
       await processRefund(cancelingTrip);
       setCancelingTrip(null);
@@ -73,61 +69,56 @@ function TripsView({
 
   const cancelPolicy = cancelingTrip ? getCancellationPolicy(cancelingTrip) : null;
 
+  const tabs = [
+    { key: 'upcoming', label: 'القادمة', count: counts.upcoming },
+    { key: 'past', label: 'السابقة', count: counts.past },
+    { key: 'cancelled', label: 'الملغية', count: counts.cancelled },
+  ];
+
   return (
-    <div className="space-y-5">
+    <div className="app-page-frame min-w-0 overflow-x-clip space-y-6 pb-[calc(env(safe-area-inset-bottom)+118px)] md:pb-0">
       <PageHeading
         eyebrow="رحلاتي"
-        title="كل حجوزاتك في مكان واحد"
-        subtitle="هتلاقي الرحلات الجاية، اللي خلصت، والملغية مع حالة كل واحدة بشكل واضح."
+        title="إدارة الحجوزات"
+        subtitle="راجع الحجوزات الحالية والسابقة، وافهم حالة كل رحلة، والإلغاء أو الاسترداد وقت ما يكون متاح."
       />
 
       {pendingCancellationBookingIds.length > 0 ? (
         <InlineNotice
           tone="warning"
           title="فيه طلب استرداد شغال حالياً"
-          text='هتلاقي الرحلة بحالة "استرداد جاري" لحد ما العملية تكتمل وينزل المبلغ في المحفظة.'
+          text="الرحلة هتفضل ظاهرة بحالة استرداد جاري لحد ما المعالجة تكتمل وينزل المبلغ في المحفظة."
           icon={Clock}
         />
       ) : null}
 
-      <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
-        {[
-          { key: 'upcoming', label: `الجاية (${counts.upcoming})` },
-          { key: 'past', label: `السابقة (${counts.past})` },
-          { key: 'cancelled', label: `الملغية (${counts.cancelled})` },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={`rounded-full border px-4 py-2 text-sm font-black transition-all ${
-              activeTab === tab.key
-                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
-                : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <AppSurface className="p-2">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`interactive-press inline-flex items-center gap-2 rounded-[20px] px-4 py-3 text-sm font-black transition-all ${
+                activeTab === tab.key
+                  ? 'bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-[0_18px_34px_-20px_rgba(33,86,217,0.45)]'
+                  : 'text-[var(--ink-muted)] hover:bg-[var(--surface-soft)]'
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1 text-[11px] ${activeTab === tab.key ? 'bg-white/15' : 'bg-[var(--surface-soft)]'}`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </AppSurface>
 
       {filteredTrips.length === 0 ? (
         <EmptyStateCard
-          icon={Ticket}
-          title={
-            activeTab === 'upcoming'
-              ? 'مفيش رحلات جاية حالياً'
-              : activeTab === 'past'
-              ? 'مفيش رحلات سابقة محفوظة'
-              : 'مفيش رحلات ملغية'
-          }
-          text={
-            activeTab === 'upcoming'
-              ? 'أول ما تحجز رحلة جديدة هتظهر هنا بكل تفاصيلها.'
-              : activeTab === 'past'
-              ? 'بعد ما أي رحلة تنتهي، هتتنقل تلقائيًا للقائمة دي.'
-              : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد.'
-          }
+          icon={ReceiptText}
+          title={activeTab === 'upcoming' ? 'مفيش حجوزات قادمة' : activeTab === 'past' ? 'مفيش رحلات سابقة' : 'مفيش رحلات ملغية'}
+          text={activeTab === 'upcoming' ? 'أول ما تحجز رحلة، هتظهر هنا عشان تراجعها أو تفتح التذكرة.' : activeTab === 'past' ? 'بعد ما الرحلة تنتهي، هتفضل هنا كمرجع سريع.' : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد.'}
         />
       ) : (
         <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
@@ -137,15 +128,14 @@ function TripsView({
             const isPendingCancellation =
               trip.status === 'refund_pending' ||
               (bookingId && pendingCancellationBookingIds.includes(bookingId));
+            const primaryActionLabel = trip.status === 'upcoming' ? 'عرض التذكرة' : 'عرض التفاصيل';
 
             return (
-              <AppSurface key={trip.pnr || trip.id} className="p-5">
+              <AppSurface key={trip.pnr || trip.id} className="flex h-full min-w-0 flex-col overflow-hidden p-4 md:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-black tracking-[0.16em] text-slate-400 dark:text-slate-500">PNR</p>
-                    <p className="mt-1 font-mono text-sm font-black text-slate-900 dark:text-white">
-                      {trip.pnr || trip.id}
-                    </p>
+                    <p className="text-xs font-black tracking-[0.16em] text-[var(--ink-soft)]">حجز</p>
+                    <p className="mt-1 font-mono text-sm font-black text-[var(--ink)]">{trip.pnr || trip.id}</p>
                   </div>
                   {trip.status === 'refund_pending' || isPendingCancellation ? (
                     <StatusBadge label="استرداد جاري" tone="warning" />
@@ -169,19 +159,17 @@ function TripsView({
                 </div>
 
                 {trip.status === 'upcoming' ? (
-                  <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
-                    <p className="text-sm font-black text-slate-900 dark:text-white">الإلغاء قبل التحرك</p>
-                    <p className="mt-1 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-                      {policy.allowed
-                        ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}.`
-                        : policy.message}
+                  <div className="mt-4 rounded-[24px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-4">
+                    <p className="text-sm font-black text-[var(--ink)]">قبل التحرك</p>
+                    <p className="mt-1 text-sm font-bold leading-6 text-[var(--ink-muted)]">
+                      {policy.allowed ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}.` : policy.message}
                     </p>
                   </div>
                 ) : null}
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                  <PrimaryButton className="flex-1" onClick={() => onViewTicket(trip)}>
-                    افتح التذكرة
+                  <PrimaryButton className="flex-1" onClick={() => onViewTicket(trip)} icon={<Ticket className="h-4 w-4" />}>
+                    {primaryActionLabel}
                   </PrimaryButton>
                   {trip.status === 'upcoming' ? (
                     <SecondaryButton
@@ -213,12 +201,14 @@ function TripsView({
             setCancelingTrip(null);
           }}
           title="تأكيد إلغاء الرحلة"
-          subtitle="راجع الرسوم والمبلغ المتوقع يرجع للمحفظة."
+          subtitle="راجع الرسوم والمبلغ المتوقع يرجع للمحفظة قبل ما تأكد."
           icon={<AlertTriangle className="h-6 w-6" />}
           maxWidth="max-w-lg"
           footer={
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <SecondaryButton onClick={() => setCancelingTrip(null)} disabled={isCancelSubmitting}>رجوع</SecondaryButton>
+              <SecondaryButton onClick={() => setCancelingTrip(null)} disabled={isCancelSubmitting}>
+                رجوع
+              </SecondaryButton>
               <PrimaryButton
                 onClick={confirmCancel}
                 disabled={!cancelPolicy.allowed || isCancelSubmitting}
@@ -231,17 +221,17 @@ function TripsView({
         >
           <div className="space-y-4">
             <RouteTimeline trip={cancelingTrip} />
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
+            <div className="rounded-[24px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-4">
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3 text-sm font-bold">
-                  <span className="text-slate-500 dark:text-slate-400">قيمة الحجز الحالية</span>
-                  <span className="text-slate-900 dark:text-white">{formatCurrency(cancelingTrip.finalTotal)}</span>
+                  <span className="text-[var(--ink-muted)]">قيمة الحجز الحالية</span>
+                  <span className="text-[var(--ink)]">{formatCurrency(cancelingTrip.finalTotal)}</span>
                 </div>
                 <div className="flex items-start justify-between gap-3 text-sm font-bold text-rose-700 dark:text-rose-300">
                   <span>رسوم الإلغاء ({Math.round(cancelPolicy.feeRatio * 100)}%)</span>
                   <span>- {formatCurrency(Math.round(cancelingTrip.finalTotal * cancelPolicy.feeRatio))}</span>
                 </div>
-                <div className="border-t border-slate-200 pt-3 dark:border-slate-800">
+                <div className="app-dashed-divider pt-3">
                   <div className="flex items-start justify-between gap-3 text-base font-black text-emerald-700 dark:text-emerald-300">
                     <span>المبلغ المتوقع يرجع</span>
                     <span>{formatCurrency(cancelPolicy.refundAmount)}</span>
@@ -251,8 +241,8 @@ function TripsView({
             </div>
             <InlineNotice
               tone="warning"
-              title="ملحوظة"
-              text="بعد التأكيد، الرحلة هتتحول لحالة استرداد جاري لحد ما المعالجة تكتمل."
+              title="بعد التأكيد"
+              text="الرحلة هتتحول لحالة استرداد جاري لحد ما المعالجة تكتمل."
               icon={CheckCircle2}
             />
           </div>
@@ -261,5 +251,3 @@ function TripsView({
     </div>
   );
 }
-
-export default TripsView;

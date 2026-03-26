@@ -1,40 +1,45 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
-  BusFront,
   ChevronRight,
+  Compass,
+  HelpCircle,
   Home,
   Menu,
-  Ticket,
+  Moon,
+  QrCode,
+  Route,
+  Sun,
   User,
   Wallet as WalletIcon,
+  X,
 } from 'lucide-react';
 import { createLogger, isMissingRpcError } from '../../lib/logger';
 import {
   applyReferralCode as applyReferralCodeRpc,
+  clearPendingReferralCode,
   getReferralCodeFromUrl,
   getReferralSummary,
+  readPendingReferralCode,
   recordCampaignEvent,
+  stashPendingReferralCode,
 } from '../../lib/engagement';
-import { markOfferPopupSeen } from '../../lib/account';
+import { markAppOpen, markOfferPopupSeen } from '../../lib/account';
 import { signOutCurrentUser } from '../../lib/auth';
 import { getPromoPopupOffer } from '../../lib/promoEngine';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
-import {
-  getCancellationPolicy,
-  getLocalDateInputValue,
-} from '../utils/travel';
+import { getLocalDateInputValue } from '../utils/travel';
 import { ensureTicketIdentity } from '../utils/tripIdentity';
 import {
-  cancelBookingAtomic,
   createBookingAtomic,
   holdTripSeats,
   hydrateTripWithSeats,
   searchTripInventory,
 } from '../../lib/tripInventory';
+import { cancelBookingAtomicCompat } from '../../lib/cancelBookingCompat';
 import { useOnboardingGuide } from '../hooks/useOnboardingGuide';
-import { BottomNavItem, DesktopNavItem, MetaChip } from './ui/AppPrimitives';
+import { BottomNavItem, MetaChip } from './ui/AppPrimitives';
 import OnboardingGuide from './ui/OnboardingGuide';
 import ToastStack from './ToastStack';
 import HomeView from '../screens/HomeView';
@@ -47,6 +52,7 @@ import TicketView from '../screens/TicketView';
 import TrackingView from '../screens/TrackingView';
 import WalletView from '../screens/WalletView';
 import ProfileView from '../screens/ProfileView';
+import TicketsHubView from '../screens/TicketsHubView';
 import TopUpFlowModal from '../modals/TopUpFlowModal';
 import PointsModal from '../modals/PointsModal';
 import SubscriptionsModal from '../modals/SubscriptionsModal';
@@ -58,13 +64,70 @@ import InternalOpsPanel from './internal/InternalOpsPanel';
 
 const log = createLogger('user-app');
 
-const buildInvoiceItems = ({
-  passengers,
-  baseTotal,
-  luggageFee,
-  autoDiscount,
-  promoDiscount,
-}) => [
+const PROMO_POPUP_COOLDOWN_KEY = 'taree2y_promo_popup_last_seen';
+
+function readPromoPopupLastSeen(userId, popupKey) {
+  if (typeof window === 'undefined' || !userId || !popupKey) return 0;
+  try {
+    const raw = window.localStorage.getItem(`${PROMO_POPUP_COOLDOWN_KEY}:${userId}:${popupKey}`);
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePromoPopupLastSeen(userId, popupKey, timestamp = Date.now()) {
+  if (typeof window === 'undefined' || !userId || !popupKey) return;
+  try {
+    window.localStorage.setItem(
+      `${PROMO_POPUP_COOLDOWN_KEY}:${userId}:${popupKey}`,
+      String(timestamp),
+    );
+  } catch {
+    // ignore storage errors
+  }
+}
+
+
+const ROUTE_TO_STATE = {
+  '/': { view: 'main', page: 'home' },
+  '/home': { view: 'main', page: 'home' },
+  '/bookings': { view: 'main', page: 'bookings' },
+  '/tickets': { view: 'main', page: 'tickets' },
+  '/wallet': { view: 'main', page: 'wallet' },
+  '/profile': { view: 'main', page: 'profile' },
+  '/search': { view: 'search', page: 'home' },
+  '/seats': { view: 'seats', page: 'home' },
+  '/payment': { view: 'checkout', page: 'home' },
+  '/booking-success': { view: 'invoice', page: 'home' },
+  '/ticket': { view: 'ticket', page: 'tickets' },
+  '/trip-status': { view: 'tracking', page: 'tickets' },
+};
+
+const STATE_TO_PATH = {
+  'main:home': '/home',
+  'main:bookings': '/bookings',
+  'main:tickets': '/tickets',
+  'main:wallet': '/wallet',
+  'main:profile': '/profile',
+  'search:home': '/search',
+  'seats:home': '/seats',
+  'checkout:home': '/payment',
+  'invoice:home': '/booking-success',
+  'ticket:tickets': '/ticket',
+  'tracking:tickets': '/trip-status',
+};
+
+const NAV_ITEMS = [
+  { key: 'home', label: 'الرئيسية', icon: Home },
+  { key: 'bookings', label: 'رحلاتي', icon: Route },
+  { key: 'tickets', label: 'التذاكر', icon: QrCode },
+  { key: 'wallet', label: 'المحفظة', icon: WalletIcon },
+  { key: 'profile', label: 'الحساب', icon: User },
+];
+
+const _buildInvoiceItems = ({ passengers, baseTotal, luggageFee, autoDiscount, promoDiscount }) => [
   { name: `تذاكر (${passengers})`, price: baseTotal },
   ...(luggageFee > 0 ? [{ name: 'وزن إضافي', price: luggageFee }] : []),
   ...(autoDiscount > 0 ? [{ name: 'خصم الباقة', price: -autoDiscount }] : []),
@@ -72,41 +135,51 @@ const buildInvoiceItems = ({
 ];
 
 const formatCancellationErrorMessage = (result) => {
-  if (!result) {
-    return 'تعذر إلغاء الحجز حالياً.';
+  if (!result) return 'تعذر إلغاء الحجز حالياً.';
+  const payload = String(result?.message || result?.error?.message || '').toLowerCase();
+  if (payload.includes('has no field "date"')) {
+    return 'الإلغاء غير متاح حاليًا بسبب تحديث في الخادم. لو محتاج تلغي الحجز الآن، شغّل ملف SQL المرفق أو راجع إدارة قاعدة البيانات.';
   }
-
   if (result.errorClass === 'missing_rpc' || isMissingRpcError(result, 'cancel_booking_atomic')) {
-    return 'ميزة الإلغاء غير مفعلة على السيرفر حالياً. تم إيقاف العملية بدون أي تعديل على الحجز أو المحفظة.';
+    return 'الإلغاء غير متاح حاليًا. جرّب مرة تانية بعد شوية أو تواصل مع الدعم.';
   }
-
   return result.message || 'تعذر إلغاء الحجز حالياً.';
 };
 
-const getHeaderContent = (activeView, activeTab) => {
-  if (activeView === 'search') return { title: 'اختيار الرحلة', subtitle: 'قارن بين الميعاد والمحطة والسعر' };
-  if (activeView === 'seats') return { title: 'اختيار المقاعد', subtitle: 'حدد المقاعد قبل مراجعة الدفع' };
-  if (activeView === 'checkout') return { title: 'الدفع والتأكيد', subtitle: 'راجع كل شيء قبل الحجز النهائي' };
-  if (activeView === 'invoice') return { title: 'تم الحجز', subtitle: 'التذكرة جاهزة دلوقتي' };
-  if (activeView === 'ticket') return { title: 'التذكرة', subtitle: 'النسخة الحديثة + التصدير + QR' };
-  if (activeView === 'tracking') return { title: 'متابعة الرحلة', subtitle: 'شارك الحالة عبر رابط عام حقيقي' };
-  if (activeTab === 'trips') return { title: 'رحلاتي', subtitle: 'الجاية والسابقة والملغية' };
-  if (activeTab === 'wallet') return { title: 'المحفظة', subtitle: 'الرصيد والحركات' };
-  if (activeTab === 'profile') return { title: 'حسابي', subtitle: 'الملف الشخصي والإعدادات' };
-  return { title: 'طريقي', subtitle: 'رحلات مصر بشكل أوضح وأسهل' };
-};
-
 function readInternalOpsEnabled() {
-  if (String(import.meta.env.VITE_ENABLE_INTERNAL_OPS || '').toLowerCase() === 'true') {
-    return true;
-  }
-
+  if (String(import.meta.env.VITE_ENABLE_INTERNAL_OPS || '').toLowerCase() === 'true') return true;
   try {
     const params = new URLSearchParams(window.location.search);
     return params.get('ops') === '1';
   } catch {
     return false;
   }
+}
+
+function resolveStateFromPath(pathname) {
+  return ROUTE_TO_STATE[pathname] || { view: 'main', page: 'home' };
+}
+
+function createPath(view, page) {
+  return STATE_TO_PATH[`${view}:${page}`] || '/home';
+}
+
+function SidebarNavButton({ item, active, compact, onClick }) {
+  const Icon = item.icon;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`app-sidebar-nav-button app-pressable group relative flex w-full items-center gap-3 rounded-[22px] px-3 py-3 text-right transition-all duration-300 ${compact ? 'justify-center px-0' : ''} ${active ? 'is-active bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-[0_22px_48px_-26px_rgba(16,35,63,0.65)]' : ''}`}
+    >
+      <span className={`app-sidebar-icon-shell grid h-11 w-11 place-items-center rounded-[16px] transition-all duration-300 ${active ? 'bg-white/12 text-white ring-1 ring-white/10' : ''}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className={`app-sidebar-label flex-1 ${compact ? 'app-sidebar-label-collapsed' : ''}`}>
+        <p className="text-sm font-black whitespace-nowrap">{item.label}</p>
+      </div>
+    </button>
+  );
 }
 
 export default function UserApp({
@@ -118,7 +191,9 @@ export default function UserApp({
   setIsDark,
   runtimeMode = 'supabase',
 }) {
+  const initialRoute = resolveStateFromPath(typeof window !== 'undefined' ? window.location.pathname || '/home' : '/home');
   const todayDate = getLocalDateInputValue();
+
   const user = useMemo(
     () => ({
       name: profile?.display_name || 'مستخدم',
@@ -134,7 +209,7 @@ export default function UserApp({
     transactions,
     setTransactions,
     myTrips,
-    setMyTrips,
+    _setMyTrips,
     points,
     setPoints,
     subscription,
@@ -143,15 +218,12 @@ export default function UserApp({
     refreshCloudState,
   } = useCloudAppState(userId);
 
-  const [activeTab, setActiveTab] = useState('home');
-  const [activeView, setActiveView] = useState('main');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [searchParams, setSearchParams] = useState({
-    from: '',
-    to: '',
-    date: todayDate,
-    passengers: 1,
-  });
+  const [activePage, setActivePage] = useState(initialRoute.page);
+  const [activeView, setActiveView] = useState(initialRoute.view);
+  const [isSidebarCompact, setIsSidebarCompact] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileMenuVisible, setIsMobileMenuVisible] = useState(false);
+  const [searchParams, setSearchParams] = useState({ from: '', to: '', date: todayDate, passengers: 1 });
   const [searchResults, setSearchResults] = useState({ trips: [], isDirect: true });
   const [isSearching, setIsSearching] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -194,9 +266,25 @@ export default function UserApp({
     selectedSeats,
     currentInvoice,
     viewedTicket,
-    activeTab,
+    activePage,
     activeView,
   };
+
+
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      setIsMobileMenuVisible(true);
+      return undefined;
+    }
+
+    if (typeof window === 'undefined') {
+      setIsMobileMenuVisible(false);
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setIsMobileMenuVisible(false), 220);
+    return () => window.clearTimeout(timeoutId);
+  }, [isMobileMenuOpen]);
 
   const showToast = (msg, type = 'success') => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
@@ -209,18 +297,33 @@ export default function UserApp({
   useEffect(() => {
     if (!authWarning) return;
     if (shownAuthWarningRef.current === authWarning) return;
-
     shownAuthWarningRef.current = authWarning;
     showToast(authWarning, 'error');
   }, [authWarning]);
 
-  const {
-    notifications,
-    unreadCount,
-    markAllRead,
-    clearNotifications,
-    requestBrowserPermission,
-  } = useTripNotifications({
+  useEffect(() => {
+    let active = true;
+    if (!userId) return () => {
+      active = false;
+    };
+
+    (async () => {
+      try {
+        await markAppOpen(userId, profile || null);
+        if (active) {
+          await refreshProfile?.();
+        }
+      } catch {
+        // ignore profile heartbeat failures
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  const { notifications, unreadCount, markAllRead, clearNotifications, requestBrowserPermission } = useTripNotifications({
     userId,
     trips: myTrips,
     onNotify: (entry) => showToast(entry.title, 'success'),
@@ -232,17 +335,9 @@ export default function UserApp({
       to: selectedTrip?.to || searchParams.to || '',
       passengers: searchParams.passengers || 1,
       activeView,
-      activeTab,
+      activePage,
     }),
-    [
-      selectedTrip?.from,
-      selectedTrip?.to,
-      searchParams.from,
-      searchParams.to,
-      searchParams.passengers,
-      activeView,
-      activeTab,
-    ],
+    [selectedTrip?.from, selectedTrip?.to, searchParams.from, searchParams.to, searchParams.passengers, activeView, activePage],
   );
 
   const refreshReferralSummary = useCallback(async () => {
@@ -250,7 +345,6 @@ export default function UserApp({
       setReferralSummary(null);
       return null;
     }
-
     const summary = await getReferralSummary({ userId });
     setReferralSummary(summary);
     return summary;
@@ -258,16 +352,14 @@ export default function UserApp({
 
   const handleApplyReferralCode = async (code) => {
     const result = await applyReferralCodeRpc({ userId, code });
-    if (result?.message) {
-      showToast(result.message, result.ok ? 'success' : 'error');
-    }
+    if (result?.ok) clearPendingReferralCode();
+    if (result?.message) showToast(result.message, result.ok ? 'success' : 'error');
     await refreshReferralSummary();
     return result;
   };
 
   const handlePromoHighlightInteraction = (offer, action = 'opened') => {
     if (!userId || !offer?.campaignId) return;
-
     recordCampaignEvent({
       userId,
       campaignId: offer.campaignId,
@@ -281,38 +373,41 @@ export default function UserApp({
   };
 
   useEffect(() => {
-    let active = true;
+    if (!referralCodeFromUrl) return;
+    stashPendingReferralCode(referralCodeFromUrl);
+  }, [referralCodeFromUrl]);
 
+  useEffect(() => {
+    let active = true;
     if (!userId) {
       setReferralSummary(null);
       return () => {
         active = false;
       };
     }
-
     (async () => {
       const summary = await getReferralSummary({ userId });
       if (!active) return;
       setReferralSummary(summary);
 
-      const pendingCode = referralCodeFromUrl;
+      if (summary?.appliedCode) {
+        clearPendingReferralCode();
+      }
+
+      const pendingCode = readPendingReferralCode() || referralCodeFromUrl;
       if (!pendingCode || summary?.canApplyCode === false) return;
       if (appliedReferralCodesRef.current.has(`${userId}:${pendingCode}`)) return;
 
       appliedReferralCodesRef.current.add(`${userId}:${pendingCode}`);
       const result = await applyReferralCodeRpc({ userId, code: pendingCode });
       if (!active) return;
-
-      if (result?.message) {
-        showToast(result.message, result.ok ? 'success' : 'error');
+      if (result?.ok) {
+        clearPendingReferralCode();
       }
-
+      if (result?.message) showToast(result.message, result.ok ? 'success' : 'error');
       const refreshed = await getReferralSummary({ userId });
-      if (active) {
-        setReferralSummary(refreshed);
-      }
+      if (active) setReferralSummary(refreshed);
     })();
-
     return () => {
       active = false;
     };
@@ -320,16 +415,14 @@ export default function UserApp({
 
   useEffect(() => {
     let active = true;
-
     const loadOffer = async () => {
-      if (!userId || !profile?.onboarding_completed_at) {
+      if (!userId) {
         setPromoHighlights([]);
         return;
       }
 
       const offer = await getPromoPopupOffer({ userId, context: promoContext });
       if (!active) return;
-
       if (!offer) {
         setPromoHighlights([]);
         return;
@@ -348,27 +441,27 @@ export default function UserApp({
             campaignId: entry.campaignId,
             eventName: 'offer_highlight_impression',
             source: 'home_highlight',
-            metadata: {
-              code: entry.code || '',
-              triggerKind: entry.triggerKind || '',
-            },
+            metadata: { code: entry.code || '', triggerKind: entry.triggerKind || '' },
           });
         }
       });
 
-      if (!offer.popupEnabled) {
-        return;
-      }
+      if (!offer.popupEnabled) return;
 
       const popupKey = offer.campaignId || offer.code || offer.title || 'popup';
-      if (dismissedPromoPopupRef.current.has(`${userId}:${popupKey}`)) {
-        return;
-      }
+      const lastSeenMs = profile?.last_offer_popup_at
+        ? new Date(profile.last_offer_popup_at).getTime()
+        : 0;
+      const popupCooldownMs = 24 * 60 * 60 * 1000;
 
+      if (lastSeenMs && Date.now() - lastSeenMs < popupCooldownMs) return;
+      const lastSeenAt = profile?.last_offer_popup_at ? new Date(profile.last_offer_popup_at).getTime() : 0;
+      const fallbackCooldownMs = 24 * 60 * 60 * 1000;
+      if (lastSeenAt && Date.now() - lastSeenAt < fallbackCooldownMs) return;
+      if (dismissedPromoPopupRef.current.has(`${userId}:${popupKey}`)) return;
       if (offer.popupEnabled && !activeModal && !isGuideOpen) {
         setPromoPopupOffer(offer);
         setActiveModal('promo_offer');
-
         if (!promoPopupImpressionsRef.current.has(popupKey) && offer.campaignId) {
           promoPopupImpressionsRef.current.add(popupKey);
           recordCampaignEvent({
@@ -376,28 +469,25 @@ export default function UserApp({
             campaignId: offer.campaignId,
             eventName: 'offer_popup_shown',
             source: 'promo_modal',
-            metadata: {
-              code: offer.code || '',
-              triggerKind: offer.triggerKind || '',
-            },
+            metadata: { code: offer.code || '', triggerKind: offer.triggerKind || '' },
           });
         }
       }
     };
 
-    const timeoutId = window.setTimeout(loadOffer, 1200);
-
+    const timeoutId = window.setTimeout(loadOffer, 900);
     return () => {
       active = false;
       window.clearTimeout(timeoutId);
     };
-  }, [userId, profile?.onboarding_completed_at, activeModal, isGuideOpen, promoContext]);
+  }, [userId, activeModal, isGuideOpen, promoContext]);
+
   const dismissPromoOffer = async () => {
     const popupKey = promoPopupOffer?.campaignId || promoPopupOffer?.code || promoPopupOffer?.title || 'popup';
     if (userId) {
       dismissedPromoPopupRef.current.add(`${userId}:${popupKey}`);
+      writePromoPopupLastSeen(userId, popupKey);
     }
-
     if (userId && promoPopupOffer?.campaignId) {
       recordCampaignEvent({
         userId,
@@ -407,286 +497,153 @@ export default function UserApp({
         metadata: { code: promoPopupOffer.code || '' },
       });
     }
-
-    setPromoPopupOffer(null);
-
     if (userId) {
       await markOfferPopupSeen(userId);
       await refreshProfile?.();
     }
+    setPromoPopupOffer(null);
+    setActiveModal(null);
   };
 
-  const navigateTo = (view, tab = activeTab) => {
-    log.debug('navigate', {
-      fromView: activeView,
-      toView: view,
-      fromTab: activeTab,
-      toTab: tab,
-    });
+  const syncLocation = useCallback((view, page, { replace = false } = {}) => {
+    const path = createPath(view, page);
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname || '/home' : '/home';
+    if (currentPath === path) return;
+    const method = replace ? 'replaceState' : 'pushState';
+    window.history[method]({}, '', path);
+  }, []);
 
-    setActiveView(view);
-    setActiveTab(tab);
-    window.scrollTo(0, 0);
-  };
+  const navigateTo = useCallback(
+    (nextView, nextPage = activePage, options = {}) => {
+      setActiveView(nextView);
+      setActivePage(nextPage);
+      syncLocation(nextView, nextPage, options);
+      setIsMobileMenuOpen(false);
+      window.scrollTo({ top: 0, behavior: options.instant ? 'auto' : 'smooth' });
+    },
+    [activePage, syncLocation],
+  );
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const next = resolveStateFromPath(window.location.pathname || '/home');
+      setActiveView(next.view);
+      setActivePage(next.page);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const goBack = () => {
-    if (activeView === 'invoice') navigateTo('main', 'home');
+    if (activeView === 'invoice') navigateTo('ticket', 'tickets');
     else if (activeView === 'checkout') navigateTo('seats');
     else if (activeView === 'seats') navigateTo('search');
     else if (activeView === 'search') navigateTo('main', 'home');
-    else if (['ticket', 'tracking'].includes(activeView)) navigateTo('main', 'trips');
+    else if (activeView === 'ticket') navigateTo('main', 'tickets');
+    else if (activeView === 'tracking') navigateTo('ticket', 'tickets');
     else navigateTo('main', 'home');
   };
 
   const handleSearch = async (predefinedParams = null) => {
     const params = predefinedParams || searchParams;
-
-    if (!params.from || !params.to || !params.date) {
-      return showToast('حدد مكان التحرك والوصول وتاريخ الرحلة الأول.', 'error');
-    }
-
-    if (params.from === params.to) {
-      return showToast('محافظة التحرك هي نفس محافظة الوصول.', 'error');
-    }
-
+    if (!params.from || !params.to || !params.date) return showToast('حدد مكان التحرك والوصول وتاريخ الرحلة الأول.', 'error');
+    if (params.from === params.to) return showToast('محافظة التحرك هي نفس محافظة الوصول.', 'error');
     if (predefinedParams) setSearchParams(params);
 
     setIsSearching(true);
     navigateTo('search');
 
     try {
-      const results = await searchTripInventory({
-        from: params.from,
-        to: params.to,
-        date: params.date,
-        passengers: params.passengers,
-      });
-
-      const authoritativeTrips = Array.isArray(results?.trips)
-        ? results.trips.filter((trip) => String(trip?.instanceId || '').trim())
-        : [];
-
-      const hasFallbackSource = String(results?.source || '')
-        .toLowerCase()
-        .includes('fallback');
-
-      const hasNonAuthoritativeTrips = Array.isArray(results?.trips)
-        ? results.trips.some((trip) => !String(trip?.instanceId || '').trim())
-        : false;
+      const results = await searchTripInventory({ from: params.from, to: params.to, date: params.date, passengers: params.passengers });
+      const authoritativeTrips = Array.isArray(results?.trips) ? results.trips.filter((trip) => String(trip?.instanceId || '').trim()) : [];
+      const hasFallbackSource = String(results?.source || '').toLowerCase().includes('fallback');
+      const hasNonAuthoritativeTrips = Array.isArray(results?.trips) ? results.trips.some((trip) => !String(trip?.instanceId || '').trim()) : false;
 
       if (hasFallbackSource || hasNonAuthoritativeTrips) {
-        log.error('non_authoritative_search_blocked', {
-          from: params.from,
-          to: params.to,
-          date: params.date,
-          passengers: params.passengers,
-          source: results?.source || null,
-          returnedTrips: Array.isArray(results?.trips) ? results.trips.length : 0,
-          authoritativeTrips: authoritativeTrips.length,
-        });
-
-        setSearchResults({
-          trips: [],
-          isDirect: Boolean(results?.isDirect ?? true),
-        });
+        log.error('non_authoritative_search_blocked', { from: params.from, to: params.to, date: params.date, passengers: params.passengers, source: results?.source || null });
+        setSearchResults({ trips: [], isDirect: Boolean(results?.isDirect ?? true) });
         showToast('تعذر تحميل رحلات صالحة من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
         return;
       }
 
-      setSearchResults({
-        ...results,
-        trips: authoritativeTrips,
-      });
+      setSearchResults({ ...results, trips: authoritativeTrips });
     } catch (error) {
-      log.error('search_failed', {
-        from: params.from,
-        to: params.to,
-        date: params.date,
-        passengers: params.passengers,
-        error,
-      });
-
-      setSearchResults({
-        trips: [],
-        isDirect: true,
-      });
+      log.error('search_failed', { from: params.from, to: params.to, date: params.date, passengers: params.passengers, error });
+      setSearchResults({ trips: [], isDirect: true });
       showToast('تعذر تحميل الرحلات من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
     } finally {
       setIsSearching(false);
     }
   };
 
-  const createDemoBookingResult = ({
-    trip,
-  }) => {
-    log.error('demo_booking_blocked_in_production', {
-      tripId: trip?.id || null,
-      tripInstanceId: trip?.instanceId || null,
-    });
-
-    return {
-      ok: false,
-      code: 'backend_trip_required',
-      message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.',
-    };
-  };
-
   const finalizeBookingSuccess = (ticket, invoice) => {
     const normalizedTicket = ensureTicketIdentity(ticket);
-
     setCurrentInvoice(invoice);
     setViewedTicket(normalizedTicket);
-
-    log.info('booking_finalized', {
-      bookingId: normalizedTicket?.bookingId || normalizedTicket?.id || null,
-      pnr: normalizedTicket?.pnr || null,
-      runtimeMode,
-    });
-
+    log.info('booking_finalized', { bookingId: normalizedTicket?.bookingId || normalizedTicket?.id || null, pnr: normalizedTicket?.pnr || null, runtimeMode });
     navigateTo('invoice');
   };
 
-  const createBookingForTrip = async ({
-    trip,
-    seatNumbers,
-    passengers,
-    promoCode,
-    promoDiscountAmount: _promoDiscountAmount = 0,
-    hasLuggage,
-    needsAccess,
-  }) => {
+  const createBookingForTrip = async ({ trip, seatNumbers, passengers, promoCode, promoDiscountAmount: _promoDiscountAmount = 0, hasLuggage, needsAccess }) => {
     if (!trip?.instanceId) {
-      return {
-        ok: false,
-        code: 'backend_trip_required',
-        message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.',
-      };
+      return { ok: false, code: 'backend_trip_required', message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.' };
     }
-
-    const result = await createBookingAtomic({
-      tripInstanceId: trip.instanceId,
-      seatNumbers,
-      passengers,
-      promoCode,
-      hasLuggage,
-      rideToStation: false,
-      needsAccess,
-    });
-
+    const result = await createBookingAtomic({ tripInstanceId: trip.instanceId, seatNumbers, passengers, promoCode, hasLuggage, rideToStation: false, needsAccess });
     if (result?.ok) {
       await refreshCloudState({ silent: true, force: true });
-      if (result.booking) {
-        result.booking = ensureTicketIdentity(result.booking);
-      }
+      if (result.booking) result.booking = ensureTicketIdentity(result.booking);
     }
-
     return result;
   };
 
   const commitSeatSelection = async (tripArg = selectedTrip, seatNumbersArg = selectedSeats) => {
-    if (!tripArg) {
-      return { ok: false, message: 'No trip selected' };
-    }
-
+    if (!tripArg) return { ok: false, message: 'No trip selected' };
     if (!tripArg?.instanceId) {
-      const result = {
-        ok: false,
-        code: 'backend_trip_required',
-        message: 'اختيار المقاعد الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر.',
-      };
+      const result = { ok: false, code: 'backend_trip_required', message: 'اختيار المقاعد الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر.' };
       showToast(result.message, 'error');
       return result;
     }
 
-    const holdResult = await holdTripSeats({
-      tripInstanceId: tripArg.instanceId,
-      seatNumbers: seatNumbersArg,
-    });
-
+    const holdResult = await holdTripSeats({ tripInstanceId: tripArg.instanceId, seatNumbers: seatNumbersArg });
     if (!holdResult?.ok) {
       showToast(holdResult?.message || 'بعض المقاعد لم تعد متاحة.', 'error');
-
       try {
         setSelectedTrip(await hydrateTripWithSeats(tripArg));
       } catch (error) {
-        log.warn('seat_rehydrate_after_hold_failure_failed', {
-          tripInstanceId: tripArg.instanceId,
-          error,
-        });
+        log.warn('seat_rehydrate_after_hold_failure_failed', { tripInstanceId: tripArg.instanceId, error });
       }
-
       return holdResult;
     }
 
-    setSelectedTrip((prev) => ({
-      ...prev,
-      holdExpiresAt: holdResult.hold_expires_at || holdResult.holdExpiresAt || null,
-    }));
+    setSelectedTrip((prev) => ({ ...prev, holdExpiresAt: holdResult.hold_expires_at || holdResult.holdExpiresAt || null }));
     navigateTo('checkout');
     return holdResult;
   };
 
   const processDelayedRefund = async (tripToCancel) => {
     const bookingId = tripToCancel?.bookingId || tripToCancel?.id || null;
+    if (!bookingId) return showToast('الإلغاء الحقيقي متاح فقط للحجوزات المرتبطة بالسيرفر.', 'error');
 
-    if (!bookingId) {
-      return showToast('الإلغاء الحقيقي متاح فقط للحجوزات المرتبطة بالسيرفر.', 'error');
-    }
-
-    setPendingCancellationBookingIds((prev) =>
-      prev.includes(bookingId) ? prev : [...prev, bookingId],
-    );
-
-    log.info('booking_cancel_requested', {
-      bookingId,
-      pnr: tripToCancel?.pnr || null,
-    });
-
+    setPendingCancellationBookingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
     try {
-      const result = await cancelBookingAtomic({ bookingId });
-
+      const result = await cancelBookingAtomicCompat({
+        bookingId,
+        clientActionId: `cancel-ui-${bookingId}-${Date.now()}` ,
+      });
       if (!result?.ok) {
-        log.warn('booking_cancel_rejected', {
-          bookingId,
-          pnr: tripToCancel?.pnr || null,
-          errorClass: result?.errorClass || null,
-          code: result?.code || null,
-          httpStatus: result?.httpStatus || null,
-          reason: result?.message || 'unknown',
-        });
-
         showToast(formatCancellationErrorMessage(result), 'error');
         await refreshCloudState({ silent: true, force: true });
         return;
       }
-
-      log.info('booking_cancel_completed', {
-        bookingId,
-        pnr: tripToCancel?.pnr || null,
-        refundAmount: Number(result?.refundAmount || 0),
-      });
-
-      showToast(
-        `تم الإلغاء، ورجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة.`,
-        'success',
-      );
+      showToast(`تم الإلغاء، ورجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة.`, 'success');
       await refreshCloudState({ silent: true, force: true });
     } catch (error) {
-      log.error('booking_cancel_failed', {
-        bookingId,
-        pnr: tripToCancel?.pnr || null,
-        error,
-      });
-
+      log.error('booking_cancel_failed', { bookingId, pnr: tripToCancel?.pnr || null, error });
       showToast(formatCancellationErrorMessage(error), 'error');
-
       try {
         await refreshCloudState({ silent: true, force: true });
       } catch (refreshError) {
-        log.warn('booking_cancel_refresh_failed', {
-          bookingId,
-          error: refreshError,
-        });
+        log.warn('booking_cancel_refresh_failed', { bookingId, error: refreshError });
       }
     } finally {
       setPendingCancellationBookingIds((prev) => prev.filter((id) => id !== bookingId));
@@ -695,63 +652,15 @@ export default function UserApp({
 
   useEffect(() => {
     if (!import.meta.env.DEV) return undefined;
-
-    const wait = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms));
-
+    const wait = (ms = 80) => new Promise((resolve) => window.setTimeout(resolve, ms));
     const api = {
-      snapshot() {
-        return JSON.parse(JSON.stringify(qaStateRef.current));
-      },
-      async seedWallet(amount = 500, desc = 'شحن رصيد تجريبي (QA)') {
-        const numericAmount = Math.max(0, Number(amount) || 0);
-        await wait();
-        return {
-          ok: false,
-          code: 'backend_required',
-          amount: numericAmount,
-          message:
-            'تم تعطيل شحن QA المحلي بعد Phase 6.5. استخدم شحن حقيقي أو mutation حقيقية على الباك إند.',
-          description: desc,
-        };
-      },
-      async resetDemoState() {
-        setSelectedTrip(null);
-        setSelectedSeats([]);
-        setCurrentInvoice(null);
-        setViewedTicket(null);
-        navigateTo('main', 'home');
-
-        try {
-          await refreshCloudState({ silent: true, force: true });
-        } catch (error) {
-          log.warn('qa_reset_refresh_failed', { error });
-        }
-
-        await wait();
-        return true;
-      },
-      async goHome() {
-        navigateTo('main', 'home');
-        await wait();
-        return 'home';
-      },
-      async goWallet() {
-        navigateTo('main', 'wallet');
-        await wait();
-        return 'wallet';
-      },
-      async goTrips() {
-        navigateTo('main', 'trips');
-        await wait();
-        return 'trips';
-      },
+      snapshot: () => ({ ...qaStateRef.current }),
+      async goHome() { navigateTo('main', 'home'); await wait(); return 'home'; },
+      async goWallet() { navigateTo('main', 'wallet'); await wait(); return 'wallet'; },
+      async goBookings() { navigateTo('main', 'bookings'); await wait(); return 'bookings'; },
+      async goTickets() { navigateTo('main', 'tickets'); await wait(); return 'tickets'; },
       async search(params = {}) {
-        const next = {
-          from: params.from || qaStateRef.current.searchParams?.from || 'القاهرة',
-          to: params.to || qaStateRef.current.searchParams?.to || 'الإسكندرية',
-          date: params.date || getLocalDateInputValue(),
-          passengers: Number(params.passengers || qaStateRef.current.searchParams?.passengers || 1),
-        };
+        const next = { from: params.from || qaStateRef.current.searchParams?.from || 'القاهرة', to: params.to || qaStateRef.current.searchParams?.to || 'الإسكندرية', date: params.date || getLocalDateInputValue(), passengers: Number(params.passengers || qaStateRef.current.searchParams?.passengers || 1) };
         await handleSearch(next);
         await wait(250);
         return this.snapshot().searchResults;
@@ -760,429 +669,391 @@ export default function UserApp({
         const trips = qaStateRef.current.searchResults?.trips || [];
         const trip = trips[index];
         if (!trip) return null;
-        try {
-          const hydrated = await hydrateTripWithSeats(trip);
-          setSelectedTrip(hydrated);
-          setSelectedSeats([]);
-          navigateTo('seats');
-          await wait(150);
-          return hydrated;
-        } catch (error) {
-          log.error('dev_open_trip_failed', { error });
-          throw error;
-        }
-      },
-      async selectSeats(seatsOrCount = 1, tripOverride = null) {
-        const trip = tripOverride || qaStateRef.current.selectedTrip;
-        if (!trip?.seats?.length) return [];
-        let chosen = [];
-        if (Array.isArray(seatsOrCount)) {
-          chosen = seatsOrCount;
-        } else {
-          const count = Math.max(1, Number(seatsOrCount) || 1);
-          chosen = trip.seats
-            .filter(
-              (seat) =>
-                seat.status === 'available' || (seat.status === 'held' && seat.heldByCurrentUser),
-            )
-            .slice(0, count)
-            .map((seat) => seat.number);
-        }
-        setSelectedSeats(chosen);
-        await wait();
-        return chosen;
-      },
-      async goCheckout(tripOverride = null, seatsOverride = null) {
-        const result = await commitSeatSelection(
-          tripOverride || qaStateRef.current.selectedTrip,
-          seatsOverride || qaStateRef.current.selectedSeats,
-        );
+        const hydrated = await hydrateTripWithSeats(trip);
+        setSelectedTrip(hydrated);
+        setSelectedSeats([]);
+        navigateTo('seats');
         await wait(150);
-        return result;
+        return hydrated;
       },
-      async book(options = {}) {
-        const state = qaStateRef.current;
-        const trip = options.trip || state.selectedTrip;
-        const seatNumbers = options.seatNumbers || state.selectedSeats;
-        const passengers = Number(options.passengers || state.searchParams?.passengers || seatNumbers?.length || 1);
-        const result = await createBookingForTrip({
-          trip,
-          seatNumbers,
-          passengers,
-          promoCode: options.promoCode || '',
-          promoDiscountAmount: Number(options.promoDiscountAmount || 0),
-          hasLuggage: Boolean(options.hasLuggage),
-          needsAccess: Boolean(options.needsAccess),
-        });
-        if (result?.ok) {
-          finalizeBookingSuccess(result.booking, result.invoice);
-          await wait(150);
-        }
-        return result;
-      },
-      async continueToTicket() {
-        navigateTo('ticket');
-        await wait();
-        return 'ticket';
-      },
-      async smoke({ from = 'القاهرة', to = 'الإسكندرية', passengers = 1, walletAmount = 1200 } = {}) {
-        await this.seedWallet(walletAmount);
-        await this.search({ from, to, passengers, date: getLocalDateInputValue() });
-        const trip = await this.openTrip(0);
-        if (!trip) return { ok: false, message: 'No trip found in smoke flow' };
-        const seats = await this.selectSeats(passengers, trip);
-        const holdResult = await this.goCheckout(trip, seats);
-        if (!holdResult?.ok) return holdResult;
-        const bookingResult = await this.book({ trip, seatNumbers: seats, passengers });
-        if (bookingResult?.ok) {
-          await this.continueToTicket();
-        }
-        return bookingResult;
+      async smoke() {
+        await this.goHome();
+        await this.search({ from: 'القاهرة', to: 'الإسكندرية', passengers: 1 });
+        await this.openTrip(0);
+        await wait(150);
+        return this.snapshot();
       },
     };
-
     window.taree2yDev = api;
     return () => {
-      if (window.taree2yDev === api) {
-        delete window.taree2yDev;
-      }
+      if (window.taree2yDev === api) delete window.taree2yDev;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    activeTab,
-    activeView,
-    currentInvoice,
-    myTrips,
-    points,
-    refreshCloudState,
-    searchResults,
-    searchParams,
-    selectedSeats,
-    selectedTrip,
-    subscription,
-    transactions,
-    viewedTicket,
-    wallet,
-  ]);
+  }, [activePage, activeView, searchResults, searchParams, selectedTrip, selectedSeats, currentInvoice, viewedTicket, myTrips, wallet, points, subscription, transactions]);
+
+  const latestTrip = useMemo(() => {
+    const safeTrips = Array.isArray(myTrips) ? myTrips.map(ensureTicketIdentity) : [];
+    return safeTrips.find((trip) => ['upcoming', 'refund_pending'].includes(trip?.status)) || safeTrips[0] || null;
+  }, [myTrips]);
+
+  const upcomingTickets = useMemo(() => (Array.isArray(myTrips) ? myTrips.map(ensureTicketIdentity) : []).filter((trip) => ['upcoming', 'refund_pending'].includes(trip?.status)), [myTrips]);
+
+  const pageTitle = useMemo(() => {
+    if (activeView === 'search') return { title: 'اختيار الرحلة', subtitle: 'راجع الخيارات وحدد الأنسب ليك' };
+    if (activeView === 'seats') return { title: 'اختيار المقاعد', subtitle: 'ثبت المقاعد قبل الدفع' };
+    if (activeView === 'checkout') return { title: 'الدفع والتأكيد', subtitle: 'راجع كل شيء قبل الحجز النهائي' };
+    if (activeView === 'invoice') return { title: 'تم الحجز', subtitle: 'التذكرة جاهزة دلوقتي' };
+    if (activeView === 'ticket') return { title: 'التذكرة', subtitle: 'كل تفاصيل الصعود في مكان واحد' };
+    if (activeView === 'tracking') return { title: 'متابعة الرحلة', subtitle: 'اعرف حالة الرحلة لحظة بلحظة' };
+    if (activePage === 'bookings') return { title: 'رحلاتي', subtitle: 'إدارة الحجوزات' };
+    if (activePage === 'tickets') return { title: 'التذاكر', subtitle: 'الوصول السريع للـ QR' };
+    if (activePage === 'wallet') return { title: 'المحفظة', subtitle: 'الرصيد والحركات' };
+    if (activePage === 'profile') return { title: 'الحساب', subtitle: 'البيانات والإعدادات' };
+    return { title: 'الرئيسية', subtitle: 'ابدأ الحجز بسرعة ووضوح' };
+  }, [activePage, activeView]);
 
   if (backendLoading) {
-    return (
-      <div className="flex-1 grid place-items-center bg-[var(--bg)] text-slate-700 dark:bg-slate-950 dark:text-slate-200">
-        جاري تجهيز بيانات حسابك…
-      </div>
-    );
+    return <div className="grid min-h-[100dvh] flex-1 place-items-center bg-[var(--bg)] text-slate-700 dark:bg-slate-950 dark:text-slate-200">جاري تجهيز بيانات حسابك…</div>;
   }
-
-  const latestTrip = (Array.isArray(myTrips) ? myTrips : []).find(Boolean)
-    ? ensureTicketIdentity((Array.isArray(myTrips) ? myTrips : []).find(Boolean))
-    : null;
-
-  const headerContent = getHeaderContent(activeView, activeTab);
 
   return (
     <>
       <ToastStack toasts={toasts} />
 
-
-      <aside
-        className={`hidden h-full flex-col border-l border-slate-200 bg-slate-50/80 px-4 py-5 dark:border-slate-800 dark:bg-slate-950/80 md:flex ${
-          isSidebarOpen ? 'w-[300px]' : 'w-[104px]'
-        }`}
-      >
-        <div className={`flex items-center ${isSidebarOpen ? 'justify-between gap-3' : 'justify-center'}`}>
-          <button
-            type="button"
-            onClick={() => navigateTo('main', 'home')}
-            className={`flex items-center ${isSidebarOpen ? 'gap-3' : 'justify-center'} text-right`}
-          >
-            <span className="grid h-14 w-14 place-items-center rounded-[24px] bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-lg shadow-indigo-600/25">
-              <BusFront className="h-7 w-7" />
-            </span>
-            {isSidebarOpen ? (
-              <span>
-                <span className="block text-2xl font-black text-slate-900 dark:text-white">طريقي</span>
-                <span className="mt-1 block text-xs font-black text-slate-400 dark:text-slate-500">رحلتك واضحة من أول خطوة</span>
-              </span>
-            ) : null}
-          </button>
-          {isSidebarOpen ? (
-            <button
-              type="button"
-              onClick={() => setIsSidebarOpen((value) => !value)}
-              className="grid h-11 w-11 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-          ) : null}
-        </div>
-
-        {!isSidebarOpen ? (
-          <button
-            type="button"
-            onClick={() => setIsSidebarOpen((value) => !value)}
-            className="mt-4 grid h-11 w-full place-items-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-        ) : null}
-
-        <nav className="mt-6 flex-1 space-y-2">
-          <DesktopNavItem icon={<Home />} label="الرئيسية" active={activeTab === 'home'} onClick={() => navigateTo('main', 'home')} collapsed={!isSidebarOpen} />
-          <DesktopNavItem icon={<Ticket />} label="رحلاتي" active={activeTab === 'trips'} onClick={() => navigateTo('main', 'trips')} collapsed={!isSidebarOpen} />
-          <DesktopNavItem icon={<WalletIcon />} label="المحفظة" active={activeTab === 'wallet'} onClick={() => navigateTo('main', 'wallet')} collapsed={!isSidebarOpen} />
-          <DesktopNavItem icon={<User />} label="حسابي" active={activeTab === 'profile'} onClick={() => navigateTo('main', 'profile')} collapsed={!isSidebarOpen} />
-        </nav>
-
-        {isSidebarOpen ? (
-          <div className="mt-8 space-y-3 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-sm font-black text-slate-900 dark:text-white">ملخص سريع</p>
-            <div className="flex flex-wrap gap-2">
-              <MetaChip label={`الرصيد ${wallet} ج.م`} tone="brand" />
-              <MetaChip label={`النقاط ${points}`} tone="success" />
-              <MetaChip label={`التنبيهات ${unreadCount}`} tone={unreadCount ? 'warning' : 'neutral'} />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={openGuide} className="text-sm font-black text-indigo-700 dark:text-indigo-300">
-                افتح دليل الاستخدام
-              </button>
-              <button type="button" onClick={() => setActiveModal('notifications')} className="text-sm font-black text-slate-600 dark:text-slate-300">
-                التنبيهات
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </aside>
-
-      <div className="relative flex min-w-0 flex-1 flex-col bg-[var(--bg)] dark:bg-slate-950">
-        <div className="pointer-events-none absolute inset-0 opacity-40" style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(33,86,217,0.10), transparent 24%), radial-gradient(circle at bottom left, rgba(15,159,138,0.08), transparent 20%), linear-gradient(rgba(15,23,42,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.03) 1px, transparent 1px)', backgroundSize: 'auto, auto, 24px 24px, 24px 24px' }} />
-
-        <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/90 px-4 py-4 backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/88 md:px-6">
-          <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              {activeView !== 'main' ? (
-                <button
-                  type="button"
-                  onClick={goBack}
-                  className="inline-flex h-11 items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                  رجوع
-                </button>
-              ) : (
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-lg shadow-indigo-600/20 md:hidden">
-                  <BusFront className="h-5 w-5" />
+      <div className="flex min-h-[100dvh] w-full bg-[var(--bg)] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
+        <aside className={`app-shell-glow app-sidebar-panel app-sidebar-surface fixed inset-y-0 right-0 z-40 hidden overflow-hidden border-l border-[var(--sidebar-line)] px-4 py-5 md:flex ${isSidebarCompact ? 'w-[108px]' : 'w-[312px]'}`}>
+          <div className="flex h-full w-full flex-col gap-5">
+            <div className={`flex items-center ${isSidebarCompact ? 'justify-center' : 'justify-between gap-3'}`}>
+              <button
+                type="button"
+                onClick={() => navigateTo('main', 'home')}
+                className={`group flex items-center ${isSidebarCompact ? 'justify-center' : 'gap-3'}`}
+              >
+                <span className="grid h-12 w-12 place-items-center rounded-[18px] bg-[var(--sidebar-soft)] text-[var(--sidebar-ink)] shadow-[0_18px_45px_-25px_rgba(16,35,63,0.22)] ring-1 ring-[var(--sidebar-line)]">
+                  <Compass className="h-5 w-5" />
                 </span>
-              )}
-              <div className="min-w-0">
-                <p className="truncate text-lg font-black text-slate-900 dark:text-white">{headerContent.title}</p>
-                <p className="truncate text-sm font-bold text-slate-500 dark:text-slate-400">{headerContent.subtitle}</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={openGuide}
-                className="hidden rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-800 dark:hover:text-indigo-300 md:inline-flex"
-              >
-                الدليل
-              </button>
-              {internalOpsEnabled ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveModal('internal_ops')}
-                  className="hidden rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100 dark:hover:bg-amber-900/40 md:inline-flex"
-                >
-                  OPS
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setActiveModal('notifications')}
-                className="relative inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300"
-                aria-label="التنبيهات"
-              >
-                <Bell className="h-5 w-5" />
-                {unreadCount ? (
-                  <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
+                {!isSidebarCompact ? (
+                  <div>
+                    <p className="text-lg font-black leading-none tracking-tight text-[var(--sidebar-ink)]">طريقي</p>
+                    <p className="text-xs font-bold text-[var(--sidebar-ink-muted)]">رحلات مصر بشكل أوضح</p>
+                  </div>
                 ) : null}
               </button>
+              {!isSidebarCompact ? (
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarCompact(true)}
+                  className="app-sidebar-toggle app-pressable grid h-11 w-11 place-items-center rounded-[18px] border transition"
+                  aria-label="تصغير الشريط الجانبي"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              ) : null}
+            </div>
+
+            {isSidebarCompact ? (
               <button
                 type="button"
-                onClick={() => navigateTo('main', 'wallet')}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300"
-                dir="ltr"
+                onClick={() => setIsSidebarCompact(false)}
+                className="app-sidebar-toggle app-pressable mx-auto grid h-11 w-11 place-items-center rounded-[18px] border transition"
+                aria-label="فتح الشريط الجانبي"
               >
-                <WalletIcon className="h-4 w-4 text-emerald-500" />
-                {wallet} ج
+                <Menu className="h-5 w-5" />
+              </button>
+            ) : null}
+
+            <nav className="flex-1 space-y-2 overflow-y-auto pt-2">
+              {NAV_ITEMS.map((item) => (
+                <SidebarNavButton
+                  key={item.key}
+                  item={item}
+                  compact={isSidebarCompact}
+                  active={activeView === 'main' && activePage === item.key}
+                  onClick={() => navigateTo('main', item.key)}
+                />
+              ))}
+            </nav>
+
+            <div className={`space-y-3 ${isSidebarCompact ? 'items-center' : ''}`}>
+              {!isSidebarCompact ? (
+                <div className="app-sidebar-card rounded-[24px] border p-4 backdrop-blur-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black tracking-[0.16em] text-[var(--sidebar-ink-muted)]">الرصيد الحالي</p>
+                      <p className="mt-2 text-xl font-black">{wallet} ج.م</p>
+                    </div>
+                    <MetaChip label={`${Number(points || 0)} نقطة`} tone="neutral" className="border-[var(--sidebar-line)] bg-[var(--sidebar-soft)] text-[var(--sidebar-ink)] dark:border-[var(--sidebar-line)] dark:bg-[var(--sidebar-soft)] dark:text-[var(--sidebar-ink)]" />
+                  </div>
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => setIsDark((current) => !current)}
+                className={`app-sidebar-toggle app-pressable flex w-full items-center gap-3 rounded-[22px] border px-3 py-3 transition-all duration-300 ${isSidebarCompact ? 'justify-center px-0' : ''}`}
+              >
+                <span className="grid h-11 w-11 place-items-center rounded-[16px] bg-[var(--sidebar-soft)] ring-1 ring-[var(--sidebar-line)]">
+                  {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                </span>
+                {!isSidebarCompact ? <span className="text-sm font-black">{isDark ? 'الوضع الفاتح' : 'الوضع الليلي'}</span> : null}
               </button>
             </div>
           </div>
-        </header>
+        </aside>
 
-        <main className="relative flex-1 overflow-y-auto">
-          <div className="mx-auto flex min-h-full w-full max-w-[1800px] flex-col px-4 pb-28 pt-4 md:px-6 md:pb-8 md:pt-6 xl:px-8">
-            {activeView === 'main' && activeTab === 'home' ? (
-              <HomeView
-                searchParams={searchParams}
-                setSearchParams={setSearchParams}
-                onSearch={() => handleSearch()}
-                showToast={showToast}
-                onPromoSearch={handleSearch}
-                openModal={setActiveModal}
-                openGuide={openGuide}
-                isFirstTimeUser={Boolean(profile?.isFirstTimeUser)}
-                promoHighlights={promoHighlights}
-                onPromoHighlightInteraction={handlePromoHighlightInteraction}
-              />
-            ) : null}
-
-            {activeView === 'search' ? (
-              <SearchResultsView
-                searchParams={searchParams}
-                searchResults={searchResults}
-                isSearching={isSearching}
-                onSelectTrip={async (trip) => {
-                  try {
-                    const hydrated = await hydrateTripWithSeats(trip);
-                    setSelectedTrip(hydrated);
-                    setSelectedSeats([]);
-                    navigateTo('seats');
-                  } catch (error) {
-                    log.error('seat_load_failed_before_selection', {
-                      tripInstanceId: trip?.instanceId || null,
-                      tripCode: trip?.tripCode || trip?.id || null,
-                      errorMessage: error?.message || null,
-                      errorCode: error?.code || null,
-                      errorDetails: error?.details || null,
-                      errorHint: error?.hint || null,
-                      error,
-                    });
-                    showToast('تعذر تحميل المقاعد من السيرفر.', 'error');
-                  }
-                }}
-                showToast={showToast}
-              />
-            ) : null}
-
-            {activeView === 'seats' && selectedTrip ? (
-              <SeatSelectionView
-                trip={selectedTrip}
-                passengers={searchParams.passengers}
-                selectedSeats={selectedSeats}
-                setSelectedSeats={setSelectedSeats}
-                onConfirm={async () => {
-                  await commitSeatSelection();
-                }}
-                showToast={showToast}
-              />
-            ) : null}
-
-            {activeView === 'checkout' && selectedTrip ? (
-              <CheckoutView
-                userId={userId}
-                trip={selectedTrip}
-                seats={selectedSeats}
-                passengers={searchParams.passengers}
-                wallet={wallet}
-                subscription={subscription}
-                onCreateBooking={createBookingForTrip}
-                onSuccess={finalizeBookingSuccess}
-                showToast={showToast}
-                openModal={setActiveModal}
-              />
-            ) : null}
-
-            {activeView === 'invoice' && currentInvoice ? (
-              <InvoiceView invoice={currentInvoice} ticket={viewedTicket} onContinue={() => navigateTo('ticket')} />
-            ) : null}
-
-            {activeView === 'main' && activeTab === 'trips' ? (
-              <TripsView
-                trips={myTrips.map(ensureTicketIdentity)}
-                setMyTrips={setMyTrips}
-                processRefund={processDelayedRefund}
-                pendingCancellationBookingIds={pendingCancellationBookingIds}
-                onViewTicket={(ticket) => {
-                  setViewedTicket(ensureTicketIdentity(ticket));
-                  navigateTo('ticket');
-                }}
-                showToast={showToast}
-              />
-            ) : null}
-
-            {activeView === 'ticket' && viewedTicket ? (
-              <TicketView ticket={ensureTicketIdentity(viewedTicket)} user={user} onTrack={() => navigateTo('tracking')} showToast={showToast} />
-            ) : null}
-
-            {activeView === 'tracking' && viewedTicket ? (
-              <TrackingView ticket={ensureTicketIdentity(viewedTicket)} showToast={showToast} />
-            ) : null}
-
-            {activeView === 'main' && activeTab === 'wallet' ? (
-              <WalletView
-                userId={userId}
-                wallet={wallet}
-                setWallet={setWallet}
-                transactions={transactions}
-                setTransactions={setTransactions}
-                showToast={showToast}
-                openTopUp={() => setActiveModal('topup')}
-                openWalletQr={() => {
-                  setWalletQrInitialAmount(null);
-                  setActiveModal('wallet_qr');
-                }}
-              />
-            ) : null}
-
-            {activeView === 'main' && activeTab === 'profile' ? (
-              <ProfileView
-                user={user}
-                profile={profile}
-                points={points}
-                subscription={subscription}
-                isDark={isDark}
-                setIsDark={setIsDark}
-                refreshProfile={refreshProfile}
-                onLogout={async () => {
-                  const result = await signOutCurrentUser();
-
-                  if (!result?.ok) {
-                    log.error('logout_failed', { error: result?.error || null });
-                  } else {
-                    log.info('logout_succeeded', {
-                      usedLocalFallback: Boolean(result.usedLocalFallback),
-                    });
-                  }
-
-                  return result;
-                }}
-                showToast={showToast}
-                openModal={setActiveModal}
-                openGuide={openGuide}
-                referralSummary={referralSummary}
-                refreshReferralSummary={refreshReferralSummary}
-                applyReferralCode={handleApplyReferralCode}
-              />
-            ) : null}
-          </div>
-        </main>
-
-        {activeView === 'main' ? (
-          <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] md:hidden">
-            <nav className="mx-auto flex max-w-[420px] items-center justify-around rounded-[28px] border border-slate-200/80 bg-white/95 p-2 shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/92">
-              <BottomNavItem icon={<Home />} label="الرئيسية" active={activeTab === 'home'} onClick={() => navigateTo('main', 'home')} />
-              <BottomNavItem icon={<Ticket />} label="رحلاتي" active={activeTab === 'trips'} onClick={() => navigateTo('main', 'trips')} />
-              <BottomNavItem icon={<WalletIcon />} label="المحفظة" active={activeTab === 'wallet'} onClick={() => navigateTo('main', 'wallet')} />
-              <BottomNavItem icon={<User />} label="حسابي" active={activeTab === 'profile'} onClick={() => navigateTo('main', 'profile')} />
-            </nav>
+        {isMobileMenuVisible ? (
+          <div className={`app-mobile-drawer-overlay fixed inset-0 z-50 bg-slate-950/55 backdrop-blur-sm md:hidden ${isMobileMenuOpen ? 'visible opacity-100' : 'invisible opacity-0'}`} onClick={() => setIsMobileMenuOpen(false)}>
+            <div className={`app-mobile-drawer-panel app-sidebar-surface h-full w-[84vw] max-w-[340px] border-l border-[var(--sidebar-line)] p-4 ${isMobileMenuOpen ? 'translate-x-0 opacity-100' : 'translate-x-6 opacity-0'}`} onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-lg font-black leading-none tracking-tight text-[var(--sidebar-ink)]">طريقي</p>
+                  <p className="text-xs font-bold text-[var(--sidebar-ink-muted)]">تنقل أوضح وأسهل</p>
+                </div>
+                <button type="button" onClick={() => setIsMobileMenuOpen(false)} className="app-sidebar-toggle grid h-11 w-11 place-items-center rounded-[18px] border">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="mt-6 space-y-2">
+                {NAV_ITEMS.map((item) => (
+                  <SidebarNavButton key={item.key} item={item} compact={false} active={activeView === 'main' && activePage === item.key} onClick={() => navigateTo('main', item.key)} />
+                ))}
+                <button type="button" onClick={() => setActiveModal('help')} className="app-sidebar-nav-button app-pressable mt-2 flex w-full items-center gap-3 rounded-[22px] px-3 py-3 text-right transition">
+                  <span className="app-sidebar-icon-shell grid h-11 w-11 place-items-center rounded-[16px]"><HelpCircle className="h-5 w-5" /></span>
+                  <span className="text-sm font-black">المساعدة والدليل</span>
+                </button>
+              </div>
+            </div>
           </div>
         ) : null}
+
+        <div className={`flex min-h-[100dvh] min-w-0 flex-1 flex-col overflow-x-clip ${isSidebarCompact ? 'md:pr-[108px]' : 'md:pr-[312px]'}`}>
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/88 backdrop-blur-xl dark:border-slate-800/80 dark:bg-slate-950/78">
+            <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-3 px-4 py-4 md:px-6 xl:px-8">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={activeView === 'main' ? () => setIsMobileMenuOpen(true) : goBack}
+                  className="app-pressable grid h-11 w-11 place-items-center rounded-[18px] border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 md:hidden"
+                >
+                  {activeView === 'main' ? <Menu className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                </button>
+
+                {activeView !== 'main' ? (
+                  <button type="button" onClick={goBack} className="app-pressable hidden md:grid h-11 w-11 place-items-center rounded-[18px] border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 md:grid">
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                ) : null}
+
+                <div>
+                  <p className="text-lg font-black text-slate-900 dark:text-white">{pageTitle.title}</p>
+                  <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{pageTitle.subtitle}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('help')}
+                  className="app-pressable hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300 md:inline-flex"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  المساعدة
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveModal('notifications')}
+                  className="app-pressable relative grid h-11 w-11 place-items-center rounded-[18px] border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                  aria-label="التنبيهات"
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount ? <span className="absolute -left-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">{unreadCount > 9 ? '9+' : unreadCount}</span> : null}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigateTo('main', 'wallet')}
+                  className="app-pressable hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300 sm:inline-flex"
+                  dir="ltr"
+                >
+                  <WalletIcon className="h-4 w-4 text-emerald-500" />
+                  {wallet} ج
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main className="relative flex-1 overflow-visible">
+            <div className="mx-auto w-full max-w-[1600px] px-4 pb-28 pt-5 md:px-6 md:pb-10 xl:px-8">
+              <div key={`${activeView}:${activePage}:${viewedTicket?.pnr || ''}`} className="app-page-transition">
+                {activeView === 'main' && activePage === 'home' ? (
+                  <HomeView
+                    searchParams={searchParams}
+                    setSearchParams={setSearchParams}
+                    onSearch={() => handleSearch()}
+                    showToast={showToast}
+                    onPromoSearch={handleSearch}
+                    openModal={setActiveModal}
+                    openGuide={openGuide}
+                    isFirstTimeUser={Boolean(profile?.isFirstTimeUser ?? !profile?.onboarding_completed_at)}
+                    latestTrip={latestTrip}
+                    wallet={wallet}
+                    points={points}
+                    subscription={subscription}
+                    promoHighlights={promoHighlights}
+                    onPromoHighlightInteraction={handlePromoHighlightInteraction}
+                    onOpenTickets={() => navigateTo('main', 'tickets')}
+                    onOpenWallet={() => navigateTo('main', 'wallet')}
+                  />
+                ) : null}
+
+                {activeView === 'search' ? (
+                  <SearchResultsView
+                    searchParams={searchParams}
+                    searchResults={searchResults}
+                    isSearching={isSearching}
+                    onSelectTrip={async (trip) => {
+                      try {
+                        const hydrated = await hydrateTripWithSeats(trip);
+                        setSelectedTrip(hydrated);
+                        setSelectedSeats([]);
+                        navigateTo('seats');
+                      } catch (error) {
+                        log.error('seat_load_failed_before_selection', { tripInstanceId: trip?.instanceId || null, tripCode: trip?.tripCode || trip?.id || null, error });
+                        showToast('تعذر تحميل المقاعد من السيرفر.', 'error');
+                      }
+                    }}
+                    showToast={showToast}
+                    onGoHome={() => navigateTo('main', 'home')}
+                  />
+                ) : null}
+
+                {activeView === 'seats' && selectedTrip ? (
+                  <SeatSelectionView
+                    trip={selectedTrip}
+                    passengers={searchParams.passengers}
+                    selectedSeats={selectedSeats}
+                    setSelectedSeats={setSelectedSeats}
+                    onConfirm={async () => {
+                      await commitSeatSelection();
+                    }}
+                    showToast={showToast}
+                  />
+                ) : null}
+
+                {activeView === 'checkout' && selectedTrip ? (
+                  <CheckoutView
+                    userId={userId}
+                    trip={selectedTrip}
+                    seats={selectedSeats}
+                    passengers={searchParams.passengers}
+                    wallet={wallet}
+                    subscription={subscription}
+                    onCreateBooking={createBookingForTrip}
+                    onSuccess={finalizeBookingSuccess}
+                    showToast={showToast}
+                    openModal={setActiveModal}
+                  />
+                ) : null}
+
+                {activeView === 'invoice' && currentInvoice ? (
+                  <InvoiceView invoice={currentInvoice} ticket={viewedTicket} onContinue={() => navigateTo('ticket', 'tickets')} />
+                ) : null}
+
+                {activeView === 'main' && activePage === 'bookings' ? (
+                  <TripsView
+                    trips={myTrips.map(ensureTicketIdentity)}
+                    processRefund={processDelayedRefund}
+                    pendingCancellationBookingIds={pendingCancellationBookingIds}
+                    onViewTicket={(ticket) => {
+                      setViewedTicket(ensureTicketIdentity(ticket));
+                      navigateTo('ticket', 'tickets');
+                    }}
+                    showToast={showToast}
+                  />
+                ) : null}
+
+                {activeView === 'main' && activePage === 'tickets' ? (
+                  <TicketsHubView
+                    tickets={upcomingTickets}
+                    onOpenTicket={(ticket) => {
+                      setViewedTicket(ensureTicketIdentity(ticket));
+                      navigateTo('ticket', 'tickets');
+                    }}
+                    onTrackTicket={(ticket) => {
+                      setViewedTicket(ensureTicketIdentity(ticket));
+                      navigateTo('tracking', 'tickets');
+                    }}
+                  />
+                ) : null}
+
+                {activeView === 'ticket' && viewedTicket ? (
+                  <TicketView ticket={ensureTicketIdentity(viewedTicket)} user={user} onTrack={() => navigateTo('tracking', 'tickets')} showToast={showToast} />
+                ) : null}
+
+                {activeView === 'tracking' && viewedTicket ? <TrackingView ticket={ensureTicketIdentity(viewedTicket)} showToast={showToast} /> : null}
+
+                {activeView === 'main' && activePage === 'wallet' ? (
+                  <WalletView
+                    userId={userId}
+                    wallet={wallet}
+                    setWallet={setWallet}
+                    transactions={transactions}
+                    setTransactions={setTransactions}
+                    showToast={showToast}
+                    openTopUp={() => setActiveModal('topup')}
+                    openWalletQr={() => {
+                      setWalletQrInitialAmount(null);
+                      setActiveModal('wallet_qr');
+                    }}
+                  />
+                ) : null}
+
+                {activeView === 'main' && activePage === 'profile' ? (
+                  <ProfileView
+                    user={user}
+                    profile={profile}
+                    points={points}
+                    subscription={subscription}
+                    isDark={isDark}
+                    setIsDark={setIsDark}
+                    refreshProfile={refreshProfile}
+                    onLogout={async () => {
+                      const result = await signOutCurrentUser();
+                      if (!result?.ok) log.error('logout_failed', { error: result?.error || null });
+                      return result;
+                    }}
+                    showToast={showToast}
+                    openModal={setActiveModal}
+                    openGuide={openGuide}
+                    referralSummary={referralSummary}
+                    refreshReferralSummary={refreshReferralSummary}
+                    applyReferralCode={handleApplyReferralCode}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </main>
+
+          {activeView === 'main' ? (
+            <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] md:hidden">
+              <nav className="mx-auto grid max-w-[430px] grid-cols-5 items-center gap-2 rounded-[28px] border border-[var(--line)] bg-[var(--surface-overlay)] p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
+                {NAV_ITEMS.map((item) => (
+                  <BottomNavItem
+                    key={item.key}
+                    icon={<item.icon />}
+                    label={item.label}
+                    active={activePage === item.key}
+                    onClick={() => navigateTo('main', item.key)}
+                  />
+                ))}
+              </nav>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {activeModal === 'help' ? <ChatbotModal closeModal={() => setActiveModal(null)} user={user} /> : null}
+      {activeModal === 'help' ? <ChatbotModal closeModal={() => setActiveModal(null)} user={user} openGuide={openGuide} /> : null}
 
       {activeModal === 'subs' ? (
         <SubscriptionsModal
@@ -1234,18 +1105,18 @@ export default function UserApp({
           showToast={showToast}
           runtimeMode={runtimeMode}
           openWalletQr={(amount) => {
-            setWalletQrInitialAmount(amount || null);
-            setActiveModal('wallet_qr');
+            setActiveModal(null);
+            window.setTimeout(() => {
+              setWalletQrInitialAmount(amount);
+              setActiveModal('wallet_qr');
+            }, 60);
           }}
         />
       ) : null}
 
       {activeModal === 'notifications' ? (
         <NotificationsModal
-          closeModal={() => {
-            markAllRead();
-            setActiveModal(null);
-          }}
+          closeModal={() => setActiveModal(null)}
           notifications={notifications}
           unreadCount={unreadCount}
           markAllRead={markAllRead}
@@ -1261,50 +1132,49 @@ export default function UserApp({
           closeModal={() => setActiveModal(null)}
           showToast={showToast}
           onDismiss={dismissPromoOffer}
-          onCopyOffer={(offer) => {
-            if (!userId || !offer?.campaignId) return;
-            recordCampaignEvent({
-              userId,
-              campaignId: offer.campaignId,
-              eventName: 'offer_copied',
-              source: 'promo_modal',
-              metadata: { code: offer.code || '' },
-            });
-          }}
+          onCopyOffer={(offer) => handlePromoHighlightInteraction(offer, 'copied')}
         />
       ) : null}
 
-      {activeModal === 'internal_ops' && internalOpsEnabled ? (
-        <InternalOpsPanel
-          closeModal={() => setActiveModal(null)}
-          userId={userId}
-          user={user}
-          wallet={wallet}
-          points={points}
-          subscription={subscription}
-          latestTrip={latestTrip}
-          onRefresh={refreshCloudState}
-          onOpenLatestTicket={() => {
-            if (!latestTrip) return;
-            setViewedTicket(ensureTicketIdentity(latestTrip));
-            setActiveModal(null);
-            navigateTo('ticket');
-          }}
-          onOpenLatestTracking={() => {
-            if (!latestTrip) return;
-            setViewedTicket(ensureTicketIdentity(latestTrip));
-            setActiveModal(null);
-            navigateTo('tracking');
-          }}
-          showToast={showToast}
-        />
-      ) : null}
+      <OnboardingGuide isOpen={isGuideOpen} onClose={closeGuide} onComplete={completeGuide} />
 
-      <OnboardingGuide
-        isOpen={isGuideOpen}
-        onClose={closeGuide}
-        onComplete={completeGuide}
-      />
+      {internalOpsEnabled ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setActiveModal('internal_ops')}
+            className="interactive-press fixed bottom-[calc(env(safe-area-inset-bottom)+92px)] left-4 z-40 hidden min-h-11 items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-overlay)] px-4 py-2 text-sm font-black text-[var(--ink)] shadow-[var(--shadow-md)] backdrop-blur-xl md:inline-flex"
+          >
+            تشغيل داخلي
+          </button>
+
+          {activeModal === 'internal_ops' ? (
+            <InternalOpsPanel
+              closeModal={() => setActiveModal(null)}
+              userId={userId}
+              user={user}
+              wallet={wallet}
+              points={points}
+              subscription={subscription}
+              latestTrip={latestTrip}
+              onRefresh={(options) => refreshCloudState(options)}
+              onOpenLatestTicket={() => {
+                if (!latestTrip) return;
+                setViewedTicket(ensureTicketIdentity(latestTrip));
+                setActiveModal(null);
+                navigateTo('ticket', 'tickets');
+              }}
+              onOpenLatestTracking={() => {
+                if (!latestTrip) return;
+                setViewedTicket(ensureTicketIdentity(latestTrip));
+                setActiveModal(null);
+                navigateTo('tracking', 'tickets');
+              }}
+              showToast={showToast}
+            />
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }

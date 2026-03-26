@@ -17,19 +17,24 @@ export function cx(...inputs) {
 }
 
 const chipToneClasses = {
-  neutral: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700',
-  brand: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50',
-  success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50',
-  warning: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800/50',
-  danger: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-200 dark:border-rose-800/50',
+  neutral:
+    'border-[var(--line)] bg-[var(--surface-soft)] text-[var(--ink-muted)]',
+  brand:
+    'border-[rgba(33,86,217,0.14)] bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]',
+  success:
+    'border-[rgba(13,127,95,0.16)] bg-[var(--success-bg)] text-[var(--success)]',
+  warning:
+    'border-[rgba(184,106,14,0.16)] bg-[var(--warning-bg)] text-[var(--warning)]',
+  danger:
+    'border-[rgba(197,54,82,0.16)] bg-[var(--danger-bg)] text-[var(--danger)]',
 };
 
 const badgeToneClasses = {
-  neutral: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-  danger: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
-  brand: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+  neutral: 'bg-[var(--surface-soft)] text-[var(--ink-muted)]',
+  success: 'bg-[var(--success-bg)] text-[var(--success)]',
+  warning: 'bg-[var(--warning-bg)] text-[var(--warning)]',
+  danger: 'bg-[var(--danger-bg)] text-[var(--danger)]',
+  brand: 'bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]',
 };
 
 const statusTones = {
@@ -38,59 +43,6 @@ const statusTones = {
   cancelled: 'danger',
   past: 'neutral',
 };
-
-export function AppSurface({ children, className = '', tone = 'default' }) {
-  return (
-    <section
-      className={cx(
-        'rounded-[28px] border border-slate-200/80 bg-white shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] dark:border-slate-800 dark:bg-slate-900',
-        tone === 'soft' && 'bg-slate-50/90 dark:bg-slate-900/80',
-        tone === 'inverse' && 'border-transparent bg-[var(--ink)] text-white dark:bg-slate-950',
-        className,
-      )}
-    >
-      {children}
-    </section>
-  );
-}
-
-export function PageHeading({ eyebrow, title, subtitle, actions, className = '' }) {
-  return (
-    <div className={cx('flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between', className)}>
-      <div>
-        {eyebrow ? (
-          <p className="mb-1 text-xs font-black tracking-[0.16em] text-indigo-600 dark:text-indigo-300">
-            {eyebrow}
-          </p>
-        ) : null}
-        <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white md:text-3xl">
-          {title}
-        </h1>
-        {subtitle ? (
-          <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-            {subtitle}
-          </p>
-        ) : null}
-      </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-    </div>
-  );
-}
-
-export function SectionHeader({ title, subtitle, action, className = '' }) {
-  return (
-    <div className={cx('flex items-center justify-between gap-3', className)}>
-      <div>
-        <h2 className="text-lg font-black text-slate-900 dark:text-white">{title}</h2>
-        {subtitle ? (
-          <p className="mt-1 text-sm font-bold text-slate-500 dark:text-slate-400">{subtitle}</p>
-        ) : null}
-      </div>
-      {action}
-    </div>
-  );
-}
-
 
 function ButtonSpinner({ className = '' }) {
   return (
@@ -104,6 +56,79 @@ function ButtonSpinner({ className = '' }) {
   );
 }
 
+export function AppSurface({ children, className = '', tone = 'default' }) {
+  const toneClassName =
+    tone === 'soft'
+      ? 'app-surface-soft'
+      : tone === 'strong'
+      ? 'app-surface-strong'
+      : tone === 'inverse'
+      ? 'app-brand-panel text-white'
+      : 'app-surface app-surface-hover';
+
+  return (
+    <section
+      className={cx(
+        'min-w-0 w-full rounded-[28px] transition-[transform,box-shadow,border-color,background-color] duration-300',
+        toneClassName,
+        className,
+      )}
+    >
+      {children}
+    </section>
+  );
+}
+
+export function PageHeading({
+  eyebrow,
+  title,
+  subtitle,
+  actions,
+  className = '',
+}) {
+  return (
+    <div
+      className={cx(
+        'flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between',
+        className,
+      )}
+    >
+      <div className="min-w-0">
+        {eyebrow ? (
+          <p className="mb-1 text-xs font-black tracking-[0.16em] text-[var(--brand-strong)] dark:text-[var(--brand)]">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h1 className="text-2xl font-black tracking-tight text-[var(--ink)] md:text-[2rem]">
+          {title}
+        </h1>
+        {subtitle ? (
+          <p className="mt-2 max-w-3xl text-sm font-bold leading-7 text-[var(--ink-muted)] md:text-[15px]">
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
+  );
+}
+
+export function SectionHeader({ title, subtitle, action, className = '' }) {
+  return (
+    <div className={cx('flex min-w-0 items-start justify-between gap-3', className)}>
+      <div className="min-w-0">
+        <h2 className="text-lg font-black text-[var(--ink)] md:text-xl">{title}</h2>
+        {subtitle ? (
+          <p className="mt-1 text-sm font-bold leading-6 text-[var(--ink-muted)]">
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
 export function PrimaryButton({
   children,
   icon,
@@ -111,26 +136,23 @@ export function PrimaryButton({
   loading = false,
   loadingText = '',
   disabled = false,
+  type = 'button',
   ...props
 }) {
   const resolvedDisabled = disabled || loading;
 
   return (
     <button
-      type="button"
+      type={type}
       className={cx(
-        'inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-600/25 transition-all hover:bg-indigo-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500',
+        'interactive-press inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-transparent bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] px-5 py-3 text-sm font-black text-white shadow-[0_18px_38px_-18px_rgba(33,86,217,0.48)] transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_22px_48px_-20px_rgba(33,86,217,0.55)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:border-[var(--line)] disabled:bg-[linear-gradient(135deg,var(--surface-soft)_0%,var(--surface-strong)_100%)] disabled:text-[var(--ink)] disabled:opacity-65 disabled:shadow-none',
         className,
       )}
       disabled={resolvedDisabled}
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading ? (
-        <ButtonSpinner />
-      ) : icon ? (
-        <span className="shrink-0">{icon}</span>
-      ) : null}
+      {loading ? <ButtonSpinner /> : icon ? <span className="shrink-0">{icon}</span> : null}
       <span>{loading && loadingText ? loadingText : children}</span>
     </button>
   );
@@ -143,26 +165,23 @@ export function SecondaryButton({
   loading = false,
   loadingText = '',
   disabled = false,
+  type = 'button',
   ...props
 }) {
   const resolvedDisabled = disabled || loading;
 
   return (
     <button
-      type="button"
+      type={type}
       className={cx(
-        'inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition-all hover:border-indigo-200 hover:bg-indigo-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-700 dark:hover:bg-slate-800',
+        'interactive-press inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)] px-5 py-3 text-sm font-black text-[var(--ink)] transition-all duration-200 hover:-translate-y-[1px] hover:border-[var(--line-strong)] hover:bg-[var(--surface-soft)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:border-[var(--line-strong)] disabled:bg-[var(--surface-soft)] disabled:text-[var(--ink)] disabled:opacity-65 disabled:shadow-none',
         className,
       )}
       disabled={resolvedDisabled}
       aria-busy={loading || undefined}
       {...props}
     >
-      {loading ? (
-        <ButtonSpinner />
-      ) : icon ? (
-        <span className="shrink-0">{icon}</span>
-      ) : null}
+      {loading ? <ButtonSpinner /> : icon ? <span className="shrink-0">{icon}</span> : null}
       <span>{loading && loadingText ? loadingText : children}</span>
     </button>
   );
@@ -173,7 +192,7 @@ export function ActionChip({ children, icon, className = '', ...props }) {
     <button
       type="button"
       className={cx(
-        'inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 transition-all hover:border-indigo-200 hover:bg-indigo-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-700 dark:hover:bg-slate-800',
+        'interactive-press inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-2.5 text-sm font-black text-[var(--ink)] transition-all duration-200 hover:border-[var(--line-strong)] hover:bg-[var(--surface-strong)] disabled:border-[var(--line)] disabled:bg-[var(--surface-soft)] disabled:text-[var(--ink)] disabled:opacity-65',
         className,
       )}
       {...props}
@@ -216,26 +235,44 @@ export function StatusBadge({ status, label, tone, className = '' }) {
 
 export function FieldShell({ label, hint, icon, children, className = '' }) {
   return (
-    <label className={cx('flex flex-col gap-2', className)}>
-      <span className="text-sm font-black text-slate-800 dark:text-slate-100">{label}</span>
-      <div className="relative">
+    <label className={cx('flex min-w-0 flex-col gap-3', className)}>
+      <div className="flex min-w-0 items-center gap-3 text-right">
         {icon ? (
-          <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-slate-400">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-[var(--line)] bg-[var(--surface-soft)] text-[var(--brand-strong)] dark:text-[var(--brand)]">
             {React.cloneElement(icon, { className: 'h-5 w-5' })}
           </span>
         ) : null}
-        {children}
+        <div className="min-w-0">
+          <div className="text-sm font-black text-[var(--ink)]">{label}</div>
+          {hint ? (
+            <div className="mt-0.5 text-xs font-bold leading-5 text-[var(--ink-muted)]">
+              {hint}
+            </div>
+          ) : null}
+        </div>
       </div>
-      {hint ? <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{hint}</span> : null}
+      <div className="min-w-0">{children}</div>
     </label>
   );
 }
 
-export function KeyValueRow({ label, value, valueClassName = '', className = '' }) {
+export function KeyValueRow({
+  label,
+  value,
+  valueClassName = '',
+  className = '',
+}) {
   return (
-    <div className={cx('flex items-start justify-between gap-3 text-sm font-bold', className)}>
-      <span className="text-slate-500 dark:text-slate-400">{label}</span>
-      <span className={cx('text-left text-slate-900 dark:text-white', valueClassName)}>{value}</span>
+    <div
+      className={cx(
+        'flex min-w-0 items-start justify-between gap-3 rounded-[18px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-3',
+        className,
+      )}
+    >
+      <span className="text-sm font-black text-[var(--ink-muted)]">{label}</span>
+      <span className={cx('min-w-0 break-words text-left text-sm font-black text-[var(--ink)]', valueClassName)} dir="ltr">
+        {value}
+      </span>
     </div>
   );
 }
@@ -244,7 +281,7 @@ export function StickyActionBar({ children, className = '' }) {
   return (
     <div
       className={cx(
-        'sticky bottom-0 z-30 mt-auto bg-gradient-to-t from-[var(--bg)] via-[color:rgba(244,247,251,0.96)] to-transparent px-0 pb-[calc(env(safe-area-inset-bottom)+8px)] pt-5 dark:from-slate-950 dark:via-[rgba(2,6,23,0.96)]',
+        'sticky bottom-0 z-30 mt-auto bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/95 to-transparent px-0 pb-[calc(env(safe-area-inset-bottom)+8px)] pt-5',
         className,
       )}
     >
@@ -253,31 +290,37 @@ export function StickyActionBar({ children, className = '' }) {
   );
 }
 
-export function DesktopNavItem({ icon, label, active, onClick, collapsed }) {
+export function DesktopNavItem({
+  icon,
+  label,
+  active,
+  onClick,
+  collapsed,
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={collapsed ? label : ''}
       className={cx(
-        'group flex w-full items-center rounded-[22px] border px-4 py-3.5 text-right transition-all',
+        'interactive-press group flex w-full items-center rounded-[24px] border px-4 py-3.5 text-right transition-all duration-200',
         collapsed ? 'justify-center px-3' : 'gap-3',
         active
-          ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-900/20 dark:text-indigo-300'
-          : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white dark:text-slate-300 dark:hover:border-slate-800 dark:hover:bg-slate-900',
+          ? 'border-transparent bg-white/10 text-white shadow-[0_18px_40px_-26px_rgba(16,35,63,0.45)]'
+          : 'border-transparent text-slate-200 hover:border-white/10 hover:bg-white/8 hover:text-white',
       )}
     >
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/80 text-current shadow-sm dark:bg-slate-800/80">
+      <span
+        className={cx(
+          'grid h-11 w-11 shrink-0 place-items-center rounded-2xl transition-all',
+          active
+            ? 'bg-white/14 text-current ring-1 ring-white/10'
+            : 'bg-white/8 text-current',
+        )}
+      >
         {React.cloneElement(icon, { className: 'h-5 w-5' })}
       </span>
-      {!collapsed ? (
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-black">{label}</p>
-          <p className="mt-1 text-[11px] font-bold text-slate-400 dark:text-slate-500">
-            خطوة واضحة وسريعة
-          </p>
-        </div>
-      ) : null}
+      {!collapsed ? <p className="truncate text-sm font-black">{label}</p> : null}
     </button>
   );
 }
@@ -287,20 +330,23 @@ export function BottomNavItem({ icon, label, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       className={cx(
-        'group relative flex min-h-[58px] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 text-center transition-all',
-        active ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-500',
+        'interactive-press group relative flex min-h-[62px] flex-1 flex-col items-center justify-center gap-1 rounded-[22px] px-2 text-center transition-all duration-200',
+        active
+          ? 'bg-[var(--surface-soft)] text-[var(--ink)] shadow-[0_12px_24px_-18px_rgba(16,35,63,0.3)]'
+          : 'text-[var(--ink-soft)]',
       )}
     >
       {active ? (
-        <span className="absolute inset-x-3 top-0 h-1 rounded-full bg-indigo-600 dark:bg-indigo-400" />
+        <span className="absolute inset-x-3 top-0 h-1 rounded-full bg-[linear-gradient(90deg,#163c98_0%,#2156d9_100%)]" />
       ) : null}
       <span
         className={cx(
           'grid h-9 w-9 place-items-center rounded-2xl transition-all',
           active
-            ? 'bg-indigo-50 text-indigo-600 shadow-sm dark:bg-indigo-900/20 dark:text-indigo-300'
-            : 'bg-transparent text-current group-hover:bg-slate-100 dark:group-hover:bg-slate-800',
+            ? 'bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]'
+            : 'bg-transparent text-current group-hover:bg-[var(--surface-soft)]',
         )}
       >
         {React.cloneElement(icon, { className: 'h-5 w-5' })}

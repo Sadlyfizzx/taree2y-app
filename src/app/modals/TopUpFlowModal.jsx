@@ -1,16 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { CreditCard, Phone, Send, ShieldCheck } from 'lucide-react';
+import { CreditCard, ShieldCheck } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency } from '../utils/formatting';
 import { calculateWalletTopupBreakdown } from '../public/publicPortal';
-
-const METHODS = [
-  { key: 'card', label: 'بطاقة بنكية', icon: <CreditCard className="h-5 w-5" /> },
-  { key: 'wallet', label: 'فودافون كاش', icon: <Phone className="h-5 w-5" /> },
-  { key: 'instapay', label: 'إنستاباي', icon: <Send className="h-5 w-5" /> },
-];
 
 function TopUpFlowModal({
   closeModal,
@@ -23,7 +17,6 @@ function TopUpFlowModal({
   openWalletQr,
 }) {
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState('card');
   const [loading, setLoading] = useState(false);
 
   const numericAmount = Math.max(0, Number(amount) || 0);
@@ -48,23 +41,20 @@ function TopUpFlowModal({
     setLoading(true);
     closeModal();
     openWalletQr?.(grossAmount);
-    showToast(
-      'كمّل الشحن من صفحة الدفع الآمنة. الرصيد هيتحدث بعد التأكيد الحقيقي فقط.',
-      'success',
-    );
+    showToast('اتفتح رابط الشحن. بعد التأكيد هيتضاف صافي المبلغ لنفس الحساب.', 'success');
   };
 
   return (
     <ModalShell
       onClose={closeModal}
       title="شحن المحفظة"
-      subtitle="الشحن هنا يفتح صفحة الدفع الآمنة فقط، ومافيش أي إضافة محلية أو تجريبية للرصيد."
+      subtitle="اختَر المبلغ، وبعدها كمّل التأكيد من صفحة الشحن العامة المرتبطة بنفس الحساب."
       icon={<CreditCard className="h-6 w-6" />}
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>إلغاء</SecondaryButton>
           <PrimaryButton onClick={handleConfirm} loading={loading} loadingText="جاري المتابعة…">
-            كمّل عبر QR
+            افتح صفحة الشحن
           </PrimaryButton>
         </div>
       }
@@ -72,8 +62,8 @@ function TopUpFlowModal({
       <div className="space-y-5">
         <InlineNotice
           tone="info"
-          title="حماية الرصيد في وضع الإنتاج"
-          text="تم إيقاف أي شحن محلي مباشر. الرصيد لا يتحرك إلا بعد الدفع الحقيقي وتأكيد العملية على السيرفر."
+          title="المسار المتاح حالياً"
+          text="الشحن الحالي بيتأكد من صفحة الـ QR العامة، وبعد نجاح التأكيد بيتسجل الرصيد لنفس الحساب بشكل مباشر ومن غير تكرار."
           icon={ShieldCheck}
         />
 
@@ -101,26 +91,6 @@ function TopUpFlowModal({
           ))}
         </div>
 
-        <div>
-          <p className="text-sm font-black text-slate-900 dark:text-white">طريقة الشحن</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {METHODS.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setMethod(item.key)}
-                className={`rounded-[24px] border px-4 py-4 text-right transition ${
-                  method === item.key
-                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300'
-                    : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200'
-                }`}
-              >
-                <span className="flex items-center gap-2 text-sm font-black">{item.icon}{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-slate-950/60">
           <p className="text-sm font-black text-slate-900 dark:text-white">ملخص الشحن</p>
           <div className="mt-3 space-y-2 text-sm font-black">
@@ -133,13 +103,13 @@ function TopUpFlowModal({
               <span>- {formatCurrency(feeAmount)}</span>
             </div>
             <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2 text-emerald-700 dark:border-slate-700 dark:text-emerald-300">
-              <span>الصافي المتوقع إضافته بعد الدفع</span>
+              <span>الصافي المتوقع إضافته</span>
               <span>{formatCurrency(netAmount)}</span>
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <MetaChip label="شحن حقيقي عبر صفحة دفع" tone="brand" />
-            <MetaChip label="مع رسوم تشغيل" tone="warning" />
+            <MetaChip label="المسار الفعلي: QR" tone="brand" />
+            <MetaChip label="من غير تكرار عند إعادة التأكيد" tone="success" />
           </div>
         </div>
       </div>

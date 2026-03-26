@@ -296,7 +296,7 @@ export async function requestCurrentUserDeletion() {
   }
 
   setAccountAccessNotice(
-    'تم تعطيل الحساب داخل التطبيق وتسجيل خروجك. حذف مستخدم Supabase Auth نفسه نهائياً يحتاج Backend آمن أو Service Role.',
+    'تم تعطيل الحساب داخل التطبيق وتسجيل خروجك بنجاح.',
   );
 
   return {

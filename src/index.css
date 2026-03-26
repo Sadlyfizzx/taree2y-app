@@ -1,67 +1,129 @@
-@import "tailwindcss";
+@import '@fontsource/cairo/400.css';
+@import '@fontsource/cairo/700.css';
+@import '@fontsource/cairo/800.css';
+@import '@fontsource/cairo/900.css';
+@import 'tailwindcss';
 @custom-variant dark (&:where(.dark, .dark *));
-@custom-variant light (&:where(.light, .light *));
 
 :root {
-  --font-app: 'Cairo', 'Segoe UI', Tahoma, Arial, system-ui, sans-serif;
-  --bg: #f4f7fb;
-  --surface: #ffffff;
-  --surface-soft: #eef4ff;
-  --ink: #10233f;
-  --muted: #64748b;
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --bg-muted: #edf2fb;
+  --bg-elevated: #e9eff9;
+  --surface: rgba(255, 255, 255, 0.9);
+  --surface-strong: #ffffff;
+  --surface-soft: #f7faff;
+  --surface-inset: #eef3fb;
+  --surface-overlay: rgba(255, 255, 255, 0.76);
+  --ink: #101828;
+  --ink-muted: #546179;
+  --ink-soft: #76849d;
   --line: rgba(15, 23, 42, 0.08);
-  --line-strong: rgba(15, 23, 42, 0.16);
+  --line-strong: rgba(15, 23, 42, 0.14);
   --brand: #2156d9;
   --brand-strong: #163c98;
+  --brand-ink: #10233f;
   --accent: #0f9f8a;
-  --warning: #b45309;
-  --danger: #be123c;
-  --success: #047857;
+  --success: #0d7f5f;
+  --warning: #b86a0e;
+  --danger: #c53652;
+  --info-bg: rgba(33, 86, 217, 0.12);
+  --success-bg: rgba(13, 127, 95, 0.12);
+  --warning-bg: rgba(184, 106, 14, 0.14);
+  --danger-bg: rgba(197, 54, 82, 0.12);
+  --shadow-soft:
+    0 24px 60px -38px rgba(16, 35, 63, 0.18),
+    0 10px 24px -18px rgba(16, 35, 63, 0.12);
+  --shadow-elevated:
+    0 34px 80px -44px rgba(16, 35, 63, 0.24),
+    0 18px 38px -24px rgba(16, 35, 63, 0.18);
+  --shadow-floating:
+    0 42px 90px -48px rgba(16, 35, 63, 0.44),
+    0 18px 40px -24px rgba(16, 35, 63, 0.24);
+  --radius-card: 28px;
+  --radius-panel: 34px;
+  --radius-pill: 999px;
+  --header-height: 78px;
+  --mobile-nav-offset: calc(env(safe-area-inset-bottom) + 112px);
+  --sidebar-ink: #10233f;
+  --sidebar-ink-muted: #5a6d88;
+  --sidebar-line: rgba(16, 35, 63, 0.1);
+  --sidebar-soft: rgba(255, 255, 255, 0.82);
+  --sidebar-soft-hover: rgba(255, 255, 255, 0.96);
+  --sidebar-card: rgba(255, 255, 255, 0.72);
 }
 
+
 html.dark {
-  --bg: #020617;
-  --surface: #0f172a;
-  --surface-soft: #111827;
-  --ink: #f8fafc;
-  --muted: #94a3b8;
+  color-scheme: dark;
+  --bg: #050b15;
+  --bg-muted: #08111d;
+  --bg-elevated: #0b1423;
+  --surface: rgba(11, 18, 31, 0.88);
+  --surface-strong: #0f1726;
+  --surface-soft: #111c2e;
+  --surface-inset: #0c1525;
+  --surface-overlay: rgba(5, 11, 21, 0.8);
+  --ink: #eef3ff;
+  --ink-muted: #b7c3d8;
+  --ink-soft: #8f9db7;
   --line: rgba(148, 163, 184, 0.16);
-  --line-strong: rgba(148, 163, 184, 0.28);
-  --brand: #2156d9;
-  --brand-strong: #163c98;
-  --accent: #14b8a6;
-  --warning: #f59e0b;
-  --danger: #fb7185;
-  --success: #10b981;
+  --line-strong: rgba(148, 163, 184, 0.24);
+  --brand: #7da7ff;
+  --brand-strong: #4f7eff;
+  --brand-ink: #cbdcff;
+  --accent: #34c1ac;
+  --success: #48d0a6;
+  --warning: #ffc165;
+  --danger: #ff7b94;
+  --info-bg: rgba(79, 126, 255, 0.2);
+  --success-bg: rgba(72, 208, 166, 0.16);
+  --warning-bg: rgba(255, 193, 101, 0.18);
+  --danger-bg: rgba(255, 123, 148, 0.18);
+  --shadow-soft:
+    0 26px 68px -40px rgba(2, 6, 23, 0.74),
+    0 12px 24px -18px rgba(2, 6, 23, 0.46);
+  --shadow-elevated:
+    0 42px 92px -44px rgba(2, 6, 23, 0.82),
+    0 18px 40px -26px rgba(2, 6, 23, 0.52);
+  --shadow-floating:
+    0 48px 110px -48px rgba(2, 6, 23, 0.9),
+    0 22px 46px -26px rgba(2, 6, 23, 0.6);
+  --sidebar-ink: #f8fbff;
+  --sidebar-ink-muted: #c6d2e6;
+  --sidebar-line: rgba(255, 255, 255, 0.1);
+  --sidebar-soft: rgba(255, 255, 255, 0.08);
+  --sidebar-soft-hover: rgba(255, 255, 255, 0.14);
+  --sidebar-card: rgba(255, 255, 255, 0.06);
 }
+
 
 html,
 body,
 #root {
   min-height: 100%;
-  margin: 0;
-  background: var(--bg);
-  color: var(--ink);
 }
 
 html {
-  color-scheme: light;
-  background: var(--bg);
-}
-
-html.dark {
-  color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--bg);
+  overflow-x: clip;
+  font-family: 'Cairo', sans-serif;
+  background:
+    radial-gradient(circle at top right, rgba(33, 86, 217, 0.09), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(15, 159, 138, 0.07), transparent 24%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-muted) 100%);
   color: var(--ink);
-  font-family: var(--font-app);
-  font-family: var(--font-app);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 180ms ease, color 180ms ease;
+}
+
+::selection {
+  background: rgba(33, 86, 217, 0.22);
+  color: var(--ink);
 }
 
 * {
@@ -73,20 +135,27 @@ input,
 select,
 textarea {
   font: inherit;
-  font-family: inherit;
 }
 
-button {
-  touch-action: manipulation;
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
 }
 
-::selection {
-  background: rgba(33, 86, 217, 0.16);
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(33, 86, 217, 0.22);
+  outline-offset: 2px;
 }
 
-:focus-visible {
-  outline: 3px solid rgba(33, 86, 217, 0.34);
-  outline-offset: 3px;
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 .hide-scrollbar {
@@ -94,42 +163,378 @@ button {
   scrollbar-width: none;
 }
 
-.hide-scrollbar::-webkit-scrollbar {
-  display: none;
+.app-shell-bg {
+  background:
+    radial-gradient(circle at top right, rgba(33, 86, 217, 0.08), transparent 24%),
+    radial-gradient(circle at bottom left, rgba(15, 159, 138, 0.06), transparent 20%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-muted) 100%);
 }
 
-.ticket-shell {
+.app-page-transition {
+  animation: appFadeSlide 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-pressable {
+  transition:
+    transform 180ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease,
+    color 220ms ease,
+    opacity 220ms ease;
+}
+
+.app-pressable:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.app-topbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(18px);
+}
+
+.app-sidebar-surface {
+  border-left: 1px solid rgba(16, 35, 63, 0.05);
+  background:
+    radial-gradient(circle at top right, rgba(33, 86, 217, 0.05), transparent 24%),
+    radial-gradient(circle at bottom left, rgba(15, 159, 138, 0.035), transparent 26%),
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 34%, #f4f8ff 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 34px 80px -50px rgba(16, 35, 63, 0.12);
+}
+
+html.dark .app-sidebar-surface {
+  background:
+    radial-gradient(circle at top right, rgba(79, 126, 255, 0.2), transparent 26%),
+    radial-gradient(circle at bottom left, rgba(52, 193, 172, 0.12), transparent 28%),
+    linear-gradient(180deg, #060d18 0%, #0a1423 54%, #040911 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+
+
+.app-page-frame {
+  width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
+}
+
+.app-page-frame > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-sidebar-nav-button {
+  color: var(--sidebar-ink-muted);
+}
+
+.app-sidebar-nav-button:hover {
+  background: var(--sidebar-soft);
+  color: var(--sidebar-ink);
+}
+
+.app-sidebar-nav-button.is-active {
+  color: #fff;
+}
+
+.app-sidebar-icon-shell {
+  background: var(--sidebar-soft);
+  color: var(--sidebar-ink-muted);
+}
+
+.app-sidebar-nav-button:hover .app-sidebar-icon-shell {
+  background: var(--sidebar-soft-hover);
+  color: var(--sidebar-ink);
+}
+
+.app-sidebar-card {
+  border-color: var(--sidebar-line);
+  background: var(--sidebar-card);
+  color: var(--sidebar-ink);
+}
+
+.app-sidebar-toggle {
+  border-color: var(--sidebar-line);
+  background: var(--sidebar-soft);
+  color: var(--sidebar-ink);
+}
+
+.app-sidebar-toggle:hover {
+  background: var(--sidebar-soft-hover);
+}
+
+.app-mobile-drawer-overlay {
+  transition: opacity 220ms ease, visibility 220ms ease;
+}
+
+.app-mobile-drawer-panel {
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease;
+  will-change: transform, opacity;
+}
+
+.app-sidebar-panel {
+  transition:
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 260ms ease,
+    background-color 260ms ease;
+}
+
+.app-sidebar-label {
+  transition:
+    opacity 220ms ease,
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 260ms ease;
+  transform-origin: right center;
+}
+
+.app-sidebar-label-collapsed {
+  opacity: 0;
+  transform: translateX(8px);
+  max-width: 0;
+  overflow: hidden;
+}
+
+.app-mobile-drawer {
+  animation: mobileDrawerIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes mobileDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.app-surface {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+}
+
+.app-surface-soft {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  box-shadow: none;
+}
+
+.app-surface-strong {
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.app-surface::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(33, 86, 217, 0.1), transparent 32%);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.app-surface-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-elevated);
+}
+
+.app-surface-hover:hover::after {
+  opacity: 1;
+}
+
+.app-brand-panel {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #10233f 0%, #163c98 48%, #2156d9 86%, #0f9f8a 145%);
+  color: white;
+  box-shadow: var(--shadow-floating);
+}
+
+.app-brand-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.22), transparent 24%),
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: auto, 26px 26px, 26px 26px;
+  opacity: 0.8;
+}
+
+.app-brand-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.app-ticket-shell {
   position: relative;
 }
 
-.ticket-shell::before,
-.ticket-shell::after {
+.app-ticket-shell::before,
+.app-ticket-shell::after {
   content: '';
   position: absolute;
-  inset-block-start: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
+  top: 50%;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
-  background: var(--bg);
+  background: var(--bg-muted);
   border: 1px solid var(--line);
+  transform: translateY(-50%);
 }
 
-.ticket-shell::before {
-  inset-inline-start: -10px;
+.app-ticket-shell::before {
+  right: -12px;
 }
 
-.ticket-shell::after {
-  inset-inline-end: -10px;
+.app-ticket-shell::after {
+  left: -12px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+.app-dashed-divider {
+  border-top: 1px dashed var(--line-strong);
+}
+
+.app-grid-pattern {
+  position: relative;
+}
+
+.app-grid-pattern::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.25;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.app-input {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--ink);
+  padding: 0 16px;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.app-input::placeholder {
+  color: var(--ink-soft);
+}
+
+.app-input:hover {
+  border-color: var(--line-strong);
+}
+
+.app-input:focus {
+  border-color: rgba(33, 86, 217, 0.44);
+  box-shadow: 0 0 0 4px rgba(33, 86, 217, 0.12);
+}
+
+.app-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.app-sticky-fade {
+  background: linear-gradient(180deg, transparent 0%, var(--bg) 30%, var(--bg) 100%);
+}
+
+.interactive-press {
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.interactive-press:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+@keyframes appFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --radius-card: 24px;
+    --radius-panel: 30px;
+  }
+
+  .app-ticket-shell::before,
+  .app-ticket-shell::after {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* hotfix round 8: cursor feedback + active sidebar hover */
+button:not(:disabled),
+[type='button']:not(:disabled),
+[type='submit']:not(:disabled),
+[type='reset']:not(:disabled),
+a[href],
+summary,
+[role='button']:not([aria-disabled='true']),
+.cursor-pointer-on-hover {
+  cursor: pointer;
+}
+
+button:disabled,
+[type='button']:disabled,
+[type='submit']:disabled,
+[type='reset']:disabled,
+[role='button'][aria-disabled='true'],
+.cursor-not-allowed-on-disabled {
+  cursor: not-allowed;
+}
+
+.app-pressable:not(:disabled),
+.app-sidebar-nav-button:not(:disabled),
+.app-sidebar-toggle:not(:disabled) {
+  cursor: pointer;
+}
+
+.app-sidebar-nav-button.is-active,
+.app-sidebar-nav-button.is-active:hover,
+.app-sidebar-nav-button.is-active:focus-visible {
+  color: #ffffff;
+  background: linear-gradient(135deg, #1a46ab 0%, #2d63eb 100%);
+  box-shadow: 0 24px 52px -28px rgba(16, 35, 63, 0.72);
+}
+
+.app-sidebar-nav-button.is-active .app-sidebar-icon-shell,
+.app-sidebar-nav-button.is-active:hover .app-sidebar-icon-shell,
+.app-sidebar-nav-button.is-active:focus-visible .app-sidebar-icon-shell {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }

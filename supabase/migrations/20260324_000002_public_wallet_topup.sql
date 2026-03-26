@@ -11,7 +11,7 @@ as $$
 declare
   current_wallet numeric := 0;
   normalized_amount numeric := greatest(coalesce(p_amount, 0), 0);
-  txn_id text := concat('QRTOP-', to_char(now(), 'YYMMDDHH24MISS'));
+  txn_id text := concat('QRTOP-', to_char(now(), 'YYMMDDHH24Mحالة الرحلة لحظة بلحظةISS'));
 begin
   if p_user_id is null then
     raise exception 'missing_user_id';
