@@ -323,7 +323,7 @@ export default function UserApp({
     };
   }, [userId]);
 
-  const { notifications, unreadCount, markAllRead, clearNotifications, markNotificationRead, dismissNotification, requestBrowserPermission } = useTripNotifications({
+  const { notifications, unreadCount, markAllRead, clearNotifications, requestBrowserPermission } = useTripNotifications({
     userId,
     trips: myTrips,
     onNotify: (entry) => showToast(entry.title, 'success'),
@@ -522,89 +522,6 @@ export default function UserApp({
       window.scrollTo({ top: 0, behavior: options.instant ? 'auto' : 'smooth' });
     },
     [activePage, syncLocation],
-  );
-
-  const handleNotificationAction = useCallback(
-    async (item) => {
-      if (!item) return;
-
-      if (!item.readAt && item.id) {
-        await markNotificationRead(item.id);
-      }
-
-      const action = String(item.ctaAction || '').trim().toLowerCase();
-      const payload = item.payload && typeof item.payload === 'object' ? item.payload : {};
-      const promoCode =
-        String(
-          payload.code ||
-            payload.promoCode ||
-            payload.promo_code ||
-            item.code ||
-            '',
-        ).trim().toUpperCase();
-
-      if (action === 'open_ticket' || action === 'open_tickets') {
-        setActiveModal(null);
-        navigateTo('main', 'tickets');
-        return;
-      }
-
-      if (action === 'open_trip' || action === 'open_booking' || action === 'open_bookings') {
-        setActiveModal(null);
-        navigateTo('main', 'bookings');
-        return;
-      }
-
-      if (action === 'open_wallet') {
-        setActiveModal(null);
-        navigateTo('main', 'wallet');
-        return;
-      }
-
-      if (action === 'open_referral') {
-        setActiveModal(null);
-        navigateTo('main', 'profile');
-        showToast('راجع قسم الدعوات والإحالة من الحساب.', 'success');
-        return;
-      }
-
-      if (action === 'use_offer' || action === 'open_offer' || action === 'open_home') {
-        setActiveModal(null);
-        navigateTo('main', 'home');
-        if (promoCode) {
-          showToast(`الكود المتاح: ${promoCode}`, 'success');
-        }
-        return;
-      }
-
-      if (item.category === 'wallet') {
-        setActiveModal(null);
-        navigateTo('main', 'wallet');
-        return;
-      }
-
-      if (item.category === 'promo') {
-        setActiveModal(null);
-        navigateTo('main', 'home');
-        if (promoCode) {
-          showToast(`الكود المتاح: ${promoCode}`, 'success');
-        }
-        return;
-      }
-
-      if (item.category === 'referral') {
-        setActiveModal(null);
-        navigateTo('main', 'profile');
-        return;
-      }
-
-      if (item.category === 'trip') {
-        setActiveModal(null);
-        navigateTo('main', 'bookings');
-        return;
-      }
-    },
-    [markNotificationRead, navigateTo, setActiveModal, showToast],
   );
 
   useEffect(() => {
@@ -1032,7 +949,6 @@ export default function UserApp({
                     passengers={searchParams.passengers}
                     wallet={wallet}
                     subscription={subscription}
-                    currentTrips={myTrips.map(ensureTicketIdentity)}
                     onCreateBooking={createBookingForTrip}
                     onSuccess={finalizeBookingSuccess}
                     showToast={showToast}
@@ -1205,10 +1121,7 @@ export default function UserApp({
           unreadCount={unreadCount}
           markAllRead={markAllRead}
           clearNotifications={clearNotifications}
-          markNotificationRead={markNotificationRead}
-          dismissNotification={dismissNotification}
           requestBrowserPermission={requestBrowserPermission}
-          onOpenItem={handleNotificationAction}
           showToast={showToast}
         />
       ) : null}

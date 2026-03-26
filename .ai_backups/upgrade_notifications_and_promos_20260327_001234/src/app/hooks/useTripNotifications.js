@@ -10,32 +10,6 @@ import {
 
 const log = createLogger('trip-notifications');
 
-const CATEGORY_ALIASES = Object.freeze({
-  campaign: 'promo',
-  retention: 'referral',
-  payment: 'wallet',
-  refund: 'wallet',
-  topup: 'wallet',
-  generic: 'general',
-});
-
-function normalizeCategory(value) {
-  const raw = String(value || '').trim().toLowerCase();
-  return CATEGORY_ALIASES[raw] || raw || 'general';
-}
-
-function isExpired(entry) {
-  const value = String(entry?.expiresAt || '').trim();
-  if (!value) return false;
-  const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) ? timestamp < Date.now() : false;
-}
-
-function getCreatedAt(entry) {
-  const timestamp = new Date(entry?.createdAt || entry?.deliveredAt || 0).getTime();
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
 async function notifyBrowser(title, body, tag) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
 
@@ -67,7 +41,7 @@ export function useTripNotifications({ userId = '', trips: _trips = [], onNotify
 
       if (announce) {
         items.forEach((entry) => {
-          if (!entry?.id || entry.readAt || entry.dismissedAt || isExpired(entry)) return;
+          if (!entry?.id || entry.readAt || entry.dismissedAt) return;
           if (announcedServerIdsRef.current.has(entry.id)) return;
           announcedServerIdsRef.current.add(entry.id);
           notifyBrowser(entry.title, entry.body, `server-${entry.id}`);
@@ -127,16 +101,10 @@ export function useTripNotifications({ userId = '', trips: _trips = [], onNotify
     () =>
       [...serverNotifications]
         .filter((entry) => !entry?.dismissedAt)
-        .filter((entry) => !isExpired(entry))
-        .map((entry) => ({
-          ...entry,
-          category: normalizeCategory(entry?.category),
-          priority: Number(entry?.priority || 0),
-        }))
         .sort((left, right) => {
-          const priorityDiff = Number(right?.priority || 0) - Number(left?.priority || 0);
-          if (priorityDiff !== 0) return priorityDiff;
-          return getCreatedAt(right) - getCreatedAt(left);
+          const leftTime = new Date(left?.createdAt || left?.deliveredAt || 0).getTime();
+          const rightTime = new Date(right?.createdAt || right?.deliveredAt || 0).getTime();
+          return rightTime - leftTime;
         }),
     [serverNotifications],
   );
@@ -146,46 +114,20 @@ export function useTripNotifications({ userId = '', trips: _trips = [], onNotify
     [notifications],
   );
 
-  const markNotificationsRead = async (ids = null) => {
-    if (!userId) return;
-    const nextIds = Array.isArray(ids) ? ids.filter(Boolean) : ids ? [ids] : null;
-    await markUserNotificationsRead({ userId, ids: nextIds });
-    await refreshServerNotifications({ announce: false });
-  };
-
-  const dismissNotifications = async (ids = null) => {
-    if (!userId) {
-      if (!ids) {
-        setServerNotifications([]);
-        return;
-      }
-
-      const dismissedSet = new Set(Array.isArray(ids) ? ids : [ids]);
-      setServerNotifications((current) => current.filter((entry) => !dismissedSet.has(entry?.id)));
-      return;
-    }
-
-    const nextIds = Array.isArray(ids) ? ids.filter(Boolean) : ids ? [ids] : null;
-    await dismissUserNotifications({ userId, ids: nextIds });
-    await refreshServerNotifications({ announce: false });
-  };
-
-  const markNotificationRead = async (id) => {
-    if (!id) return;
-    await markNotificationsRead([id]);
-  };
-
-  const dismissNotification = async (id) => {
-    if (!id) return;
-    await dismissNotifications([id]);
-  };
-
   const markAllRead = async () => {
-    await markNotificationsRead();
+    if (!userId) return;
+    await markUserNotificationsRead({ userId });
+    await refreshServerNotifications({ announce: false });
   };
 
   const clearNotifications = async () => {
-    await dismissNotifications();
+    if (!userId) {
+      setServerNotifications([]);
+      return;
+    }
+
+    await dismissUserNotifications({ userId });
+    await refreshServerNotifications({ announce: false });
   };
 
   const requestBrowserPermission = async () => {
@@ -215,10 +157,6 @@ export function useTripNotifications({ userId = '', trips: _trips = [], onNotify
     unreadCount,
     markAllRead,
     clearNotifications,
-    markNotificationsRead,
-    dismissNotifications,
-    markNotificationRead,
-    dismissNotification,
     requestBrowserPermission,
     refreshNotifications: refreshServerNotifications,
   };

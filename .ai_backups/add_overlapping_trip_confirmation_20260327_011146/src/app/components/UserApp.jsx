@@ -1032,7 +1032,6 @@ export default function UserApp({
                     passengers={searchParams.passengers}
                     wallet={wallet}
                     subscription={subscription}
-                    currentTrips={myTrips.map(ensureTicketIdentity)}
                     onCreateBooking={createBookingForTrip}
                     onSuccess={finalizeBookingSuccess}
                     showToast={showToast}

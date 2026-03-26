@@ -18,29 +18,8 @@ import {
 } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency, formatSeatsText } from '../utils/formatting';
-import { getCancellationPolicy, getTripLifecycleStatus } from '../utils/travel';
+import { getCancellationPolicy } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
-
-
-const resolveDisplayStatus = (trip) => {
-  const rawStatus = String(trip?.status || '').trim();
-
-  if (['cancelled', 'refund_pending', 'past'].includes(rawStatus)) {
-    return rawStatus;
-  }
-
-  if (!trip?.date || !trip?.departureTime || !trip?.arrivalTime) {
-    return rawStatus || 'upcoming';
-  }
-
-  const lifecycle = getTripLifecycleStatus(trip);
-
-  if (lifecycle?.code === 'finished' || lifecycle?.code === 'departed') {
-    return 'past';
-  }
-
-  return rawStatus || 'upcoming';
-};
 
 export default function TripsView({
   trips,
@@ -54,30 +33,23 @@ export default function TripsView({
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
   const computedTrips = useMemo(
-    () =>
-      (Array.isArray(trips) ? trips : []).map((trip) => {
-        const preparedTrip = withStationNames(trip);
-        return {
-          ...preparedTrip,
-          displayStatus: resolveDisplayStatus(preparedTrip),
-        };
-      }),
+    () => (Array.isArray(trips) ? trips : []).map((trip) => withStationNames(trip)),
     [trips],
   );
 
   const counts = useMemo(
     () => ({
-      upcoming: computedTrips.filter((trip) => ['upcoming', 'refund_pending'].includes(trip.displayStatus)).length,
-      past: computedTrips.filter((trip) => trip.displayStatus === 'past').length,
-      cancelled: computedTrips.filter((trip) => trip.displayStatus === 'cancelled').length,
+      upcoming: computedTrips.filter((trip) => ['upcoming', 'refund_pending'].includes(trip.status)).length,
+      past: computedTrips.filter((trip) => trip.status === 'past').length,
+      cancelled: computedTrips.filter((trip) => trip.status === 'cancelled').length,
     }),
     [computedTrips],
   );
 
   const filteredTrips = computedTrips.filter((trip) => {
-    if (activeTab === 'upcoming') return ['upcoming', 'refund_pending'].includes(trip.displayStatus);
-    if (activeTab === 'past') return trip.displayStatus === 'past';
-    return trip.displayStatus === 'cancelled';
+    if (activeTab === 'upcoming') return ['upcoming', 'refund_pending'].includes(trip.status);
+    if (activeTab === 'past') return trip.status === 'past';
+    return trip.status === 'cancelled';
   });
 
   useEffect(() => {
@@ -95,7 +67,7 @@ export default function TripsView({
     }
   };
 
-  const cancelPolicy = cancelingTrip ? getCancellationPolicy({ ...cancelingTrip, status: resolveDisplayStatus(cancelingTrip) }) : null;
+  const cancelPolicy = cancelingTrip ? getCancellationPolicy(cancelingTrip) : null;
 
   const tabs = [
     { key: 'upcoming', label: 'القادمة', count: counts.upcoming },
@@ -152,13 +124,12 @@ export default function TripsView({
       ) : (
         <div className="grid gap-3.5 xl:grid-cols-2 2xl:grid-cols-3">
           {filteredTrips.map((trip) => {
-            const displayStatus = trip.displayStatus || resolveDisplayStatus(trip);
-            const policy = getCancellationPolicy({ ...trip, status: displayStatus });
+            const policy = getCancellationPolicy(trip);
             const bookingId = trip.bookingId || trip.id || null;
             const isPendingCancellation =
-              displayStatus === 'refund_pending' ||
+              trip.status === 'refund_pending' ||
               (bookingId && pendingCancellationBookingIds.includes(bookingId));
-            const primaryActionLabel = displayStatus === 'upcoming' ? 'عرض التذكرة' : 'عرض التفاصيل';
+            const primaryActionLabel = trip.status === 'upcoming' ? 'عرض التذكرة' : 'عرض التفاصيل';
 
             return (
               <AppSurface key={trip.pnr || trip.id} className="flex h-full min-w-0 flex-col overflow-hidden rounded-[30px] p-3.5 sm:p-4 md:p-5">
@@ -167,11 +138,11 @@ export default function TripsView({
                     <p className="text-[11px] font-black tracking-[0.14em] text-[var(--ink-soft)] sm:text-xs">حجز</p>
                     <p className="mt-1 font-mono text-[15px] font-black tracking-[0.03em] text-[var(--ink)] sm:text-sm">{trip.pnr || trip.id}</p>
                   </div>
-                  {displayStatus === 'refund_pending' || isPendingCancellation ? (
+                  {trip.status === 'refund_pending' || isPendingCancellation ? (
                     <StatusBadge label="استرداد جاري" tone="warning" />
                   ) : trip.status === 'cancelled' ? (
                     <StatusBadge label="ملغية" tone="danger" />
-                  ) : displayStatus === 'past' ? (
+                  ) : trip.status === 'past' ? (
                     <StatusBadge label="منتهية" tone="neutral" />
                   ) : (
                     <StatusBadge label="مؤكدة" tone="success" />
@@ -188,7 +159,7 @@ export default function TripsView({
                   <MetaChip className="col-span-2 justify-center sm:col-span-1 sm:justify-start" label={trip.class || 'درجة الرحلة'} tone="neutral" />
                 </div>
 
-                {displayStatus === 'upcoming' ? (
+                {trip.status === 'upcoming' ? (
                   <div className="mt-3.5 rounded-[22px] border border-[var(--line)]/90 bg-[var(--surface-soft)] px-3.5 py-3.5 sm:mt-4 sm:px-4 sm:py-4">
                     <p className="text-[13px] font-black text-[var(--ink)] sm:text-sm">قبل التحرك</p>
                     <p className="mt-1 text-[13px] font-bold leading-6 text-[var(--ink-muted)] sm:text-sm">
@@ -201,7 +172,7 @@ export default function TripsView({
                   <PrimaryButton className="w-full sm:flex-1" onClick={() => onViewTicket(trip)} icon={<Ticket className="h-4 w-4" />}>
                     {primaryActionLabel}
                   </PrimaryButton>
-                  {displayStatus === 'upcoming' ? (
+                  {trip.status === 'upcoming' ? (
                     <SecondaryButton
                       className="w-full sm:flex-1"
                       disabled={!policy.allowed || isPendingCancellation}

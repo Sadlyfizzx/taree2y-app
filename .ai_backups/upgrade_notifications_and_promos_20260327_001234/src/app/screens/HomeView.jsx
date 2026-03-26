@@ -334,10 +334,10 @@ function DatePickerField({
 
             <div
               dir="rtl"
-              className="grid grid-cols-7 justify-items-center gap-x-2 gap-y-1 text-center text-[11px] font-black text-[var(--ink-soft)]"
+              className="grid grid-cols-7 justify-items-center gap-x-2 gap-y-2 text-center text-[11px] font-black text-[var(--ink-soft)]"
             >
               {WEEKDAY_LABELS.map((label) => (
-                <span key={label} className="grid h-7 w-7 place-items-center">{label}</span>
+                <span key={label} className="grid h-8 w-8 place-items-center">{label}</span>
               ))}
             </div>
 
@@ -355,7 +355,7 @@ function DatePickerField({
                       setOpenPickerId(null);
                     }}
                     className={cx(
-                      'group relative grid h-10.5 w-10.5 place-items-center rounded-[15px] text-sm font-black transition',
+                      'group relative grid h-12 w-12 place-items-center rounded-[16px] text-sm font-black transition',
                       day.isPast && 'cursor-not-allowed opacity-35',
                       !day.isPast && day.inMonth && !selected && 'hover:bg-[var(--surface-soft)]',
                       !day.isPast && !day.inMonth && !selected && 'hover:bg-[var(--surface-soft)]/60',
@@ -363,7 +363,7 @@ function DatePickerField({
                   >
                     <span
                       className={cx(
-                        'grid h-8.5 w-8.5 place-items-center transition',
+                        'grid h-10 w-10 place-items-center transition',
                         selected
                           ? 'rounded-full bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-[0_18px_34px_-26px_rgba(33,86,217,0.58)]'
                           : isToday && !day.isPast
@@ -690,7 +690,7 @@ function HomeView({
                   {offer.description || offer.message || 'خصم متاح على رحلتك الجاية.'}
                 </p>
                 <div className="mt-5 inline-flex rounded-full border border-white/12 bg-white/10 px-3 py-2 text-xs font-black">
-                  {offer.ctaLabel || (offer.code ? 'انسخ الكود' : 'افتح العرض')}
+                  {offer.code ? 'انسخ الكود' : 'افتح العرض'}
                 </div>
               </button>
             ))}

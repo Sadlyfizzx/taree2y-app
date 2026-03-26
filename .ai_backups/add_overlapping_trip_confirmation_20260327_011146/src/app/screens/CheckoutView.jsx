@@ -1,18 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Accessibility,
-  AlertTriangle,
   Check,
   Clock,
   CreditCard,
-  Route,
   ShieldCheck,
   Tag,
 } from 'lucide-react';
 import { createLogger } from '../../lib/logger';
 import { validatePromoCode } from '../../lib/promoEngine';
 import BookingProgress from '../components/ui/BookingProgress';
-import ModalShell from '../components/ui/ModalShell';
 import RouteTimeline from '../components/ui/RouteTimeline';
 import {
   AppSurface,
@@ -63,81 +60,6 @@ function buildTripMeta(data, passengers) {
     travel_class: data.class,
     passengers,
   };
-}
-
-function buildTripDateTime(dateValue, timeValue) {
-  if (!dateValue || !timeValue) return null;
-  const dateTime = new Date(`${dateValue}T${timeValue}:00`);
-  return Number.isNaN(dateTime.getTime()) ? null : dateTime;
-}
-
-function getTripWindow(tripLike) {
-  const start = buildTripDateTime(tripLike?.date, tripLike?.departureTime);
-  const end = buildTripDateTime(tripLike?.date, tripLike?.arrivalTime);
-
-  if (!start || !end) return null;
-
-  if (end.getTime() <= start.getTime()) {
-    end.setDate(end.getDate() + 1);
-  }
-
-  return { start, end };
-}
-
-function isTripActiveForOverlap(tripLike) {
-  const status = String(tripLike?.status || '').trim();
-  if (['cancelled', 'past'].includes(status)) return false;
-
-  const window = getTripWindow(tripLike);
-  if (!window) return ['upcoming', 'refund_pending'].includes(status);
-
-  return window.end.getTime() > Date.now();
-}
-
-function formatTripLabel(tripLike) {
-  const from = String(tripLike?.from || '').trim() || 'غير محدد';
-  const to = String(tripLike?.to || '').trim() || 'غير محدد';
-  const date = String(tripLike?.date || '').trim() || 'بدون تاريخ';
-  const departure = String(tripLike?.departureTime || '').trim() || '--:--';
-  const arrival = String(tripLike?.arrivalTime || '').trim() || '--:--';
-  return `${from} ← ${to} | ${date} | ${departure} - ${arrival}`;
-}
-
-function findOverlappingTrip(nextTrip, existingTrips = []) {
-  const nextWindow = getTripWindow(nextTrip);
-  if (!nextWindow) return null;
-
-  const candidates = Array.isArray(existingTrips) ? existingTrips : [];
-
-  return (
-    candidates.find((tripLike) => {
-      if (!tripLike) return false;
-      if (!isTripActiveForOverlap(tripLike)) return false;
-
-      const existingWindow = getTripWindow(tripLike);
-      if (!existingWindow) return false;
-
-      return (
-        nextWindow.start.getTime() < existingWindow.end.getTime() &&
-        existingWindow.start.getTime() < nextWindow.end.getTime()
-      );
-    }) || null
-  );
-}
-
-function buildOverlapWarningMessage(nextTrip, existingTrip) {
-  return [
-    'تنبيه قبل تأكيد الحجز',
-    '',
-    'يبدو أن لديك رحلة أخرى يتداخل توقيتها مع الرحلة التي تحاول حجزها الآن.',
-    '',
-    `الرحلة الجديدة: ${formatTripLabel(nextTrip)}`,
-    `الرحلة الحالية: ${formatTripLabel(existingTrip)}`,
-    '',
-    'قد يؤدي ذلك إلى تعارض في المواعيد أو صعوبة في اللحاق بإحدى الرحلتين.',
-    'إذا كنت متأكدًا من خطتك، اضغط "موافق" للمتابعة.',
-    'وإذا أردت المراجعة أولًا، اضغط "إلغاء".',
-  ].join('\n');
 }
 
 function mapPromoResultToState(result, normalizedCode) {
@@ -221,7 +143,6 @@ function CheckoutView({
   passengers,
   wallet,
   subscription,
-  currentTrips = [],
   onCreateBooking,
   onSuccess,
   showToast,
@@ -233,8 +154,6 @@ function CheckoutView({
   const [hasLuggage, setHasLuggage] = useState(false);
   const [needsAccess, setNeedsAccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [overlapWarning, setOverlapWarning] = useState(null);
-  const overlapApprovalRef = useRef('');
   const [remainingHoldMs, setRemainingHoldMs] = useState(() =>
     getRemainingHoldMs(trip?.holdExpiresAt),
   );
@@ -307,19 +226,6 @@ function CheckoutView({
       setPromoState(defaultPromoState);
     }
   }, [promoInput, promoState.code, promoState.status]);
-
-  const confirmOverlappingBooking = async () => {
-    if (!overlapWarning) return;
-    overlapApprovalRef.current = overlapWarning.key;
-    setOverlapWarning(null);
-    await handlePayment();
-  };
-
-  const cancelOverlappingBooking = () => {
-    overlapApprovalRef.current = '';
-    setOverlapWarning(null);
-    showToast('تمام، راجع الرحلتين أولًا قبل تأكيد الحجز.', 'info');
-  };
 
   if (!trip) return null;
 
@@ -414,19 +320,6 @@ function CheckoutView({
       return;
     }
 
-    const overlappingTrip = findOverlappingTrip(data, currentTrips);
-    if (overlappingTrip) {
-      const shouldContinue =
-        typeof window === 'undefined'
-          ? true
-          : window.confirm(buildOverlapWarningMessage(data, overlappingTrip));
-
-      if (!shouldContinue) {
-        showToast('تمام، راجع الرحلتين أولًا قبل تأكيد الحجز.', 'info');
-        return;
-      }
-    }
-
     const typedPromoCode = String(promoInput || '').trim().toUpperCase();
     let latestPromoState = promoState;
 
@@ -458,7 +351,6 @@ function CheckoutView({
       return;
     }
 
-    overlapApprovalRef.current = '';
     setIsProcessing(true);
 
     try {
@@ -730,60 +622,6 @@ function CheckoutView({
           </div>
         </AppSurface>
       </StickyActionBar>
-      {overlapWarning ? (
-        <ModalShell
-          onClose={cancelOverlappingBooking}
-          title="تنبيه قبل تأكيد الحجز"
-          subtitle="يوجد تداخل زمني مع رحلة أخرى مسجلة على حسابك. الحجز مسموح، لكن من الأفضل المراجعة قبل المتابعة."
-          icon={<AlertTriangle className="h-6 w-6" />}
-          maxWidth="max-w-2xl"
-          footer={
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <SecondaryButton onClick={cancelOverlappingBooking}>
-                أراجع الرحلتين أولًا
-              </SecondaryButton>
-              <PrimaryButton onClick={confirmOverlappingBooking} icon={<Route className="h-4 w-4" />}>
-                أكمل الحجز رغم التداخل
-              </PrimaryButton>
-            </div>
-          }
-        >
-          <div className="space-y-4">
-            <div className="rounded-[24px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-4">
-              <p className="text-sm font-black text-[var(--ink)]">قد يحدث تعارض في المواعيد أو صعوبة في اللحاق بإحدى الرحلتين.</p>
-              <p className="mt-2 text-sm font-bold leading-6 text-[var(--ink-muted)]">
-                إذا كنت متأكدًا من خطتك، يمكنك المتابعة. وإذا أردت المراجعة أولًا، ارجع وتأكد من مواعيد الرحلتين.
-              </p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-[24px] border border-indigo-200 bg-indigo-50/80 px-4 py-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                <div className="flex items-center gap-2">
-                  <MetaChip label="الرحلة الجديدة" tone="brand" />
-                </div>
-                <p className="mt-3 text-base font-black text-[var(--ink)]">
-                  {formatTripWindowLabel(overlapWarning.nextTrip)}
-                </p>
-                <p className="mt-2 text-sm font-bold leading-6 text-[var(--ink-muted)]">
-                  {formatTripTimeLabel(overlapWarning.nextTrip)}
-                </p>
-              </div>
-
-              <div className="rounded-[24px] border border-[var(--line)] bg-[var(--surface-strong)] px-4 py-4">
-                <div className="flex items-center gap-2">
-                  <MetaChip label="رحلة حالية على الحساب" tone="warning" />
-                </div>
-                <p className="mt-3 text-base font-black text-[var(--ink)]">
-                  {formatTripWindowLabel(overlapWarning.existingTrip)}
-                </p>
-                <p className="mt-2 text-sm font-bold leading-6 text-[var(--ink-muted)]">
-                  {formatTripTimeLabel(overlapWarning.existingTrip)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </ModalShell>
-      ) : null}
     </div>
   );
 }

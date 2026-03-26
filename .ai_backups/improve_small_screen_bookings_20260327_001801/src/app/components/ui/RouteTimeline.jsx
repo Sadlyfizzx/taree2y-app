@@ -55,11 +55,11 @@ export default function RouteTimeline({
         </div>
 
         <div className="min-w-0 text-left">
-          <p className="text-[18px] font-black text-[var(--ink)] min-[430px]:text-[20px] md:text-[28px]" dir="ltr">
+          <p className="text-[20px] font-black text-[var(--ink)] md:text-[28px]" dir="ltr">
             {data.arrivalTime}
           </p>
           <p className="mt-1 truncate text-[13px] font-black text-[var(--ink)] sm:text-sm md:text-lg">{data.to}</p>
-          <p className="mt-1 inline-flex min-w-0 items-start gap-1 text-[10px] font-bold leading-4.5 text-[var(--ink-muted)] min-[430px]:text-[11px] min-[430px]:leading-5 md:text-sm">
+          <p className="mt-1 inline-flex min-w-0 items-start gap-1 text-[11px] font-bold leading-5 text-[var(--ink-muted)] md:text-sm">
             <span className="line-clamp-2 min-w-0 break-words">{data.toStationName}</span>
             <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--accent)]" />
           </p>
