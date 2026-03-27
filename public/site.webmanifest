@@ -30,5 +30,22 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "الرحلات",
+      "short_name": "الرحلات",
+      "url": "/"
+    },
+    {
+      "name": "التذاكر",
+      "short_name": "التذاكر",
+      "url": "/tickets"
+    },
+    {
+      "name": "المحفظة",
+      "short_name": "المحفظة",
+      "url": "/wallet"
+    }
   ]
 }
