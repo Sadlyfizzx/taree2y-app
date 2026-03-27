@@ -2,65 +2,638 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4f7fb" />
-    <meta name="color-scheme" content="light dark" />
-    <meta name="application-name" content="طريقي" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="طريقي" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="format-detection" content="telephone=no" />
+    <meta http-equiv="x-ua-compatible" content="IE=edge" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+
+    <title>طريقي | رحلات مصر بشكل أوضح</title>
+
     <meta
       name="description"
-      content="طريقي: تطبيق السفر والحجوزات الذكي داخل مصر. ابحث عن الرحلات، اختر مقعدك، ادفع من المحفظة، وتابع رحلتك بسهولة."
+      content="طريقي: احجز رحلتك داخل مصر بسهولة، افتح التذكرة والـ QR، اشحن المحفظة، تابع الرحلة، وراجع كل حركة من مكان واحد."
     />
+    <meta
+      name="keywords"
+      content="طريقي, Taree2y, حجز رحلات, تذاكر, QR, تتبع الرحلة, محفظة, شحن المحفظة, مصر, سفر داخلي"
+    />
+    <meta name="author" content="Taree2y" />
+    <meta name="application-name" content="طريقي" />
+    <meta name="apple-mobile-web-app-title" content="طريقي" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no, address=no, email=no" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f7fb" />
+
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="ar_EG" />
     <meta property="og:site_name" content="طريقي" />
-    <meta property="og:title" content="طريقي | احجز رحلتك بسهولة داخل مصر" />
+    <meta property="og:title" content="طريقي | رحلات مصر بشكل أوضح" />
     <meta
       property="og:description"
-      content="ابحث عن الرحلات، اختر مقعدك، ادفع من المحفظة، وتابع رحلتك من تطبيق طريقي."
+      content="ابحث عن الرحلات، افتح التذكرة والـ QR، تابع الحالة، واشحن المحفظة من تجربة واحدة واضحة وسريعة."
     />
+    <meta property="og:url" content="/" />
+    <meta property="og:image" content="/og-cover.png" />
+
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="طريقي | احجز رحلتك بسهولة داخل مصر" />
+    <meta name="twitter:title" content="طريقي | رحلات مصر بشكل أوضح" />
     <meta
       name="twitter:description"
-      content="ابحث عن الرحلات، اختر مقعدك، ادفع من المحفظة، وتابع رحلتك من تطبيق طريقي."
+      content="احجز، ادفع، افتح التذكرة، وتتبع الرحلة من تجربة واحدة واضحة وسريعة."
     />
+    <meta name="twitter:image" content="/og-cover.png" />
+
+    <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <script>
-      (() => {
-        try {
-          const prefersDark =
-            typeof window.matchMedia === 'function' &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches;
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="canonical" href="/" />
 
-          document.documentElement.classList.toggle('dark', Boolean(prefersDark));
-          document.documentElement.classList.toggle('light', !prefersDark);
-          document.documentElement.style.colorScheme = prefersDark ? 'dark' : 'light';
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7fb;
+        --bg-elevated: #eef4ff;
+        --surface: rgba(255, 255, 255, 0.86);
+        --surface-strong: #ffffff;
+        --surface-soft: #edf3ff;
+        --surface-overlay: rgba(255, 255, 255, 0.8);
+        --ink: #0f172a;
+        --ink-muted: #5f6b7e;
+        --ink-soft: #7d889b;
+        --brand: #2156d9;
+        --brand-strong: #163c98;
+        --brand-accent: #0f9f8a;
+        --line: rgba(15, 23, 42, 0.08);
+        --line-strong: rgba(15, 23, 42, 0.14);
+        --glow: rgba(33, 86, 217, 0.18);
+        --shadow-lg: 0 24px 80px -40px rgba(15, 23, 42, 0.35);
+        --shell-grad:
+          radial-gradient(circle at top right, rgba(33, 86, 217, 0.16), transparent 26%),
+          radial-gradient(circle at bottom left, rgba(15, 159, 138, 0.08), transparent 22%),
+          linear-gradient(180deg, #f8fbff 0%, #f4f7fb 45%, #eef4ff 100%);
+      }
 
-          const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-          if (metaThemeColor) {
-            metaThemeColor.setAttribute(
-              'content',
-              prefersDark ? '#020617' : '#f4f7fb',
-            );
-          }
-        } catch {
-          // ignore theme bootstrap failures
+      :root.dark {
+        color-scheme: dark;
+        --bg: #020617;
+        --bg-elevated: #08101d;
+        --surface: rgba(11, 18, 32, 0.78);
+        --surface-strong: #0b1220;
+        --surface-soft: #101a2d;
+        --surface-overlay: rgba(11, 18, 32, 0.78);
+        --ink: #f8fafc;
+        --ink-muted: #94a3b8;
+        --ink-soft: #738198;
+        --brand: #6d95ff;
+        --brand-strong: #9bb7ff;
+        --brand-accent: #63d6bf;
+        --line: rgba(148, 163, 184, 0.12);
+        --line-strong: rgba(148, 163, 184, 0.22);
+        --glow: rgba(109, 149, 255, 0.18);
+        --shadow-lg: 0 24px 80px -40px rgba(0, 0, 0, 0.58);
+        --shell-grad:
+          radial-gradient(circle at top right, rgba(109, 149, 255, 0.16), transparent 24%),
+          radial-gradient(circle at bottom left, rgba(99, 214, 191, 0.08), transparent 20%),
+          linear-gradient(180deg, #06101d 0%, #020617 48%, #07111f 100%);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+        scroll-behavior: smooth;
+        background: var(--bg);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
         }
+
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100svh;
+        background: var(--shell-grad);
+        color: var(--ink);
+        font-family:
+          "Segoe UI",
+          Tahoma,
+          Arial,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        overflow-x: hidden;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 24%),
+          linear-gradient(90deg, transparent 0 49.4%, rgba(33, 86, 217, 0.02) 49.5%, transparent 49.6% 100%);
+        opacity: 0.9;
+        z-index: 0;
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: auto 0 0 0;
+        height: 22vh;
+        pointer-events: none;
+        background: linear-gradient(180deg, transparent 0%, rgba(33, 86, 217, 0.05) 100%);
+        z-index: 0;
+      }
+
+      #root {
+        position: relative;
+        z-index: 1;
+        min-height: 100svh;
+      }
+
+      .boot-shell {
+        position: relative;
+        min-height: 100svh;
+        display: grid;
+        place-items: center;
+        padding:
+          max(18px, env(safe-area-inset-top))
+          18px
+          max(18px, env(safe-area-inset-bottom))
+          18px;
+      }
+
+      .boot-shell--public {
+        background:
+          radial-gradient(circle at top, rgba(33, 86, 217, 0.14), transparent 28%),
+          var(--shell-grad);
+      }
+
+      .boot-card {
+        width: min(100%, 450px);
+        border: 1px solid var(--line);
+        border-radius: 34px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.9)),
+          var(--surface);
+        box-shadow: var(--shadow-lg);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        overflow: hidden;
+      }
+
+      .dark .boot-card {
+        background:
+          linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(2, 6, 23, 0.94)),
+          var(--surface);
+      }
+
+      .boot-brand {
+        position: relative;
+        padding: 28px 24px 20px;
+        background:
+          radial-gradient(circle at top right, rgba(255, 255, 255, 0.18), transparent 28%),
+          linear-gradient(135deg, #10233f 0%, #163c98 52%, #2156d9 100%);
+        color: white;
+      }
+
+      .boot-brand::after {
+        content: "";
+        position: absolute;
+        inset: auto 24px 0 24px;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+      }
+
+      .boot-brand-top {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .boot-logo {
+        position: relative;
+        width: 62px;
+        height: 62px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 20px 40px -22px rgba(0, 0, 0, 0.35);
+        font-size: 26px;
+        font-weight: 900;
+      }
+
+      .boot-brand-copy h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: -0.03em;
+      }
+
+      .boot-brand-copy p {
+        margin: 8px 0 0;
+        font-size: 0.9rem;
+        line-height: 1.7;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.8);
+      }
+
+      .boot-body {
+        padding: 20px 24px 24px;
+      }
+
+      .boot-route {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--surface-soft);
+        color: var(--brand-strong);
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      .dark .boot-route {
+        color: var(--brand-strong);
+      }
+
+      .boot-title {
+        margin: 16px 0 0;
+        font-size: 1.08rem;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+
+      .boot-text {
+        margin: 10px 0 0;
+        font-size: 0.95rem;
+        line-height: 1.9;
+        font-weight: 700;
+        color: var(--ink-muted);
+      }
+
+      .boot-progress {
+        margin-top: 18px;
+      }
+
+      .boot-progress-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 0.82rem;
+        font-weight: 900;
+        color: var(--ink-muted);
+      }
+
+      .boot-progress-track {
+        height: 12px;
+        margin-top: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(33, 86, 217, 0.08);
+      }
+
+      .boot-progress-bar {
+        height: 100%;
+        width: 42%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #163c98 0%, #2156d9 65%, #0f9f8a 100%);
+        box-shadow: 0 10px 20px -12px rgba(33, 86, 217, 0.55);
+        animation: taree2y-load 1.4s ease-in-out infinite;
+        transform-origin: right center;
+      }
+
+      .boot-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .boot-chip {
+        min-height: 38px;
+        padding: 8px 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: var(--surface-soft);
+        color: var(--ink);
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      .boot-chip--brand {
+        background: rgba(33, 86, 217, 0.08);
+        color: var(--brand-strong);
+      }
+
+      .boot-note {
+        margin-top: 16px;
+        padding: 14px 15px;
+        border-radius: 22px;
+        border: 1px dashed var(--line-strong);
+        background: var(--bg-elevated);
+        color: var(--ink-muted);
+        font-size: 0.84rem;
+        line-height: 1.8;
+        font-weight: 800;
+      }
+
+      .boot-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 16px;
+        color: var(--ink-soft);
+        font-size: 0.76rem;
+        font-weight: 900;
+      }
+
+      .boot-pulse {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, #2156d9, #0f9f8a);
+        box-shadow: 0 0 0 0 rgba(33, 86, 217, 0.45);
+        animation: taree2y-pulse 1.7s infinite;
+      }
+
+      .screen-reader-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @keyframes taree2y-load {
+        0% { transform: translateX(0%) scaleX(0.82); }
+        50% { transform: translateX(22%) scaleX(1.08); }
+        100% { transform: translateX(0%) scaleX(0.82); }
+      }
+
+      @keyframes taree2y-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(33, 86, 217, 0.45); }
+        70% { box-shadow: 0 0 0 12px rgba(33, 86, 217, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(33, 86, 217, 0); }
+      }
+
+      noscript {
+        display: block;
+        margin: 16px;
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: #fff4e5;
+        color: #7c4a03;
+        font: 700 14px/1.7 system-ui, sans-serif;
+      }
+    </style>
+
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var path = (window.location.pathname || "/").trim();
+        var isPublicTrip = path.indexOf("/trip/") === 0 || path.indexOf("/t/") === 0;
+        var isWalletTopup = path.indexOf("/wallet-topup") === 0;
+        var isPublicPortal = isPublicTrip || isWalletTopup;
+
+        var themeKeys = ["taree2y-theme", "theme", "app-theme", "isDark"];
+        var savedTheme = null;
+
+        try {
+          for (var i = 0; i < themeKeys.length; i += 1) {
+            var value = window.localStorage.getItem(themeKeys[i]);
+            if (!value) continue;
+
+            if (value === "dark" || value === "light") {
+              savedTheme = value;
+              break;
+            }
+
+            if (value === "true") {
+              savedTheme = "dark";
+              break;
+            }
+
+            if (value === "false") {
+              savedTheme = "light";
+              break;
+            }
+          }
+        } catch (_) {}
+
+        var prefersDark =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+        var resolvedTheme = savedTheme || (prefersDark ? "dark" : "light");
+
+        root.classList.remove("light", "dark");
+        root.classList.add(resolvedTheme);
+        root.setAttribute("data-theme", resolvedTheme);
+        root.style.colorScheme = resolvedTheme;
+
+        var title = "طريقي | رحلات مصر بشكل أوضح";
+        var description =
+          "طريقي: احجز رحلتك داخل مصر بسهولة، افتح التذكرة والـ QR، اشحن المحفظة، تابع الرحلة، وراجع كل حركة من مكان واحد.";
+        var routeLabel = "تجهيز التطبيق";
+        var routeTitle = "جاري تحميل الحساب والتجربة الأساسية…";
+        var routeText = "بنجهز بيانات الحساب، المحفظة، التذاكر، وحالة الرحلات قبل ما تكمل.";
+        var chips = ["الحجز", "التذاكر", "المحفظة"];
+
+        if (isPublicTrip) {
+          title = "طريقي | متابعة الرحلة";
+          description =
+            "افتح حالة الرحلة العامة، راجع التقدم، وشارك رابط المتابعة بسهولة.";
+          routeLabel = "متابعة الرحلة";
+          routeTitle = "جاري تجهيز حالة الرحلة العامة…";
+          routeText = "بنحضر مسار الرحلة، التقدم الحالي، وبيانات الوصول بشكل مناسب للمشاركة.";
+          chips = ["التتبع", "الوصول", "المشاركة"];
+        } else if (isWalletTopup) {
+          title = "طريقي | شحن المحفظة";
+          description =
+            "أكمل شحن المحفظة من صفحة الدفع العامة المرتبطة بنفس الحساب.";
+          routeLabel = "شحن المحفظة";
+          routeTitle = "جاري تجهيز صفحة شحن المحفظة…";
+          routeText = "بنراجع المبلغ، الرسوم، وصافي الإضافة قبل فتح مسار التأكيد.";
+          chips = ["QR", "الرسوم", "الرصيد"];
+        }
+
+        document.title = title;
+
+        function setMeta(selector, value) {
+          var node = document.querySelector(selector);
+          if (node) node.setAttribute("content", value);
+        }
+
+        setMeta('meta[name="description"]', description);
+        setMeta('meta[property="og:title"]', title);
+        setMeta('meta[property="og:description"]', description);
+        setMeta('meta[name="twitter:title"]', title);
+        setMeta('meta[name="twitter:description"]', description);
+        setMeta(
+          'meta[name="theme-color"]',
+          resolvedTheme === "dark" ? "#020617" : isPublicPortal ? "#eef4ff" : "#f4f7fb"
+        );
+
+        window.__TAREE2Y_BOOT__ = {
+          isPublicPortal: isPublicPortal,
+          isPublicTrip: isPublicTrip,
+          isWalletTopup: isWalletTopup,
+          routeLabel: routeLabel,
+          routeTitle: routeTitle,
+          routeText: routeText,
+          chips: chips,
+          theme: resolvedTheme
+        };
       })();
     </script>
-    <title>طريقي | احجز رحلتك بسهولة داخل مصر</title>
   </head>
-  <body dir="rtl">
+
+  <body>
     <noscript>لازم تفعّل JavaScript علشان تطبيق طريقي يشتغل بشكل صحيح.</noscript>
-    <div id="root"></div>
+
+    <div id="root">
+      <div
+        class="boot-shell"
+        id="taree2y-boot"
+        aria-hidden="true"
+      >
+        <div class="boot-card">
+          <div class="boot-brand">
+            <div class="boot-brand-top">
+              <div class="boot-logo">ط</div>
+              <div class="boot-brand-copy">
+                <h1>طريقي</h1>
+                <p>رحلات مصر بشكل أوضح وأسهل من أول خطوة.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="boot-body">
+            <span class="boot-route" id="taree2y-boot-route">تجهيز التطبيق</span>
+
+            <h2 class="boot-title" id="taree2y-boot-title">
+              جاري تحميل الحساب والتجربة الأساسية…
+            </h2>
+
+            <p class="boot-text" id="taree2y-boot-text">
+              بنجهز بيانات الحساب، المحفظة، التذاكر، وحالة الرحلات قبل ما تكمل.
+            </p>
+
+            <div class="boot-progress" aria-hidden="true">
+              <div class="boot-progress-head">
+                <span>تجهيز الواجهة</span>
+                <span>طريقي</span>
+              </div>
+              <div class="boot-progress-track">
+                <div class="boot-progress-bar"></div>
+              </div>
+            </div>
+
+            <div class="boot-chips" id="taree2y-boot-chips">
+              <span class="boot-chip boot-chip--brand">الحجز</span>
+              <span class="boot-chip">التذاكر</span>
+              <span class="boot-chip">المحفظة</span>
+            </div>
+
+            <div class="boot-note" id="taree2y-boot-note">
+              بنشغّل الواجهة بنفس أسلوب التطبيق: تحميل واضح، تجربة عربية RTL، ودعم كامل للموبايل والوضع الداكن.
+            </div>
+
+            <div class="boot-footer">
+              <span>تجربة مهيأة للموبايل والتطبيقات العامة</span>
+              <span class="boot-pulse"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <span class="screen-reader-only" aria-live="polite">جاري تحميل تطبيق طريقي</span>
+
+    <script>
+      (function () {
+        try {
+          var boot = window.__TAREE2Y_BOOT__ || {};
+          var shell = document.getElementById("taree2y-boot");
+          var route = document.getElementById("taree2y-boot-route");
+          var title = document.getElementById("taree2y-boot-title");
+          var text = document.getElementById("taree2y-boot-text");
+          var chips = document.getElementById("taree2y-boot-chips");
+          var note = document.getElementById("taree2y-boot-note");
+
+          if (shell && boot.isPublicPortal) {
+            shell.classList.add("boot-shell--public");
+          }
+
+          if (route && boot.routeLabel) route.textContent = boot.routeLabel;
+          if (title && boot.routeTitle) title.textContent = boot.routeTitle;
+          if (text && boot.routeText) text.textContent = boot.routeText;
+
+          if (chips && Array.isArray(boot.chips) && boot.chips.length) {
+            chips.innerHTML = "";
+            for (var i = 0; i < boot.chips.length; i += 1) {
+              var chip = document.createElement("span");
+              chip.className = "boot-chip" + (i === 0 ? " boot-chip--brand" : "");
+              chip.textContent = boot.chips[i];
+              chips.appendChild(chip);
+            }
+          }
+
+          if (note) {
+            if (boot.isPublicTrip) {
+              note.textContent =
+                "دي شاشة عامة مناسبة للمشاركة، وبتجهّز حالة الرحلة والتقدم والوصول المتوقع.";
+            } else if (boot.isWalletTopup) {
+              note.textContent =
+                "دي صفحة عامة مرتبطة بمسار شحن المحفظة، وبتراجع المبلغ والرسوم قبل التأكيد.";
+            } else {
+              note.textContent =
+                "بنحمّل الحساب، الرصيد، التذاكر، والإعدادات بنفس منطق التطبيق الفعلي قبل ما React يبدأ.";
+            }
+          }
+        } catch (_) {}
+      })();
+    </script>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
