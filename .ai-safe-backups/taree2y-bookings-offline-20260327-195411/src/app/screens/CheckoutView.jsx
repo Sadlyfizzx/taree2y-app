@@ -234,7 +234,6 @@ function CheckoutView({
   onSuccess,
   showToast,
   openModal,
-  isOnline = true,
 }) {
   const [promoInput, setPromoInput] = useState('');
   const [promoState, setPromoState] = useState(defaultPromoState);
@@ -283,12 +282,6 @@ function CheckoutView({
   );
   const tripBookability = getTripBookability(data);
   const holdExpired = remainingHoldMs !== null && remainingHoldMs <= 0;
-  const canSubmitPayment =
-    isOnline &&
-    isWalletSufficient &&
-    tripBookability.canBook &&
-    !holdExpired &&
-    !promoLoading;
 
   const cancellationPreview = useMemo(
     () =>
@@ -340,19 +333,6 @@ function CheckoutView({
 
   const applyPromo = async ({ silent = false } = {}) => {
     if (promoLoading) return promoState;
-
-    if (!isOnline) {
-      const offlineState = {
-        ...defaultPromoState,
-        status: 'rejected',
-        resultCode: 'offline',
-        code: String(promoInput || '').trim().toUpperCase(),
-        message: 'اتأكد من الإنترنت قبل مراجعة كود الخصم.',
-      };
-      setPromoState(offlineState);
-      if (!silent) showToast(offlineState.message, 'warning');
-      return offlineState;
-    }
 
     const normalizedCode = String(promoInput || '').trim().toUpperCase();
 
@@ -419,11 +399,6 @@ function CheckoutView({
 
   const handlePayment = async () => {
     if (isProcessing || promoLoading) return;
-
-    if (!isOnline) {
-      showToast('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل الدفع وتأكيد الحجز.', 'warning');
-      return;
-    }
 
     const bookability = getTripBookability(data);
 
@@ -657,15 +632,6 @@ function CheckoutView({
             text="السعر النهائي بيتراجع هنا بالكامل، ولو الرصيد مش كفاية أو الكود مش صالح، هتعرف قبل تأكيد الحجز."
             icon={ShieldCheck}
           />
-
-          {!isOnline ? (
-            <InlineNotice
-              tone="warning"
-              title="اتأكد من الإنترنت قبل الدفع"
-              text="المراجعة لسه ظاهرة قدامك، لكن تأكيد الحجز والخصومات المحتاجة سيرفر هيفضلوا مقفولين لحد ما الاتصال يرجع."
-              icon={AlertTriangle}
-            />
-          ) : null}
         </div>
 
         <div className="space-y-5 xl:sticky xl:top-24 xl:self-start">
@@ -759,12 +725,12 @@ function CheckoutView({
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[260px]">
             <PrimaryButton
               onClick={handlePayment}
-              disabled={!canSubmitPayment}
+              disabled={!isWalletSufficient || !tripBookability.canBook || holdExpired || promoLoading}
               loading={isProcessing}
               loadingText="جاري تأكيد الحجز…"
               className="w-full"
             >
-              {isOnline ? 'ادفع وأكد الحجز' : 'اتأكد من الإنترنت أولًا'}
+              ادفع وأكد الحجز
             </PrimaryButton>
             {!isWalletSufficient ? (
               <SecondaryButton onClick={() => openModal('topup')}>اشحن المحفظة الأول</SecondaryButton>

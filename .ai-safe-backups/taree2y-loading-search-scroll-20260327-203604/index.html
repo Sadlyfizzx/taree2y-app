@@ -459,43 +459,6 @@
         root.setAttribute("data-theme", resolvedTheme);
         root.style.colorScheme = resolvedTheme;
 
-        function readConnectionInfo() {
-          var nav = typeof navigator !== "undefined" ? navigator : null;
-          var connection =
-            (nav && (nav.connection || nav.mozConnection || nav.webkitConnection)) || null;
-          var isOnline = nav && typeof nav.onLine === "boolean" ? nav.onLine : true;
-          var effectiveType = connection && connection.effectiveType ? String(connection.effectiveType).toLowerCase() : "";
-          var downlinkMbps = connection && Number(connection.downlink || 0) > 0 ? Number(connection.downlink || 0) : 0;
-          var saveData = Boolean(connection && connection.saveData);
-          var connectionTier = isOnline ? "normal" : "offline";
-          var connectionLabel = isOnline ? "الاتصال مستقر" : "أوفلاين";
-
-          if (!isOnline) {
-            connectionTier = "offline";
-            connectionLabel = "أوفلاين";
-          } else if (saveData || effectiveType === "slow-2g" || effectiveType === "2g" || (downlinkMbps && downlinkMbps < 1.2)) {
-            connectionTier = "slow";
-            connectionLabel = "اتصال ضعيف";
-          } else if (effectiveType === "3g" || (downlinkMbps && downlinkMbps < 4)) {
-            connectionTier = "medium";
-            connectionLabel = "اتصال متوسط";
-          } else if (effectiveType === "4g" || (downlinkMbps && downlinkMbps >= 4)) {
-            connectionTier = "fast";
-            connectionLabel = "اتصال سريع";
-          }
-
-          return {
-            isOnline: isOnline,
-            effectiveType: effectiveType,
-            downlinkMbps: downlinkMbps,
-            saveData: saveData,
-            connectionTier: connectionTier,
-            connectionLabel: connectionLabel
-          };
-        }
-
-        var connectionInfo = readConnectionInfo();
-
         var title = "طريقي | رحلات مصر بشكل أوضح";
         var description =
           "طريقي: احجز رحلتك داخل مصر بسهولة، افتح التذكرة والـ QR، اشحن المحفظة، تابع الرحلة، وراجع كل حركة من مكان واحد.";
@@ -547,8 +510,7 @@
           routeTitle: routeTitle,
           routeText: routeText,
           chips: chips,
-          theme: resolvedTheme,
-          connection: connectionInfo
+          theme: resolvedTheme
         };
       })();
     </script>
@@ -606,11 +568,8 @@
             </div>
 
             <div class="boot-footer">
-              <span class="inline-flex items-center gap-2">
-                <span class="boot-pulse"></span>
-                <span id="taree2y-boot-connection">جاري فحص الاتصال</span>
-              </span>
-              <span id="taree2y-boot-progress-value">0%</span>
+              <span>تجربة مهيأة للموبايل والتطبيقات العامة</span>
+              <span class="boot-pulse"></span>
             </div>
           </div>
         </div>
@@ -629,10 +588,6 @@
           var text = document.getElementById("taree2y-boot-text");
           var chips = document.getElementById("taree2y-boot-chips");
           var note = document.getElementById("taree2y-boot-note");
-          var connectionLabel = document.getElementById("taree2y-boot-connection");
-          var progressValue = document.getElementById("taree2y-boot-progress-value");
-          var progressBar = document.querySelector(".boot-progress-bar");
-          var connectionInfo = boot.connection || {};
 
           if (shell && boot.isPublicPortal) {
             shell.classList.add("boot-shell--public");
@@ -652,10 +607,6 @@
             }
           }
 
-          if (connectionLabel) {
-            connectionLabel.textContent = connectionInfo.connectionLabel || "الاتصال مستقر";
-          }
-
           if (note) {
             if (boot.isPublicTrip) {
               note.textContent =
@@ -663,37 +614,10 @@
             } else if (boot.isWalletTopup) {
               note.textContent =
                 "دي صفحة عامة مرتبطة بمسار شحن المحفظة، وبتراجع المبلغ والرسوم قبل التأكيد.";
-            } else if (connectionInfo.isOnline === false) {
-              note.textContent =
-                "الشبكة غير متاحة حالياً، فهنفضل نحضر الواجهة الأساسية لحد ما الاتصال يرجع ويكمل التحميل.";
-            } else if (connectionInfo.connectionTier === "slow") {
-              note.textContent =
-                "بنضبط شاشة البداية على سرعة الشبكة الحالية عشان التحميل يبقى أوضح ومش متسرع بصريًا.";
             } else {
               note.textContent =
                 "بنحمّل الحساب، الرصيد، التذاكر، والإعدادات بنفس منطق التطبيق الفعلي قبل ما React يبدأ.";
             }
-          }
-
-          if (progressBar) {
-            var progress = connectionInfo.isOnline === false ? 18 : connectionInfo.connectionTier === "slow" ? 24 : connectionInfo.connectionTier === "medium" ? 30 : 38;
-            var cap = connectionInfo.isOnline === false ? 44 : connectionInfo.connectionTier === "slow" ? 74 : connectionInfo.connectionTier === "medium" ? 86 : 92;
-            var tickMs = connectionInfo.connectionTier === "slow" ? 180 : connectionInfo.connectionTier === "medium" ? 140 : 120;
-            var step = connectionInfo.isOnline === false ? 1.2 : connectionInfo.connectionTier === "slow" ? 1.6 : connectionInfo.connectionTier === "medium" ? 2.2 : 3.4;
-            progressBar.style.width = progress + "%";
-            progressBar.style.animationDuration = (connectionInfo.connectionTier === "slow" ? 1900 : connectionInfo.connectionTier === "medium" ? 1500 : 1200) + "ms";
-            if (progressValue) {
-              progressValue.textContent = Math.round(progress) + "%";
-            }
-
-            window.setInterval(function () {
-              if (progress >= cap) return;
-              progress = Math.min(cap, progress + Math.max(step, (cap - progress) * 0.08));
-              progressBar.style.width = progress + "%";
-              if (progressValue) {
-                progressValue.textContent = Math.round(progress) + "%";
-              }
-            }, tickMs);
           }
         } catch (_) {}
       })();

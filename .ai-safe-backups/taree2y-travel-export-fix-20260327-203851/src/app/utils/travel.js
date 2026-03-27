@@ -274,87 +274,6 @@ const getTripBookability = (trip, now = new Date()) => {
   };
 };
 
-
-const getAvailableSeatsCount = (trip) => {
-  if (Number.isFinite(Number(trip?.availableSeatsCount))) {
-    return Math.max(0, Number(trip.availableSeatsCount));
-  }
-
-  return Array.isArray(trip?.seats)
-    ? trip.seats.filter((seat) => seat?.status === 'available').length
-    : 0;
-};
-
-const getTripSearchUiState = (trip, now = new Date()) => {
-  const availableSeats = getAvailableSeatsCount(trip);
-  const bookability = getTripBookability(
-    {
-      ...trip,
-      status: trip?.status || 'upcoming',
-    },
-    now,
-  );
-
-  const isSoldOut = availableSeats <= 0;
-  const isActionable = bookability.canBook && !isSoldOut;
-
-  return {
-    availableSeats,
-    bookability,
-    isSoldOut,
-    isActionable,
-    isClosedBySchedule: ['finished', 'departed', 'cutoff'].includes(bookability.code),
-    unavailabilityReason: isSoldOut ? 'ممتلئة حالياً' : bookability.reason,
-  };
-};
-
-const getSearchAvailabilityNotice = (trips = [], now = new Date()) => {
-  const safeTrips = Array.isArray(trips) ? trips : [];
-  if (!safeTrips.length) return null;
-
-  const metrics = safeTrips.map((trip) => ({
-    trip,
-    searchUi: getTripSearchUiState(trip, now),
-  }));
-
-  const activeTrips = metrics.filter((item) => item.searchUi.isActionable);
-  const closedTrips = metrics.filter((item) => !item.searchUi.isActionable);
-  const totalAvailableSeats = activeTrips.reduce(
-    (sum, item) => sum + item.searchUi.availableSeats,
-    0,
-  );
-
-  if (!activeTrips.length) {
-    return {
-      tone: 'warning',
-      title: 'النتائج دي مقفولة حالياً',
-      text: 'كل الرحلات الظاهرة فات وقت الحجز عليها أو انتهت بالفعل، لكن تقدر تراجع بياناتها لو محتاج.',
-    };
-  }
-
-  if (totalAvailableSeats <= 10) {
-    return {
-      tone: 'warning',
-      title: 'الإتاحة قليلة على النتائج دي',
-      text: 'لو الرحلة مناسبة، احجز بسرعة قبل ما المقاعد المتاحة تقل أكتر.',
-    };
-  }
-
-  if (totalAvailableSeats <= 30 || closedTrips.length >= activeTrips.length) {
-    return {
-      tone: 'info',
-      title: 'فيه اختيارات كويسة',
-      text: 'قارن الوقت والمحطة والسعر براحتك، لكن بعض الرحلات بدأت تتملي أو خرجت من وقت الحجز.',
-    };
-  }
-
-  return {
-    tone: 'success',
-    title: 'الإتاحة مريحة حاليًا',
-    text: `لسه فيه ${totalAvailableSeats} مقعد متاح على رحلات ما زالت صالحة للحجز في اليوم ده.`,
-  };
-};
-
 const generateSeats = (tripId, tripDate, tripTime, routeKey, company, seatClass) => {
   const seed = hashString(`${tripId}-${tripDate}-${tripTime}`);
   const rand = createSeededRandom(seed);
@@ -534,6 +453,71 @@ const getTripBookingUiState = (trip, now = new Date()) => {
   };
 };
 
+const getAvailableSeatsCount = (trip) => {
+  if (Number.isFinite(Number(trip?.availableSeatsCount))) {
+    return Math.max(0, Number(trip.availableSeatsCount));
+  }
+
+  return Array.isArray(trip?.seats)
+    ? trip.seats.filter((seat) => seat?.status === 'available').length
+    : 0;
+};
+
+const getSearchAvailabilityNotice = (trips = []) => {
+  const safeTrips = Array.isArray(trips) ? trips : [];
+  if (!safeTrips.length) return null;
+
+  const metrics = safeTrips.map((trip) => ({
+    trip,
+    availableSeats: getAvailableSeatsCount(trip),
+  }));
+
+  const totalTrips = metrics.length;
+  const soldOutTripsCount = metrics.filter((item) => item.availableSeats === 0).length;
+  const activeTripsCount = totalTrips - soldOutTripsCount;
+  const lowAvailabilityTripsCount = metrics.filter(
+    (item) => item.availableSeats > 0 && item.availableSeats <= 8,
+  ).length;
+  const totalAvailableSeats = metrics.reduce(
+    (sum, item) => sum + item.availableSeats,
+    0,
+  );
+
+  if (activeTripsCount === 0) {
+    return {
+      tone: 'warning',
+      title: 'الإتاحة شبه منتهية',
+      text: 'النتائج دي حالياً ممتلئة أو مفيهاش مقاعد صالحة للحجز.',
+    };
+  }
+
+  if (
+    totalAvailableSeats <= 12 ||
+    lowAvailabilityTripsCount >= Math.ceil(activeTripsCount / 2)
+  ) {
+    return {
+      tone: 'warning',
+      title: 'الإتاحة بتخلص بسرعة',
+      text: `${lowAvailabilityTripsCount || activeTripsCount} من ${activeTripsCount} رحلات فيها مقاعد محدودة حالياً، فلو لقيت المناسب احجز بسرعة.`,
+    };
+  }
+
+  if (totalAvailableSeats <= activeTripsCount * 7) {
+    return {
+      tone: 'info',
+      title: 'فيه اختيارات كويسة',
+      text: `لسه فيه ${totalAvailableSeats} مقعد متاح عبر ${activeTripsCount} رحلات، لكن بعض الرحلات بدأت تتملي.`,
+    };
+  }
+
+  return {
+    tone: 'success',
+    title: 'الإتاحة مريحة حاليًا',
+    text: `لسه فيه ${totalAvailableSeats} مقعد متاح عبر ${activeTripsCount} رحلات مرتبطة بالسيرفر، فممكن تقارن براحتك.`,
+  };
+};
+
+
 export {
   CITIES,
   DIRECT_ROUTES,
@@ -546,6 +530,4 @@ export {
   getAvailableSeatsCount,
   getSearchAvailabilityNotice,
   generateTrips,
-  getTripSearchUiState,
-
 };

@@ -41,7 +41,6 @@ import { cancelBookingAtomicCompat } from '../../lib/cancelBookingCompat';
 import { useOnboardingGuide } from '../hooks/useOnboardingGuide';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { BottomNavItem, MetaChip } from './ui/AppPrimitives';
-import HeaderNetworkIndicator from './ui/HeaderNetworkIndicator';
 import NetworkStatusBanner from './ui/NetworkStatusBanner';
 import OnboardingGuide from './ui/OnboardingGuide';
 import ToastStack from './ToastStack';
@@ -198,7 +197,7 @@ function scrollViewportToTop(behavior = 'auto') {
 
     if (typeof document !== 'undefined') {
       const candidates = document.querySelectorAll(
-        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, .app-page-frame, main, [role="main"]',
+        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, main, [role="main"]',
       );
       candidates.forEach((node) => {
         if (node && typeof node.scrollTop === 'number') {
@@ -216,7 +215,7 @@ function scheduleViewportScrollReset(behavior = 'auto') {
 
   scrollViewportToTop(behavior);
 
-  [0, 40, 120, 220, 360, 520, 760, 980].forEach((delay) => {
+  [0, 40, 120, 220, 360].forEach((delay) => {
     window.setTimeout(() => {
       scrollViewportToTop('auto');
     }, delay);
@@ -265,8 +264,6 @@ export default function UserApp({
     backendLoading,
     refreshCloudState,
   } = useCloudAppState(userId);
-
-  const networkStatus = useNetworkStatus();
 
   const { isOnline, showBanner: showNetworkBanner, justRestored } = useNetworkStatus();
 
@@ -701,7 +698,7 @@ export default function UserApp({
 useEffect(() => {
   scheduleViewportScrollReset('auto');
   return undefined;
-}, [activePage, activeView, selectedTrip, currentInvoice, viewedTicket]);
+}, [activePage, activeView]);
 
   const handleNotificationAction = useCallback(
     async (item) => {
@@ -829,7 +826,7 @@ useEffect(() => {
       if (hasFallbackSource || hasNonAuthoritativeTrips) {
         log.error('non_authoritative_search_blocked', { from: params.from, to: params.to, date: params.date, passengers: params.passengers, source: results?.source || null });
         setSearchResults({ trips: [], isDirect: Boolean(results?.isDirect ?? true) });
-        showToast('تعذر تحميل رحلات صالحة حالياً. حاول مرة تانية بعد قليل.', 'error');
+        showToast('تعذر تحميل رحلات صالحة من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
         return;
       }
 
@@ -837,7 +834,7 @@ useEffect(() => {
     } catch (error) {
       log.error('search_failed', { from: params.from, to: params.to, date: params.date, passengers: params.passengers, error });
       setSearchResults({ trips: [], isDirect: true });
-      showToast('تعذر تحميل الرحلات حالياً. حاول مرة تانية بعد قليل.', 'error');
+      showToast('تعذر تحميل الرحلات من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
     } finally {
       setIsSearching(false);
     }
@@ -851,9 +848,7 @@ useEffect(() => {
     setCurrentInvoice(invoice);
     setViewedTicket(normalizedTicket);
     log.info('booking_finalized', { bookingId: normalizedTicket?.bookingId || normalizedTicket?.id || null, pnr: normalizedTicket?.pnr || null, runtimeMode });
-    scheduleViewportScrollReset('auto');
     navigateTo('invoice');
-    window.setTimeout(() => scheduleViewportScrollReset('auto'), 80);
   };
 
   const createBookingForTrip = async ({ trip, seatNumbers, passengers, promoCode, promoDiscountAmount: _promoDiscountAmount = 0, hasLuggage, needsAccess }) => {
@@ -862,7 +857,7 @@ useEffect(() => {
     }
 
     if (!trip?.instanceId) {
-      return { ok: false, code: 'backend_trip_required', message: 'الحجز غير متاح على الرحلة دي حالياً. حدّث النتائج وجرب رحلة متاحة.' };
+      return { ok: false, code: 'backend_trip_required', message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.' };
     }
     const result = await createBookingAtomic({ tripInstanceId: trip.instanceId, seatNumbers, passengers, promoCode, hasLuggage, rideToStation: false, needsAccess });
     if (result?.ok) {
@@ -878,7 +873,7 @@ useEffect(() => {
       return { ok: false, code: 'offline', message: 'أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.' };
     }
     if (!tripArg?.instanceId) {
-      const result = { ok: false, code: 'backend_trip_required', message: 'اختيار المقاعد غير متاح على الرحلة دي حالياً. جرّب تحديث النتائج واختيار رحلة تانية.' };
+      const result = { ok: false, code: 'backend_trip_required', message: 'اختيار المقاعد الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر.' };
       showToast(result.message, 'error');
       return result;
     }
@@ -895,15 +890,13 @@ useEffect(() => {
     }
 
     setSelectedTrip((prev) => ({ ...prev, holdExpiresAt: holdResult.hold_expires_at || holdResult.holdExpiresAt || null }));
-    scheduleViewportScrollReset('auto');
     navigateTo('checkout');
-    window.setTimeout(() => scheduleViewportScrollReset('auto'), 80);
     return holdResult;
   };
 
   const processDelayedRefund = async (tripToCancel) => {
     const bookingId = tripToCancel?.bookingId || tripToCancel?.id || null;
-    if (!bookingId) return showToast('الإلغاء متاح فقط للحجوزات المؤكدة حالياً.', 'error');
+    if (!bookingId) return showToast('الإلغاء الحقيقي متاح فقط للحجوزات المرتبطة بالسيرفر.', 'error');
     if (!requireOnline('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل طلب الإلغاء.', 'warning')) return;
 
     setPendingCancellationBookingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
@@ -1159,12 +1152,6 @@ useEffect(() => {
                   المساعدة
                 </button>
 
-                <HeaderNetworkIndicator
-                  isOnline={networkStatus.isOnline}
-                  justRestored={networkStatus.justRestored}
-                  connectionLabel={networkStatus.connectionLabel}
-                />
-
                 <button
                   type="button"
                   onClick={() => {
@@ -1232,7 +1219,7 @@ useEffect(() => {
                         navigateTo('seats');
                       } catch (error) {
                         log.error('seat_load_failed_before_selection', { tripInstanceId: trip?.instanceId || null, tripCode: trip?.tripCode || trip?.id || null, error });
-                        showToast('تعذر تحميل المقاعد الحالية. حاول مرة تانية.', 'error');
+                        showToast('تعذر تحميل المقاعد من السيرفر.', 'error');
                       }
                     }}
                     showToast={showToast}

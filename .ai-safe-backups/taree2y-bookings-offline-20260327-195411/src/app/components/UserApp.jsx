@@ -29,7 +29,7 @@ import { signOutCurrentUser } from '../../lib/auth';
 import { getPromoPopupOffer } from '../../lib/promoEngine';
 import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
-import { getLocalDateInputValue, getTripBookingUiState } from '../utils/travel';
+import { getLocalDateInputValue } from '../utils/travel';
 import { ensureTicketIdentity } from '../utils/tripIdentity';
 import {
   createBookingAtomic,
@@ -39,10 +39,7 @@ import {
 } from '../../lib/tripInventory';
 import { cancelBookingAtomicCompat } from '../../lib/cancelBookingCompat';
 import { useOnboardingGuide } from '../hooks/useOnboardingGuide';
-import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { BottomNavItem, MetaChip } from './ui/AppPrimitives';
-import HeaderNetworkIndicator from './ui/HeaderNetworkIndicator';
-import NetworkStatusBanner from './ui/NetworkStatusBanner';
 import OnboardingGuide from './ui/OnboardingGuide';
 import ToastStack from './ToastStack';
 import HomeView from '../screens/HomeView';
@@ -198,7 +195,7 @@ function scrollViewportToTop(behavior = 'auto') {
 
     if (typeof document !== 'undefined') {
       const candidates = document.querySelectorAll(
-        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, .app-page-frame, main, [role="main"]',
+        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, main, [role="main"]',
       );
       candidates.forEach((node) => {
         if (node && typeof node.scrollTop === 'number') {
@@ -216,7 +213,7 @@ function scheduleViewportScrollReset(behavior = 'auto') {
 
   scrollViewportToTop(behavior);
 
-  [0, 40, 120, 220, 360, 520, 760, 980].forEach((delay) => {
+  [0, 40, 120, 220, 360].forEach((delay) => {
     window.setTimeout(() => {
       scrollViewportToTop('auto');
     }, delay);
@@ -265,10 +262,6 @@ export default function UserApp({
     backendLoading,
     refreshCloudState,
   } = useCloudAppState(userId);
-
-  const networkStatus = useNetworkStatus();
-
-  const { isOnline, showBanner: showNetworkBanner, justRestored } = useNetworkStatus();
 
   const [activePage, setActivePage] = useState(initialRoute.page);
   const [activeView, setActiveView] = useState(initialRoute.view);
@@ -348,15 +341,6 @@ export default function UserApp({
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, 4000);
   }, []);
-
-  const requireOnline = useCallback(
-    (message = 'العملية دي محتاجة إنترنت ثابت حالياً.', tone = 'warning') => {
-      if (isOnline) return true;
-      showToast(message, tone);
-      return false;
-    },
-    [isOnline, showToast],
-  );
 
   useEffect(() => {
     if (!authWarning) return;
@@ -701,7 +685,7 @@ export default function UserApp({
 useEffect(() => {
   scheduleViewportScrollReset('auto');
   return undefined;
-}, [activePage, activeView, selectedTrip, currentInvoice, viewedTicket]);
+}, [activePage, activeView]);
 
   const handleNotificationAction = useCallback(
     async (item) => {
@@ -813,10 +797,6 @@ useEffect(() => {
     if (params.from === params.to) return showToast('محافظة التحرك هي نفس محافظة الوصول.', 'error');
     if (predefinedParams) setSearchParams(params);
 
-    if (!requireOnline('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل تحديث نتائج الرحلات.', 'warning')) {
-      return;
-    }
-
     setIsSearching(true);
     navigateTo('search');
 
@@ -829,7 +809,7 @@ useEffect(() => {
       if (hasFallbackSource || hasNonAuthoritativeTrips) {
         log.error('non_authoritative_search_blocked', { from: params.from, to: params.to, date: params.date, passengers: params.passengers, source: results?.source || null });
         setSearchResults({ trips: [], isDirect: Boolean(results?.isDirect ?? true) });
-        showToast('تعذر تحميل رحلات صالحة حالياً. حاول مرة تانية بعد قليل.', 'error');
+        showToast('تعذر تحميل رحلات صالحة من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
         return;
       }
 
@@ -837,32 +817,23 @@ useEffect(() => {
     } catch (error) {
       log.error('search_failed', { from: params.from, to: params.to, date: params.date, passengers: params.passengers, error });
       setSearchResults({ trips: [], isDirect: true });
-      showToast('تعذر تحميل الرحلات حالياً. حاول مرة تانية بعد قليل.', 'error');
+      showToast('تعذر تحميل الرحلات من السيرفر حالياً. حاول مرة تانية بعد قليل.', 'error');
     } finally {
       setIsSearching(false);
     }
   };
 
   const finalizeBookingSuccess = (ticket, invoice) => {
-    const normalizedTicket = ensureTicketIdentity({
-      ...ticket,
-      status: getTripBookingUiState(ticket).displayStatus,
-    });
+    const normalizedTicket = ensureTicketIdentity(ticket);
     setCurrentInvoice(invoice);
     setViewedTicket(normalizedTicket);
     log.info('booking_finalized', { bookingId: normalizedTicket?.bookingId || normalizedTicket?.id || null, pnr: normalizedTicket?.pnr || null, runtimeMode });
-    scheduleViewportScrollReset('auto');
     navigateTo('invoice');
-    window.setTimeout(() => scheduleViewportScrollReset('auto'), 80);
   };
 
   const createBookingForTrip = async ({ trip, seatNumbers, passengers, promoCode, promoDiscountAmount: _promoDiscountAmount = 0, hasLuggage, needsAccess }) => {
-    if (!requireOnline('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل الدفع وتأكيد الحجز.', 'warning')) {
-      return { ok: false, code: 'offline', message: 'أنت حالياً أوفلاين. اتأكد من الإنترنت قبل الدفع وتأكيد الحجز.' };
-    }
-
     if (!trip?.instanceId) {
-      return { ok: false, code: 'backend_trip_required', message: 'الحجز غير متاح على الرحلة دي حالياً. حدّث النتائج وجرب رحلة متاحة.' };
+      return { ok: false, code: 'backend_trip_required', message: 'الحجز الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر. أعد البحث وجرب رحلة متصلة بالسيرفر.' };
     }
     const result = await createBookingAtomic({ tripInstanceId: trip.instanceId, seatNumbers, passengers, promoCode, hasLuggage, rideToStation: false, needsAccess });
     if (result?.ok) {
@@ -874,11 +845,8 @@ useEffect(() => {
 
   const commitSeatSelection = async (tripArg = selectedTrip, seatNumbersArg = selectedSeats) => {
     if (!tripArg) return { ok: false, message: 'No trip selected' };
-    if (!requireOnline('أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.', 'warning')) {
-      return { ok: false, code: 'offline', message: 'أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.' };
-    }
     if (!tripArg?.instanceId) {
-      const result = { ok: false, code: 'backend_trip_required', message: 'اختيار المقاعد غير متاح على الرحلة دي حالياً. جرّب تحديث النتائج واختيار رحلة تانية.' };
+      const result = { ok: false, code: 'backend_trip_required', message: 'اختيار المقاعد الحقيقي متاح فقط على الرحلات المرتبطة بالسيرفر.' };
       showToast(result.message, 'error');
       return result;
     }
@@ -895,16 +863,13 @@ useEffect(() => {
     }
 
     setSelectedTrip((prev) => ({ ...prev, holdExpiresAt: holdResult.hold_expires_at || holdResult.holdExpiresAt || null }));
-    scheduleViewportScrollReset('auto');
     navigateTo('checkout');
-    window.setTimeout(() => scheduleViewportScrollReset('auto'), 80);
     return holdResult;
   };
 
   const processDelayedRefund = async (tripToCancel) => {
     const bookingId = tripToCancel?.bookingId || tripToCancel?.id || null;
-    if (!bookingId) return showToast('الإلغاء متاح فقط للحجوزات المؤكدة حالياً.', 'error');
-    if (!requireOnline('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل طلب الإلغاء.', 'warning')) return;
+    if (!bookingId) return showToast('الإلغاء الحقيقي متاح فقط للحجوزات المرتبطة بالسيرفر.', 'error');
 
     setPendingCancellationBookingIds((prev) => (prev.includes(bookingId) ? prev : [...prev, bookingId]));
     try {
@@ -973,28 +938,12 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePage, activeView, searchResults, searchParams, selectedTrip, selectedSeats, currentInvoice, viewedTicket, myTrips, wallet, points, subscription, transactions]);
 
-  const normalizedTrips = useMemo(
-    () =>
-      (Array.isArray(myTrips) ? myTrips : []).map((trip) => {
-        const safeTrip = ensureTicketIdentity(trip);
-        const bookingUi = getTripBookingUiState(safeTrip);
-        return {
-          ...safeTrip,
-          bookingUi,
-          status: bookingUi.displayStatus,
-        };
-      }),
-    [myTrips],
-  );
-
   const latestTrip = useMemo(() => {
-    return normalizedTrips.find((trip) => ['upcoming', 'refund_pending'].includes(trip?.status)) || normalizedTrips[0] || null;
-  }, [normalizedTrips]);
+    const safeTrips = Array.isArray(myTrips) ? myTrips.map(ensureTicketIdentity) : [];
+    return safeTrips.find((trip) => ['upcoming', 'refund_pending'].includes(trip?.status)) || safeTrips[0] || null;
+  }, [myTrips]);
 
-  const upcomingTickets = useMemo(
-    () => normalizedTrips.filter((trip) => ['upcoming', 'refund_pending'].includes(trip?.status)),
-    [normalizedTrips],
-  );
+  const upcomingTickets = useMemo(() => (Array.isArray(myTrips) ? myTrips.map(ensureTicketIdentity) : []).filter((trip) => ['upcoming', 'refund_pending'].includes(trip?.status)), [myTrips]);
 
   const pageTitle = useMemo(() => {
     if (activeView === 'search') return { title: 'اختيار الرحلة', subtitle: 'راجع الخيارات وحدد الأنسب ليك' };
@@ -1017,7 +966,6 @@ useEffect(() => {
   return (
     <>
       <ToastStack toasts={toasts} />
-      <NetworkStatusBanner isOnline={isOnline} show={showNetworkBanner} justRestored={justRestored} />
 
       <div className="flex min-h-[100dvh] w-full bg-[var(--bg)] text-slate-900 dark:bg-slate-950 dark:text-slate-50">
         <aside className={`app-shell-glow app-sidebar-panel app-sidebar-surface fixed inset-y-0 right-0 z-40 hidden overflow-hidden border-l border-[var(--sidebar-line)] px-4 py-5 md:flex ${isSidebarCompact ? 'w-[108px]' : 'w-[312px]'}`}>
@@ -1159,12 +1107,6 @@ useEffect(() => {
                   المساعدة
                 </button>
 
-                <HeaderNetworkIndicator
-                  isOnline={networkStatus.isOnline}
-                  justRestored={networkStatus.justRestored}
-                  connectionLabel={networkStatus.connectionLabel}
-                />
-
                 <button
                   type="button"
                   onClick={() => {
@@ -1221,10 +1163,6 @@ useEffect(() => {
                     searchResults={searchResults}
                     isSearching={isSearching}
                     onSelectTrip={async (trip) => {
-                      if (!requireOnline('أنت حالياً أوفلاين. لازم إنترنت لتحميل المقاعد الحالية من السيرفر.', 'warning')) {
-                        return;
-                      }
-
                       try {
                         const hydrated = await hydrateTripWithSeats(trip);
                         setSelectedTrip(hydrated);
@@ -1232,12 +1170,11 @@ useEffect(() => {
                         navigateTo('seats');
                       } catch (error) {
                         log.error('seat_load_failed_before_selection', { tripInstanceId: trip?.instanceId || null, tripCode: trip?.tripCode || trip?.id || null, error });
-                        showToast('تعذر تحميل المقاعد الحالية. حاول مرة تانية.', 'error');
+                        showToast('تعذر تحميل المقاعد من السيرفر.', 'error');
                       }
                     }}
                     showToast={showToast}
                     onGoHome={() => navigateTo('main', 'home')}
-                    isOnline={isOnline}
                   />
                 ) : null}
 
@@ -1251,7 +1188,6 @@ useEffect(() => {
                       await commitSeatSelection();
                     }}
                     showToast={showToast}
-                    isOnline={isOnline}
                   />
                 ) : null}
 
@@ -1263,12 +1199,11 @@ useEffect(() => {
                     passengers={searchParams.passengers}
                     wallet={wallet}
                     subscription={subscription}
-                    currentTrips={normalizedTrips}
+                    currentTrips={myTrips.map(ensureTicketIdentity)}
                     onCreateBooking={createBookingForTrip}
                     onSuccess={finalizeBookingSuccess}
                     showToast={showToast}
                     openModal={setActiveModal}
-                    isOnline={isOnline}
                   />
                 ) : null}
 
@@ -1278,7 +1213,7 @@ useEffect(() => {
 
                 {activeView === 'main' && activePage === 'bookings' ? (
                   <TripsView
-                    trips={normalizedTrips}
+                    trips={myTrips.map(ensureTicketIdentity)}
                     processRefund={processDelayedRefund}
                     pendingCancellationBookingIds={pendingCancellationBookingIds}
                     onViewTicket={(ticket) => {

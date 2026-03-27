@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Clock3, Sparkles, Star, Tag, Zap } from 'lucide-react';
 import BookingProgress from '../components/ui/BookingProgress';
 import TripCard from '../components/ui/TripCard';
@@ -22,6 +22,12 @@ import {
   getTripSearchUiState,
 } from '../utils/travel';
 
+const SCOPE_FILTERS = [
+  { key: 'all', label: 'الكل' },
+  { key: 'active', label: 'المتاحة فقط' },
+  { key: 'closed', label: 'المقفولة / السابقة' },
+];
+
 const SORT_FILTERS = [
   { key: 'default', label: 'الترتيب الذكي', icon: <Star className="h-3.5 w-3.5" /> },
   { key: 'cheapest', label: 'الأوفر', icon: <Tag className="h-3.5 w-3.5" /> },
@@ -37,8 +43,7 @@ function SearchResultsView({
   showToast,
   onGoHome,
 }) {
-  const [showOnlyActiveTrips, setShowOnlyActiveTrips] = useState(false);
-  const [showClosedTripsPreview, setShowClosedTripsPreview] = useState(false);
+  const [scopeFilter, setScopeFilter] = useState('all');
   const [sortFilter, setSortFilter] = useState('default');
   const { trips = [], isDirect } = searchResults;
   const hasSearchContext = Boolean(
@@ -69,20 +74,19 @@ function SearchResultsView({
   );
 
   const allTripsUnavailable = preparedTrips.length > 0 && activeTripsCount === 0;
-  const showScopeFilters = preparedTrips.length > 0 && activeTripsCount > 0 && closedTripsCount > 0;
-
-  useEffect(() => {
-    setShowClosedTripsPreview(false);
-    setShowOnlyActiveTrips(false);
-  }, [searchParams?.date, searchParams?.from, searchParams?.to, trips]);
+  const showScopeFilters = preparedTrips.length > 0 && closedTripsCount > 0;
 
   const scopedTrips = useMemo(() => {
-    if (showOnlyActiveTrips && !showClosedTripsPreview) {
+    if (scopeFilter === 'active') {
       return preparedTrips.filter((trip) => trip.searchUi?.isActionable);
     }
 
+    if (scopeFilter === 'closed') {
+      return preparedTrips.filter((trip) => !trip.searchUi?.isActionable);
+    }
+
     return preparedTrips;
-  }, [preparedTrips, showClosedTripsPreview, showOnlyActiveTrips]);
+  }, [preparedTrips, scopeFilter]);
 
   const displayedTrips = useMemo(() => {
     const safeTrips = [...scopedTrips];
@@ -102,7 +106,7 @@ function SearchResultsView({
     };
 
     safeTrips.sort((tripA, tripB) => {
-      if (!showOnlyActiveTrips) {
+      if (scopeFilter === 'all') {
         const activeOrder =
           Number(Boolean(tripB.searchUi?.isActionable)) -
           Number(Boolean(tripA.searchUi?.isActionable));
@@ -112,7 +116,7 @@ function SearchResultsView({
     });
 
     return safeTrips;
-  }, [showOnlyActiveTrips, scopedTrips, sortFilter]);
+  }, [scopeFilter, scopedTrips, sortFilter]);
 
   const totalAvailableSeats = useMemo(
     () =>
@@ -129,8 +133,8 @@ function SearchResultsView({
   );
 
   const availabilityNotice = useMemo(
-    () => getSearchAvailabilityNotice(showOnlyActiveTrips ? scopedTrips : preparedTrips),
-    [preparedTrips, scopedTrips, showOnlyActiveTrips],
+    () => getSearchAvailabilityNotice(scopeFilter === 'closed' ? preparedTrips : scopedTrips),
+    [preparedTrips, scopeFilter, scopedTrips],
   );
 
   return (
@@ -187,38 +191,38 @@ function SearchResultsView({
 
           {showScopeFilters ? (
             <AppSurface className="p-4">
-              <label className="flex items-center justify-between gap-3 rounded-[22px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-black text-[var(--ink)]">اعرض الرحلات المتاحة فقط</p>
-                  <p className="mt-1 text-xs font-bold leading-5 text-[var(--ink-muted)]">
-                    يخفي الرحلات اللي فات وقت الحجز عليها أو انتهت، ويعرض {activeTripsCount} رحلة متاحة فقط.
-                  </p>
-                </div>
+              <SectionHeader
+                title="عرض النتائج"
+                subtitle="اعرض الرحلات المتاحة فقط أو راجع الرحلات اللي فات وقت الحجز عليها."
+              />
+              <div className="hide-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
+                {SCOPE_FILTERS.map((item) => {
+                  const count =
+                    item.key === 'active'
+                      ? activeTripsCount
+                      : item.key === 'closed'
+                      ? closedTripsCount
+                      : preparedTrips.length;
 
-                <span
-                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
-                    showOnlyActiveTrips
-                      ? 'bg-[var(--brand)]'
-                      : 'bg-black/10 dark:bg-white/15'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    className="peer sr-only"
-                    checked={showOnlyActiveTrips}
-                    onChange={(event) => {
-                      setShowOnlyActiveTrips(event.target.checked);
-                      if (event.target.checked) setShowClosedTripsPreview(false);
-                    }}
-                    aria-label="اعرض الرحلات المتاحة فقط"
-                  />
-                  <span
-                    className={`absolute right-1 h-5 w-5 rounded-full bg-white shadow transition ${
-                      showOnlyActiveTrips ? '-translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </span>
-              </label>
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setScopeFilter(item.key)}
+                      className={`interactive-press inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-black transition-all ${
+                        scopeFilter === item.key
+                          ? 'border-transparent bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]'
+                          : 'border-[var(--line)] bg-[var(--surface-strong)] text-[var(--ink-muted)]'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] dark:bg-white/10">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </AppSurface>
           ) : null}
 
@@ -265,48 +269,38 @@ function SearchResultsView({
               actionLabel="تعديل البحث"
               onAction={onGoHome}
             />
-          ) : allTripsUnavailable && !showClosedTripsPreview ? (
+          ) : allTripsUnavailable && scopeFilter !== 'closed' ? (
             <EmptyStateCard
               icon={Clock3}
               title={isTodaySearch ? 'مفيش رحلات متاحة النهارده' : 'مفيش رحلات متاحة في اليوم ده'}
               text="كل الرحلات الظاهرة فات وقت الحجز عليها أو انتهت بالفعل. تقدر تراجعها لو محتاج تشوف الأوقات والبيانات فقط."
               actionLabel="عرض الرحلات المقفولة / السابقة"
-              onAction={() => setShowClosedTripsPreview(true)}
+              onAction={() => setScopeFilter('closed')}
             />
           ) : displayedTrips.length === 0 ? (
             <EmptyStateCard
               title={
-                showOnlyActiveTrips
+                scopeFilter === 'active'
                   ? 'مفيش رحلات متاحة للحجز حالياً'
                   : scopeFilter === 'closed'
                   ? 'مفيش رحلات مقفولة أو سابقة'
                   : 'مفيش نتائج مطابقة'
               }
               text={
-                showOnlyActiveTrips
+                scopeFilter === 'active'
                   ? 'جرّب تعرض الكل أو الرحلات المقفولة لو حابب تراجع الأوقات السابقة.'
                   : scopeFilter === 'closed'
                   ? 'كل النتائج الحالية ما زالت متاحة للحجز.'
                   : 'جرّب فلتر مختلف أو عدّل البحث.'
               }
-              actionLabel={showOnlyActiveTrips ? 'عرض كل النتائج' : 'تعديل البحث'}
+              actionLabel={scopeFilter !== 'all' ? 'عرض كل النتائج' : 'تعديل البحث'}
               onAction={() => {
-                if (showOnlyActiveTrips) setShowOnlyActiveTrips(false);
+                if (scopeFilter !== 'all') setScopeFilter('all');
                 else onGoHome();
               }}
             />
           ) : (
-            <>
-              {allTripsUnavailable && showClosedTripsPreview ? (
-                <InlineNotice
-                  tone="info"
-                  title="الرحلات دي للعرض فقط"
-                  text="الحجوزات دي فات وقت الحجز عليها أو انتهت بالفعل، لكن تقدر تراجع المواعيد والتفاصيل."
-                  icon={Clock3}
-                />
-              ) : null}
-
-              <div className="grid gap-2.5 sm:gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-2.5 sm:gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {displayedTrips.map((trip) => (
                 <TripCard
                   key={trip.instanceId || trip.id}
@@ -324,7 +318,6 @@ function SearchResultsView({
                 />
               ))}
             </div>
-            </>
           )}
         </>
       )}

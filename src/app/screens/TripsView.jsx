@@ -15,43 +15,33 @@ import {
   PrimaryButton,
   SecondaryButton,
   StatusBadge,
+  cx,
 } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { formatCurrency, formatSeatsText } from '../utils/formatting';
-import { getCancellationPolicy, getTripLifecycleStatus } from '../utils/travel';
+import { getCancellationPolicy, getTripBookingUiState } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
 
-const resolveDisplayStatus = (trip) => {
-  const rawStatus = String(trip?.status || '').trim();
-
-  if (['cancelled', 'refund_pending', 'past'].includes(rawStatus)) {
-    return rawStatus;
-  }
-
-  if (!trip?.date || !trip?.departureTime || !trip?.arrivalTime) {
-    return rawStatus || 'upcoming';
-  }
-
-  const lifecycle = getTripLifecycleStatus(trip);
-
-  if (lifecycle?.code === 'finished' || lifecycle?.code === 'departed') {
-    return 'past';
-  }
-
-  return rawStatus || 'upcoming';
-};
+const UPCOMING_FILTERS = [
+  { key: 'all', label: 'الكل' },
+  { key: 'available', label: 'المتاحة' },
+  { key: 'refund_pending', label: 'استرداد جاري' },
+];
 
 function renderStatusBadge(displayStatus, isPendingCancellation) {
-  if (displayStatus === 'refund_pending' || isPendingCancellation) {
+  if (isPendingCancellation) {
     return <StatusBadge label="استرداد جاري" tone="warning" />;
   }
+
   if (displayStatus === 'cancelled') {
     return <StatusBadge label="ملغية" tone="danger" />;
   }
+
   if (displayStatus === 'past') {
     return <StatusBadge label="منتهية" tone="neutral" />;
   }
-  return <StatusBadge label="مؤكدة" tone="success" />;
+
+  return <StatusBadge label="نشطة" tone="success" />;
 }
 
 export default function TripsView({
@@ -60,8 +50,10 @@ export default function TripsView({
   pendingCancellationBookingIds = [],
   onViewTicket,
   showToast,
+  isOnline = true,
 }) {
   const [activeTab, setActiveTab] = useState('upcoming');
+  const [activeUpcomingFilter, setActiveUpcomingFilter] = useState('all');
   const [cancelingTrip, setCancelingTrip] = useState(null);
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
@@ -69,35 +61,71 @@ export default function TripsView({
     () =>
       (Array.isArray(trips) ? trips : []).map((trip) => {
         const preparedTrip = withStationNames(trip);
+        const bookingUi = getTripBookingUiState(preparedTrip);
+
         return {
           ...preparedTrip,
-          displayStatus: resolveDisplayStatus(preparedTrip),
+          bookingUi,
+          displayStatus: bookingUi.displayStatus,
         };
       }),
     [trips],
   );
 
-  const counts = useMemo(
-    () => ({
-      upcoming: computedTrips.filter((trip) => ['upcoming', 'refund_pending'].includes(trip.displayStatus)).length,
-      past: computedTrips.filter((trip) => trip.displayStatus === 'past').length,
-      cancelled: computedTrips.filter((trip) => trip.displayStatus === 'cancelled').length,
-    }),
-    [computedTrips],
-  );
+  const counts = useMemo(() => {
+    const available = computedTrips.filter((trip) => trip.bookingUi?.isAvailable).length;
+    const refundPending = computedTrips.filter((trip) => trip.bookingUi?.isRefundPending).length;
 
-  const filteredTrips = computedTrips.filter((trip) => {
-    if (activeTab === 'upcoming') return ['upcoming', 'refund_pending'].includes(trip.displayStatus);
-    if (activeTab === 'past') return trip.displayStatus === 'past';
-    return trip.displayStatus === 'cancelled';
-  });
+    return {
+      upcoming: available + refundPending,
+      available,
+      refundPending,
+      past: computedTrips.filter((trip) => trip.bookingUi?.isPast).length,
+      cancelled: computedTrips.filter((trip) => trip.bookingUi?.isCancelled).length,
+    };
+  }, [computedTrips]);
+
+  const filteredTrips = useMemo(() => {
+    const baseTrips =
+      activeTab === 'upcoming'
+        ? computedTrips.filter((trip) =>
+            ['upcoming', 'refund_pending'].includes(trip.displayStatus),
+          )
+        : activeTab === 'past'
+        ? computedTrips.filter((trip) => trip.bookingUi?.isPast)
+        : computedTrips.filter((trip) => trip.bookingUi?.isCancelled);
+
+    if (activeTab !== 'upcoming') return baseTrips;
+
+    if (activeUpcomingFilter === 'available') {
+      return baseTrips.filter((trip) => trip.bookingUi?.isAvailable);
+    }
+
+    if (activeUpcomingFilter === 'refund_pending') {
+      return baseTrips.filter((trip) => trip.bookingUi?.isRefundPending);
+    }
+
+    return baseTrips;
+  }, [activeTab, activeUpcomingFilter, computedTrips]);
 
   useEffect(() => {
     if (!cancelingTrip) setIsCancelSubmitting(false);
   }, [cancelingTrip]);
 
+  const cancelPolicy = cancelingTrip
+    ? getCancellationPolicy({
+        ...cancelingTrip,
+        status: getTripBookingUiState(cancelingTrip).displayStatus,
+      })
+    : null;
+
   const confirmCancel = async () => {
     if (!cancelingTrip || isCancelSubmitting) return;
+    if (!isOnline) {
+      showToast('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل طلب الإلغاء.', 'warning');
+      return;
+    }
+
     setIsCancelSubmitting(true);
     try {
       await processRefund(cancelingTrip);
@@ -107,84 +135,137 @@ export default function TripsView({
     }
   };
 
-  const cancelPolicy = cancelingTrip
-    ? getCancellationPolicy({ ...cancelingTrip, status: resolveDisplayStatus(cancelingTrip) })
-    : null;
-
-  const tabs = [
-    { key: 'upcoming', label: 'القادمة', count: counts.upcoming },
-    { key: 'past', label: 'السابقة', count: counts.past },
-    { key: 'cancelled', label: 'الملغية', count: counts.cancelled },
-  ];
-
   return (
-    <div className="app-page-frame min-w-0 overflow-x-clip space-y-5 pb-[calc(env(safe-area-inset-bottom)+132px)] md:space-y-6 md:pb-0">
+    <div className="app-page-frame min-w-0 overflow-x-clip space-y-5">
       <PageHeading
-        eyebrow="رحلاتي"
-        title="إدارة الحجوزات"
-        subtitle="راجع الحجوزات الحالية والسابقة، وافهم حالة كل رحلة، والإلغاء أو الاسترداد وقت ما يكون متاح."
-        className="gap-2.5 [&_h1]:text-[1.9rem] [&_h1]:leading-[1.05] [&_p]:mt-1.5 [&_p]:max-w-none [&_p]:text-[13px] [&_p]:leading-6 sm:[&_h1]:text-2xl sm:[&_p]:text-sm sm:[&_p]:leading-7 md:[&_h1]:text-[2rem]"
+        eyebrow="الحجوزات والتذاكر"
+        title="رحلاتي"
+        subtitle="راجع الرحلات الحالية، افتح التذكرة بسرعة، وتابع أي حالة استرداد أو رحلة منتهية من نفس المكان."
       />
 
-      {pendingCancellationBookingIds.length > 0 ? (
+      {!isOnline ? (
         <InlineNotice
           tone="warning"
-          title="فيه طلب استرداد شغال حالياً"
-          text="الرحلة هتفضل ظاهرة بحالة استرداد جاري لحد ما المعالجة تكتمل وينزل المبلغ في المحفظة."
+          title="أنت أوفلاين حالياً"
+          text="تقدر تراجع الرحلات والتذاكر المحفوظة، لكن الإلغاء أو تحديث الحالة يحتاج إنترنت ثابت."
           icon={Clock}
         />
       ) : null}
 
       <AppSurface className="p-1.5 sm:p-2">
         <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
-          {tabs.map((tab) => (
+          {[
+            { key: 'upcoming', label: 'القادمة', count: counts.upcoming },
+            { key: 'past', label: 'السابقة', count: counts.past },
+            { key: 'cancelled', label: 'الملغية', count: counts.cancelled },
+          ].map((item) => (
             <button
-              key={tab.key}
+              key={item.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`interactive-press inline-flex min-h-11 shrink-0 items-center gap-2 rounded-[18px] px-3.5 py-2.5 text-[13px] font-black transition-all sm:px-4 sm:py-3 sm:text-sm ${
-                activeTab === tab.key
-                  ? 'bg-[linear-gradient(135deg,#163c98_0%,#2156d9_100%)] text-white shadow-[0_18px_34px_-20px_rgba(33,86,217,0.45)]'
-                  : 'text-[var(--ink-muted)] hover:bg-[var(--surface-soft)]'
+              onClick={() => setActiveTab(item.key)}
+              className={`interactive-press inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-black transition-all ${
+                activeTab === item.key
+                  ? 'border-transparent bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]'
+                  : 'border-[var(--line)] bg-[var(--surface-strong)] text-[var(--ink-muted)]'
               }`}
             >
-              <span>{tab.label}</span>
-              <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1 text-[10px] sm:text-[11px] ${activeTab === tab.key ? 'bg-white/15' : 'bg-[var(--surface-soft)]'}`}>
-                {tab.count}
+              <span>{item.label}</span>
+              <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] dark:bg-white/10">
+                {item.count}
               </span>
             </button>
           ))}
         </div>
       </AppSurface>
 
+      {activeTab === 'upcoming' ? (
+        <AppSurface className="p-4">
+          <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
+            {UPCOMING_FILTERS.map((item) => {
+              const count =
+                item.key === 'available'
+                  ? counts.available
+                  : item.key === 'refund_pending'
+                  ? counts.refundPending
+                  : counts.upcoming;
+
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setActiveUpcomingFilter(item.key)}
+                  className={`interactive-press inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-black transition-all ${
+                    activeUpcomingFilter === item.key
+                      ? 'border-transparent bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]'
+                      : 'border-[var(--line)] bg-[var(--surface-strong)] text-[var(--ink-muted)]'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] dark:bg-white/10">
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </AppSurface>
+      ) : null}
+
       {filteredTrips.length === 0 ? (
         <EmptyStateCard
           icon={ReceiptText}
-          title={activeTab === 'upcoming' ? 'مفيش حجوزات قادمة' : activeTab === 'past' ? 'مفيش رحلات سابقة' : 'مفيش رحلات ملغية'}
-          text={activeTab === 'upcoming' ? 'أول ما تحجز رحلة، هتظهر هنا عشان تراجعها أو تفتح التذكرة.' : activeTab === 'past' ? 'بعد ما الرحلة تنتهي، هتفضل هنا كمرجع سريع.' : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد.'}
+          title={
+            activeTab === 'upcoming'
+              ? activeUpcomingFilter === 'available'
+                ? 'مفيش رحلات متاحة للسفر حالياً'
+                : activeUpcomingFilter === 'refund_pending'
+                ? 'مفيش رحلات في استرداد جاري'
+                : 'مفيش حجوزات قادمة'
+              : activeTab === 'past'
+              ? 'مفيش رحلات سابقة'
+              : 'مفيش رحلات ملغية'
+          }
+          text={
+            activeTab === 'upcoming'
+              ? activeUpcomingFilter === 'available'
+                ? 'الفلتر ده بيعرض الرحلات اللي لسه صالحة ومهمة للسفر فقط.'
+                : activeUpcomingFilter === 'refund_pending'
+                ? 'أي حجز دخل مرحلة الاسترداد هيظهر هنا لحد ما المعالجة تكتمل.'
+                : 'أول ما تحجز رحلة، هتظهر هنا عشان تراجعها أو تفتح التذكرة.'
+              : activeTab === 'past'
+              ? 'بعد ما الرحلة تنتهي، هتفضل هنا كمرجع سريع.'
+              : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد.'
+          }
         />
       ) : (
         <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
           {filteredTrips.map((trip) => {
-            const displayStatus = trip.displayStatus || resolveDisplayStatus(trip);
+            const tripUi = trip.bookingUi || getTripBookingUiState(trip);
+            const displayStatus = tripUi.displayStatus;
             const policy = getCancellationPolicy({ ...trip, status: displayStatus });
             const bookingId = trip.bookingId || trip.id || null;
             const isPendingCancellation =
-              displayStatus === 'refund_pending' ||
+              tripUi.isRefundPending ||
               (bookingId && pendingCancellationBookingIds.includes(bookingId));
-            const primaryActionLabel = displayStatus === 'upcoming' ? 'عرض التذكرة' : 'عرض التفاصيل';
-            const operatorLabel = trip.company || 'شركة الرحلة';
-            const classLabel = trip.class || 'درجة الرحلة';
+            const primaryActionLabel = 'عرض التذكرة';
 
             return (
               <AppSurface
                 key={trip.pnr || trip.id}
-                className="flex h-full min-w-0 flex-col overflow-hidden rounded-[28px] p-3 sm:rounded-[30px] sm:p-4 md:p-5"
+                className={cx(
+                  'flex h-full min-w-0 flex-col overflow-hidden rounded-[28px] p-3 sm:rounded-[30px] sm:p-4 md:p-5',
+                  tripUi.isPast &&
+                    'border-[var(--line)]/90 bg-[var(--surface-soft)]/70 opacity-[0.86] saturate-[0.94]',
+                )}
               >
                 <div className="flex items-start justify-between gap-2.5 sm:gap-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-black tracking-[0.14em] text-[var(--ink-soft)] sm:text-xs">حجز</p>
-                    <p className="mt-1 truncate font-mono text-[15px] font-black tracking-[0.03em] text-[var(--ink)] sm:text-sm">{trip.pnr || trip.id}</p>
+                    <p className="text-[11px] font-black tracking-[0.14em] text-[var(--ink-soft)] sm:text-xs">
+                      حجز
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[15px] font-black tracking-[0.03em] text-[var(--ink)] sm:text-sm">
+                      {trip.pnr || trip.id}
+                    </p>
                   </div>
                   {renderStatusBadge(displayStatus, isPendingCancellation)}
                 </div>
@@ -194,34 +275,74 @@ export default function TripsView({
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:flex sm:flex-wrap">
-                  <MetaChip className="min-h-10 justify-center rounded-[18px] px-3 py-2 text-[11px] sm:justify-start sm:text-xs" label={formatCurrency(trip.finalTotal || trip.price)} tone="brand" />
-                  <MetaChip className="min-h-10 justify-center rounded-[18px] px-3 py-2 text-[11px] sm:justify-start sm:text-xs" label={`المقاعد: ${formatSeatsText(trip.selectedSeats)}`} tone="neutral" />
-                  <MetaChip className="hidden sm:inline-flex sm:justify-start" label={classLabel} tone="neutral" />
+                  <MetaChip
+                    className="min-h-10 justify-center rounded-[18px] px-3 py-2 text-[11px] sm:justify-start sm:text-xs"
+                    label={formatCurrency(trip.finalTotal || trip.price)}
+                    tone="brand"
+                  />
+                  {!tripUi.isPast ? (
+                    <MetaChip
+                      className="min-h-10 justify-center rounded-[18px] px-3 py-2 text-[11px] sm:justify-start sm:text-xs"
+                      label={`المقاعد: ${formatSeatsText(trip.selectedSeats)}`}
+                      tone="neutral"
+                    />
+                  ) : null}
                 </div>
+
+                {tripUi.isPast ? (
+                  <div className="mt-3 rounded-[20px] border border-[var(--line)]/90 bg-[var(--surface-soft)] px-3 py-3 sm:mt-4 sm:rounded-[22px] sm:px-4 sm:py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[12px] font-black text-[var(--ink)] sm:text-sm">
+                          حالة الرحلة
+                        </p>
+                        <p className="mt-1 text-[12px] font-bold leading-5 text-[var(--ink-muted)] sm:text-sm sm:leading-6">
+                          {tripUi.bookability?.reason || 'الرحلة دي خلصت بالفعل'}
+                        </p>
+                      </div>
+                      <Clock className="mt-0.5 h-4.5 w-4.5 shrink-0 text-[var(--ink-soft)]" />
+                    </div>
+                  </div>
+                ) : null}
 
                 {displayStatus === 'upcoming' ? (
                   <div className="mt-3 rounded-[20px] border border-[var(--line)]/90 bg-[var(--surface-soft)] px-3 py-3 sm:mt-4 sm:rounded-[22px] sm:px-4 sm:py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-[12px] font-black text-[var(--ink)] sm:text-sm">قبل التحرك</p>
+                        <p className="text-[12px] font-black text-[var(--ink)] sm:text-sm">
+                          قبل التحرك
+                        </p>
                         <p className="mt-1 text-[12px] font-bold leading-5 text-[var(--ink-muted)] sm:text-sm sm:leading-6">
-                          {policy.allowed ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}.` : policy.message}
+                          {policy.allowed
+                            ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}.`
+                            : policy.message}
                         </p>
                       </div>
-                      {policy.allowed ? <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-emerald-600 dark:text-emerald-300" /> : null}
+                      {policy.allowed ? (
+                        <CheckCircle2 className="mt-0.5 h-4.5 w-4.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
 
                 <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row">
-                  <PrimaryButton className="w-full sm:flex-1" onClick={() => onViewTicket(trip)} icon={<Ticket className="h-4 w-4" />}>
+                  <PrimaryButton
+                    className="w-full sm:flex-1"
+                    onClick={() => onViewTicket({ ...trip, status: displayStatus })}
+                    icon={<Ticket className="h-4 w-4" />}
+                  >
                     {primaryActionLabel}
                   </PrimaryButton>
+
                   {displayStatus === 'upcoming' ? (
                     <SecondaryButton
                       className="w-full sm:flex-1"
-                      disabled={!policy.allowed || isPendingCancellation}
+                      disabled={!isOnline || !policy.allowed || isPendingCancellation}
                       onClick={() => {
+                        if (!isOnline) {
+                          showToast('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل طلب الإلغاء.', 'warning');
+                          return;
+                        }
                         if (isPendingCancellation) return;
                         if (!policy.allowed) {
                           showToast(policy.message, 'error');
@@ -252,12 +373,15 @@ export default function TripsView({
           maxWidth="max-w-lg"
           footer={
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <SecondaryButton onClick={() => setCancelingTrip(null)} disabled={isCancelSubmitting}>
+              <SecondaryButton
+                onClick={() => setCancelingTrip(null)}
+                disabled={isCancelSubmitting}
+              >
                 رجوع
               </SecondaryButton>
               <PrimaryButton
                 onClick={confirmCancel}
-                disabled={!cancelPolicy.allowed || isCancelSubmitting}
+                disabled={!isOnline || !cancelPolicy.allowed || isCancelSubmitting}
                 className="bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
               >
                 {isCancelSubmitting ? 'جاري إرسال الطلب…' : 'أكد الإلغاء'}
@@ -271,11 +395,15 @@ export default function TripsView({
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-3 text-sm font-bold">
                   <span className="text-[var(--ink-muted)]">قيمة الحجز الحالية</span>
-                  <span className="text-[var(--ink)]">{formatCurrency(cancelingTrip.finalTotal)}</span>
+                  <span className="text-[var(--ink)]">
+                    {formatCurrency(cancelingTrip.finalTotal)}
+                  </span>
                 </div>
                 <div className="flex items-start justify-between gap-3 text-sm font-bold text-rose-700 dark:text-rose-300">
                   <span>رسوم الإلغاء ({Math.round(cancelPolicy.feeRatio * 100)}%)</span>
-                  <span>- {formatCurrency(Math.round(cancelingTrip.finalTotal * cancelPolicy.feeRatio))}</span>
+                  <span>
+                    - {formatCurrency(Math.round(cancelingTrip.finalTotal * cancelPolicy.feeRatio))}
+                  </span>
                 </div>
                 <div className="app-dashed-divider pt-3">
                   <div className="flex items-start justify-between gap-3 text-base font-black text-emerald-700 dark:text-emerald-300">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Clock3, Sparkles, Star, Tag, Zap } from 'lucide-react';
 import BookingProgress from '../components/ui/BookingProgress';
 import TripCard from '../components/ui/TripCard';
@@ -38,7 +38,6 @@ function SearchResultsView({
   onGoHome,
 }) {
   const [showOnlyActiveTrips, setShowOnlyActiveTrips] = useState(false);
-  const [showClosedTripsPreview, setShowClosedTripsPreview] = useState(false);
   const [sortFilter, setSortFilter] = useState('default');
   const { trips = [], isDirect } = searchResults;
   const hasSearchContext = Boolean(
@@ -71,18 +70,13 @@ function SearchResultsView({
   const allTripsUnavailable = preparedTrips.length > 0 && activeTripsCount === 0;
   const showScopeFilters = preparedTrips.length > 0 && activeTripsCount > 0 && closedTripsCount > 0;
 
-  useEffect(() => {
-    setShowClosedTripsPreview(false);
-    setShowOnlyActiveTrips(false);
-  }, [searchParams?.date, searchParams?.from, searchParams?.to, trips]);
-
   const scopedTrips = useMemo(() => {
-    if (showOnlyActiveTrips && !showClosedTripsPreview) {
+    if (showOnlyActiveTrips) {
       return preparedTrips.filter((trip) => trip.searchUi?.isActionable);
     }
 
     return preparedTrips;
-  }, [preparedTrips, showClosedTripsPreview, showOnlyActiveTrips]);
+  }, [preparedTrips, showOnlyActiveTrips]);
 
   const displayedTrips = useMemo(() => {
     const safeTrips = [...scopedTrips];
@@ -206,10 +200,7 @@ function SearchResultsView({
                     type="checkbox"
                     className="peer sr-only"
                     checked={showOnlyActiveTrips}
-                    onChange={(event) => {
-                      setShowOnlyActiveTrips(event.target.checked);
-                      if (event.target.checked) setShowClosedTripsPreview(false);
-                    }}
+                    onChange={(event) => setShowOnlyActiveTrips(event.target.checked)}
                     aria-label="اعرض الرحلات المتاحة فقط"
                   />
                   <span
@@ -265,13 +256,13 @@ function SearchResultsView({
               actionLabel="تعديل البحث"
               onAction={onGoHome}
             />
-          ) : allTripsUnavailable && !showClosedTripsPreview ? (
+          ) : allTripsUnavailable && !showOnlyActiveTrips ? (
             <EmptyStateCard
               icon={Clock3}
               title={isTodaySearch ? 'مفيش رحلات متاحة النهارده' : 'مفيش رحلات متاحة في اليوم ده'}
               text="كل الرحلات الظاهرة فات وقت الحجز عليها أو انتهت بالفعل. تقدر تراجعها لو محتاج تشوف الأوقات والبيانات فقط."
               actionLabel="عرض الرحلات المقفولة / السابقة"
-              onAction={() => setShowClosedTripsPreview(true)}
+              onAction={() => setScopeFilter('closed')}
             />
           ) : displayedTrips.length === 0 ? (
             <EmptyStateCard
@@ -296,17 +287,7 @@ function SearchResultsView({
               }}
             />
           ) : (
-            <>
-              {allTripsUnavailable && showClosedTripsPreview ? (
-                <InlineNotice
-                  tone="info"
-                  title="الرحلات دي للعرض فقط"
-                  text="الحجوزات دي فات وقت الحجز عليها أو انتهت بالفعل، لكن تقدر تراجع المواعيد والتفاصيل."
-                  icon={Clock3}
-                />
-              ) : null}
-
-              <div className="grid gap-2.5 sm:gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-2.5 sm:gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {displayedTrips.map((trip) => (
                 <TripCard
                   key={trip.instanceId || trip.id}
@@ -324,7 +305,6 @@ function SearchResultsView({
                 />
               ))}
             </div>
-            </>
           )}
         </>
       )}

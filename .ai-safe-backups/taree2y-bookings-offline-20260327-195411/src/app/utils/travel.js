@@ -274,87 +274,6 @@ const getTripBookability = (trip, now = new Date()) => {
   };
 };
 
-
-const getAvailableSeatsCount = (trip) => {
-  if (Number.isFinite(Number(trip?.availableSeatsCount))) {
-    return Math.max(0, Number(trip.availableSeatsCount));
-  }
-
-  return Array.isArray(trip?.seats)
-    ? trip.seats.filter((seat) => seat?.status === 'available').length
-    : 0;
-};
-
-const getTripSearchUiState = (trip, now = new Date()) => {
-  const availableSeats = getAvailableSeatsCount(trip);
-  const bookability = getTripBookability(
-    {
-      ...trip,
-      status: trip?.status || 'upcoming',
-    },
-    now,
-  );
-
-  const isSoldOut = availableSeats <= 0;
-  const isActionable = bookability.canBook && !isSoldOut;
-
-  return {
-    availableSeats,
-    bookability,
-    isSoldOut,
-    isActionable,
-    isClosedBySchedule: ['finished', 'departed', 'cutoff'].includes(bookability.code),
-    unavailabilityReason: isSoldOut ? 'ممتلئة حالياً' : bookability.reason,
-  };
-};
-
-const getSearchAvailabilityNotice = (trips = [], now = new Date()) => {
-  const safeTrips = Array.isArray(trips) ? trips : [];
-  if (!safeTrips.length) return null;
-
-  const metrics = safeTrips.map((trip) => ({
-    trip,
-    searchUi: getTripSearchUiState(trip, now),
-  }));
-
-  const activeTrips = metrics.filter((item) => item.searchUi.isActionable);
-  const closedTrips = metrics.filter((item) => !item.searchUi.isActionable);
-  const totalAvailableSeats = activeTrips.reduce(
-    (sum, item) => sum + item.searchUi.availableSeats,
-    0,
-  );
-
-  if (!activeTrips.length) {
-    return {
-      tone: 'warning',
-      title: 'النتائج دي مقفولة حالياً',
-      text: 'كل الرحلات الظاهرة فات وقت الحجز عليها أو انتهت بالفعل، لكن تقدر تراجع بياناتها لو محتاج.',
-    };
-  }
-
-  if (totalAvailableSeats <= 10) {
-    return {
-      tone: 'warning',
-      title: 'الإتاحة قليلة على النتائج دي',
-      text: 'لو الرحلة مناسبة، احجز بسرعة قبل ما المقاعد المتاحة تقل أكتر.',
-    };
-  }
-
-  if (totalAvailableSeats <= 30 || closedTrips.length >= activeTrips.length) {
-    return {
-      tone: 'info',
-      title: 'فيه اختيارات كويسة',
-      text: 'قارن الوقت والمحطة والسعر براحتك، لكن بعض الرحلات بدأت تتملي أو خرجت من وقت الحجز.',
-    };
-  }
-
-  return {
-    tone: 'success',
-    title: 'الإتاحة مريحة حاليًا',
-    text: `لسه فيه ${totalAvailableSeats} مقعد متاح على رحلات ما زالت صالحة للحجز في اليوم ده.`,
-  };
-};
-
 const generateSeats = (tripId, tripDate, tripTime, routeKey, company, seatClass) => {
   const seed = hashString(`${tripId}-${tripDate}-${tripTime}`);
   const rand = createSeededRandom(seed);
@@ -465,75 +384,6 @@ const generateTrips = (from, to, date) => {
   };
 };
 
-const getFallbackTripBookability = (rawStatus = '') => {
-  if (['cancelled', 'refund_pending'].includes(rawStatus)) {
-    return {
-      canBook: false,
-      code: 'inactive',
-      reason: 'الحجز مقفول على الرحلة دي حالياً',
-      minutesUntilDeparture: null,
-    };
-  }
-
-  if (rawStatus === 'past') {
-    return {
-      canBook: false,
-      code: 'finished',
-      reason: 'الرحلة دي خلصت بالفعل',
-      minutesUntilDeparture: null,
-    };
-  }
-
-  return {
-    canBook: true,
-    code: 'bookable',
-    reason: 'متاح للحجز',
-    minutesUntilDeparture: null,
-  };
-};
-
-const getTripBookingUiState = (trip, now = new Date()) => {
-  const rawStatus = String(trip?.status || '').trim();
-  const hasSchedule = Boolean(
-    trip?.date && trip?.departureTime && trip?.arrivalTime,
-  );
-
-  const lifecycle = hasSchedule ? getTripLifecycleStatus(trip, now) : null;
-  const bookability = hasSchedule
-    ? getTripBookability(trip, now)
-    : getFallbackTripBookability(rawStatus);
-
-  let displayStatus = 'upcoming';
-
-  if (rawStatus === 'cancelled') {
-    displayStatus = 'cancelled';
-  } else if (rawStatus === 'refund_pending') {
-    displayStatus = 'refund_pending';
-  } else if (rawStatus === 'past') {
-    displayStatus = 'past';
-  } else if (['finished', 'departed'].includes(bookability?.code)) {
-    displayStatus = 'past';
-  }
-
-  return {
-    rawStatus,
-    displayStatus,
-    lifecycle,
-    bookability,
-    pastCode:
-      ['finished', 'departed'].includes(bookability?.code)
-        ? bookability.code
-        : rawStatus === 'past'
-        ? 'finished'
-        : null,
-    isUpcoming: displayStatus === 'upcoming',
-    isRefundPending: displayStatus === 'refund_pending',
-    isCancelled: displayStatus === 'cancelled',
-    isPast: displayStatus === 'past',
-    isAvailable: displayStatus === 'upcoming',
-  };
-};
-
 export {
   CITIES,
   DIRECT_ROUTES,
@@ -542,10 +392,5 @@ export {
   getTripLifecycleStatus,
   getCancellationPolicy,
   getTripBookability,
-  getTripBookingUiState,
-  getAvailableSeatsCount,
-  getSearchAvailabilityNotice,
   generateTrips,
-  getTripSearchUiState,
-
 };
