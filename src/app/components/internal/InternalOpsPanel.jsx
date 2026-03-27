@@ -16,10 +16,9 @@ import {
 import { InlineNotice } from '../ui/StateBlocks';
 import { formatCurrency } from '../../utils/formatting';
 import {
-  buildWalletTopupUrl,
   copyTextWithFallback,
   createPublicTripShare,
-  createWalletRequestId,
+  issueWalletTopupRequest,
 } from '../../public/publicPortal';
 
 function safeAmount(value) {
@@ -50,22 +49,47 @@ export default function InternalOpsPanel({
     [latestTrip],
   );
 
-  const latestWalletTopupUrl = useMemo(
-    () =>
-      buildWalletTopupUrl({
-        userId,
-        amount: parsedTopupAmount,
-        requestId: createWalletRequestId(),
-      }),
-    [parsedTopupAmount, userId],
-  );
-
   const handleCopy = async (value, label, successMessage) => {
     const copied = await copyTextWithFallback(value, label);
     showToast(
       copied ? successMessage : `تعذر نسخ ${label} حالياً.`,
       copied ? 'success' : 'error',
     );
+  };
+
+  const issueSupportTopupRequest = async () => {
+    if (!userId) {
+      showToast('لازم يكون فيه مستخدم معروف قبل إصدار رابط الشحن.', 'error');
+      return null;
+    }
+
+    if (parsedTopupAmount < 50) {
+      showToast('أقل شحن 50 ج.م.', 'error');
+      return null;
+    }
+
+    try {
+      return await issueWalletTopupRequest({
+        userId,
+        amount: parsedTopupAmount,
+        paymentChannel: 'internal_ops',
+      });
+    } catch (error) {
+      const payload = JSON.stringify({
+        message: error?.message || '',
+        details: error?.details || '',
+        hint: error?.hint || '',
+        code: error?.code || '',
+      }).toLowerCase();
+
+      showToast(
+        payload.includes('issue_public_wallet_topup_request')
+          ? 'ميزة روابط الشحن الآمنة محتاجة SQL pass 3 على Supabase.'
+          : 'تعذر إصدار رابط الشحن الآن.',
+        'error',
+      );
+      return null;
+    }
   };
 
   const handleRefresh = async () => {
@@ -123,10 +147,29 @@ export default function InternalOpsPanel({
     }
   };
 
-  const handleOpenWalletLink = () => {
-    if (!latestWalletTopupUrl) return;
-    window.open(latestWalletTopupUrl, '_blank', 'noopener,noreferrer');
-    showToast('تم فتح صفحة الشحن العامة في نافذة جديدة.', 'success');
+  const handleCopyWalletLink = async () => {
+    if (busyAction) return;
+    setBusyAction('topup_copy');
+    try {
+      const request = await issueSupportTopupRequest();
+      if (!request?.url) return;
+      await handleCopy(request.url, 'رابط الشحن', 'تم نسخ رابط الشحن العام.');
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const handleOpenWalletLink = async () => {
+    if (busyAction) return;
+    setBusyAction('topup_open');
+    try {
+      const request = await issueSupportTopupRequest();
+      if (!request?.url) return;
+      window.open(request.url, '_blank', 'noopener,noreferrer');
+      showToast('تم فتح صفحة الشحن العامة في نافذة جديدة.', 'success');
+    } finally {
+      setBusyAction('');
+    }
   };
 
   return (
@@ -239,7 +282,7 @@ export default function InternalOpsPanel({
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
               type="number"
-              min="1"
+              min="50"
               value={topupAmount}
               onChange={(event) => setTopupAmount(event.target.value)}
               className="h-12 rounded-[18px] border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-900 outline-none transition focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
@@ -248,21 +291,17 @@ export default function InternalOpsPanel({
             <div className="flex flex-wrap gap-2">
               <SecondaryButton
                 icon={<Copy className="h-4 w-4" />}
-                onClick={() =>
-                  handleCopy(
-                    latestWalletTopupUrl,
-                    'رابط الشحن',
-                    'تم نسخ رابط الشحن العام.',
-                  )
-                }
+                onClick={handleCopyWalletLink}
+                disabled={busyAction === 'topup_copy' || busyAction === 'topup_open'}
               >
-                انسخ الرابط
+                {busyAction === 'topup_copy' ? 'جاري الإصدار…' : 'انسخ الرابط'}
               </SecondaryButton>
               <SecondaryButton
                 icon={<ExternalLink className="h-4 w-4" />}
                 onClick={handleOpenWalletLink}
+                disabled={busyAction === 'topup_copy' || busyAction === 'topup_open'}
               >
-                افتح الرابط
+                {busyAction === 'topup_open' ? 'جاري الإصدار…' : 'افتح الرابط'}
               </SecondaryButton>
             </div>
           </div>

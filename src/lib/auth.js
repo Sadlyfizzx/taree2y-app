@@ -22,6 +22,23 @@ function normalizeText(value) {
   return text || null;
 }
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getPasswordResetRedirectUrl() {
+  if (typeof window === 'undefined') return undefined;
+
+  try {
+    const nextUrl = new URL(window.location.origin);
+    nextUrl.pathname = '/profile';
+    nextUrl.searchParams.set('reset', '1');
+    return nextUrl.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function extractRateLimitSeconds(message = '') {
   const rawMessage = String(message || '');
   const directMatch = rawMessage.match(/after\s+(\d+)\s+seconds?/i);
@@ -104,6 +121,10 @@ export function getFriendlyAuthError(error, context = 'generic') {
     return rawMessage || 'تعذر تغيير الباسورد حالياً.';
   }
 
+  if (context === 'reset_password') {
+    return rawMessage || 'تعذر إرسال رابط استرجاع الباسورد حالياً.';
+  }
+
   if (context === 'logout') {
     return rawMessage || 'تعذر تسجيل الخروج حالياً.';
   }
@@ -113,7 +134,7 @@ export function getFriendlyAuthError(error, context = 'generic') {
 
 export async function signInWithEmail({ email, password }) {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: String(email || '').trim(),
+    email: normalizeEmail(email),
     password,
   });
 
@@ -131,7 +152,7 @@ export async function signUpWithEmail({
   const safePhone = normalizeText(phone);
 
   const { data, error } = await supabase.auth.signUp({
-    email: String(email || '').trim(),
+    email: normalizeEmail(email),
     password,
     options: {
       data: {
@@ -161,6 +182,22 @@ export async function signUpWithEmail({
     }
   }
 
+  return data;
+}
+
+export async function requestPasswordReset(email) {
+  const safeEmail = normalizeEmail(email);
+  if (!safeEmail) {
+    throw new Error('اكتب الإيميل الأول.');
+  }
+
+  const redirectTo = getPasswordResetRedirectUrl();
+  const { data, error } = await supabase.auth.resetPasswordForEmail(
+    safeEmail,
+    redirectTo ? { redirectTo } : undefined,
+  );
+
+  if (error) throw error;
   return data;
 }
 

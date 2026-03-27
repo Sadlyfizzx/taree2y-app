@@ -4,6 +4,7 @@ import {
   consumeAccountAccessNotice,
   extractRateLimitSeconds,
   getFriendlyAuthError,
+  requestPasswordReset,
   signInWithEmail,
   signUpWithEmail,
 } from '../../lib/auth';
@@ -20,6 +21,7 @@ function LoginScreen({ isDark, setIsDark }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   useEffect(() => {
@@ -46,7 +48,7 @@ function LoginScreen({ isDark, setIsDark }) {
   }, []);
 
   const handleAuth = async () => {
-    if (loading || cooldownSeconds > 0) return;
+    if (loading || resetLoading || cooldownSeconds > 0) return;
 
     setError('');
     setMessage('');
@@ -106,6 +108,36 @@ function LoginScreen({ isDark, setIsDark }) {
       setError(getFriendlyAuthError(authError, mode === 'signup' ? 'signup' : 'signin'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (loading || resetLoading || cooldownSeconds > 0) return;
+
+    setError('');
+    setMessage('');
+
+    if (!email.trim()) {
+      setError('اكتب الإيميل الأول عشان نبعت لك رابط الاسترجاع.');
+      return;
+    }
+
+    setResetLoading(true);
+
+    try {
+      await requestPasswordReset(email);
+      setMessage('لو الإيميل مسجل عندنا، بعتنالك رابط استرجاع الباسورد. افتح الرسالة من نفس الجهاز، وبعدها هتقدر تغيّر الباسورد من شاشة الحساب.');
+    } catch (authError) {
+      log.warn('password_reset_request_failed', { error: authError });
+
+      const nextCooldown = extractRateLimitSeconds(authError?.message || '');
+      if (nextCooldown > 0) {
+        setCooldownSeconds(nextCooldown);
+      }
+
+      setError(getFriendlyAuthError(authError, 'reset_password'));
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -289,12 +321,28 @@ function LoginScreen({ isDark, setIsDark }) {
                   dir="ltr"
                 />
               </label>
+
+              {mode === 'signin' ? (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
+                    لو نسيت الباسورد، ابعت لنفسك رابط استرجاع وبعد فتحه من نفس الجهاز غيّر الباسورد من الحساب.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={loading || resetLoading || cooldownSeconds > 0}
+                    className="shrink-0 text-sm font-black text-indigo-700 transition hover:text-indigo-800 disabled:text-slate-400 dark:text-indigo-300 dark:hover:text-indigo-200 dark:disabled:text-slate-500"
+                  >
+                    {resetLoading ? 'جاري الإرسال…' : 'نسيت الباسورد؟'}
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <button
               type="button"
               onClick={handleAuth}
-              disabled={loading || cooldownSeconds > 0}
+              disabled={loading || resetLoading || cooldownSeconds > 0}
               aria-busy={loading || undefined}
               className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-[22px] bg-indigo-600 px-4 text-base font-black text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >

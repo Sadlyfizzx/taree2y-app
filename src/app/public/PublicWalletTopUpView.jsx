@@ -4,9 +4,9 @@ import { AppSurface, PrimaryButton, SecondaryButton } from '../components/ui/App
 import { formatCurrency } from '../utils/formatting';
 import {
   buildWalletTopupClientId,
-  calculateWalletTopupBreakdown,
+  confirmPublicWalletTopupRequest,
+  getPublicWalletTopupRequest,
   markWalletTopupPaid,
-  publicTopupWallet,
   readWalletTopupPaidState,
 } from './publicPortal';
 
@@ -18,170 +18,151 @@ function Shell({ children }) {
   );
 }
 
-function isDuplicatePaidError(error) {
-  const text = JSON.stringify({
+function matchesPaidState(paidState, requestData) {
+  if (!paidState?.paid || !requestData?.requestId) return false;
+  return String(paidState.requestId || '').trim() === String(requestData.requestId || '').trim();
+}
+
+function getErrorMessage(error) {
+  const payload = JSON.stringify({
     message: error?.message || '',
     details: error?.details || '',
     hint: error?.hint || '',
     code: error?.code || '',
   }).toLowerCase();
 
-  return (
-    text.includes('duplicate key') &&
-    (
-      text.includes('app_wallet_transactions_client_id_key') ||
-      text.includes('client_id') ||
-      text.includes('reference_id')
-    )
-  );
-}
-
-function amountsMatch(expectedValue, actualValue) {
-  return Math.abs(Number(expectedValue || 0) - Number(actualValue || 0)) < 0.01;
-}
-
-function matchesPaidState(paidState, { requestId, userId, grossAmount, feeAmount, creditAmount }) {
-  if (!paidState?.paid) return false;
-  if (String(paidState.requestId || '').trim() !== String(requestId || '').trim()) return false;
-  if (String(paidState.userId || '').trim() && String(paidState.userId || '').trim() !== String(userId || '').trim()) {
-    return false;
+  if (payload.includes('get_public_wallet_topup_request')) {
+    return 'ميزة طلبات الشحن الآمنة محتاجة SQL pass 3 على Supabase قبل استخدام روابط الـ QR الجديدة.';
   }
 
-  return (
-    amountsMatch(paidState.grossAmount, grossAmount) &&
-    amountsMatch(paidState.feeAmount, feeAmount) &&
-    amountsMatch(paidState.creditAmount, creditAmount)
-  );
+  if (payload.includes('confirm_public_wallet_topup_request')) {
+    return 'تأكيد الشحن الآمن محتاج SQL pass 3 على Supabase قبل ما العملية تشتغل بشكل صحيح.';
+  }
+
+  if (payload.includes('expired')) {
+    return 'رابط الشحن انتهت صلاحيته. ارجع للتطبيق وطلّع رابط جديد.';
+  }
+
+  return 'تعذر تأكيد الشحن حالياً. جرّب رابط جديد من داخل التطبيق.';
 }
 
 export default function PublicWalletTopUpView() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
-  const userId = String(params.get('uid') || '').trim();
-  const grossAmount = Number(params.get('amount') || 0);
-  const feeAmount = Number(params.get('fee') || 0);
-  const creditAmount = Number(params.get('credit') || 0);
   const requestId = String(params.get('req') || '').trim();
 
-  const expectedBreakdown = useMemo(
-    () => calculateWalletTopupBreakdown(grossAmount),
-    [grossAmount],
-  );
-
-  const paramsAreValid = useMemo(() => {
-    if (!userId || !requestId) return false;
-    if (!Number.isFinite(grossAmount) || grossAmount < 50) return false;
-    if (!Number.isFinite(feeAmount) || feeAmount < 0) return false;
-    if (!Number.isFinite(creditAmount) || creditAmount <= 0) return false;
-    return (
-      amountsMatch(expectedBreakdown.feeAmount, feeAmount) &&
-      amountsMatch(expectedBreakdown.netAmount, creditAmount)
-    );
-  }, [creditAmount, expectedBreakdown.feeAmount, expectedBreakdown.netAmount, feeAmount, grossAmount, requestId, userId]);
-
-  const [status, setStatus] = useState(paramsAreValid ? 'idle' : 'error');
+  const [requestData, setRequestData] = useState(null);
+  const [loadingRequest, setLoadingRequest] = useState(Boolean(requestId));
+  const [status, setStatus] = useState(requestId ? 'idle' : 'error');
   const [message, setMessage] = useState(
-    paramsAreValid ? '' : 'رابط الشحن غير صالح أو فيه بيانات ناقصة. اطلب رابط جديد من داخل التطبيق.'
+    requestId ? '' : 'رابط الشحن غير صالح أو ناقص. اطلب رابط جديد من داخل التطبيق.'
   );
 
-  const isReady = Boolean(paramsAreValid && status !== 'loading' && status !== 'success');
   const clientId = useMemo(() => buildWalletTopupClientId(requestId), [requestId]);
 
   useEffect(() => {
-    if (!paramsAreValid) return;
+    let active = true;
 
-    const paidState = readWalletTopupPaidState(requestId);
-    if (
-      matchesPaidState(paidState, {
-        requestId,
-        userId,
-        grossAmount,
-        feeAmount,
-        creditAmount,
-      })
-    ) {
-      setStatus('success');
-      setMessage('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
+    if (!requestId) {
+      setLoadingRequest(false);
+      setStatus('error');
+      setMessage('رابط الشحن غير صالح أو ناقص. اطلب رابط جديد من داخل التطبيق.');
+      return () => {
+        active = false;
+      };
     }
-  }, [paramsAreValid, requestId]);
 
-  const markAsPaid = (text) => {
-    markWalletTopupPaid(requestId, {
-      userId,
-      grossAmount,
-      creditAmount,
-      feeAmount,
-      clientId,
-    });
-    setStatus('success');
-    setMessage(text);
-  };
+    (async () => {
+      setLoadingRequest(true);
+      try {
+        const nextRequest = await getPublicWalletTopupRequest(requestId);
+        if (!active) return;
+
+        if (!nextRequest) {
+          setRequestData(null);
+          setStatus('error');
+          setMessage('الطلب ده غير موجود أو تم إلغاؤه. ارجع للتطبيق وطلّع رابط شحن جديد.');
+          return;
+        }
+
+        setRequestData(nextRequest);
+
+        const paidState = readWalletTopupPaidState(nextRequest.requestId);
+        if (matchesPaidState(paidState, nextRequest) || nextRequest.isPaid) {
+          setStatus('success');
+          setMessage('العملية دي اتدفعت بالفعل قبل كده وتم احتسابها على نفس الحساب.');
+        } else {
+          setStatus('idle');
+          setMessage('');
+        }
+      } catch (error) {
+        if (!active) return;
+        setRequestData(null);
+        setStatus('error');
+        setMessage(getErrorMessage(error));
+      } finally {
+        if (active) setLoadingRequest(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [requestId]);
+
+  const actionLabel = loadingRequest
+    ? 'جاري تجهيز الطلب…'
+    : status == 'loading'
+    ? 'جاري تأكيد الدفع…'
+    : status == 'success'
+    ? 'تم التأكيد'
+    : 'تأكيد الدفع الآن';
+
+  const isReady = Boolean(requestData && !loadingRequest && status !== 'loading' && status !== 'success');
+  const grossAmount = Number(requestData?.grossAmount || 0);
+  const feeAmount = Number(requestData?.feeAmount || 0);
+  const creditAmount = Number(requestData?.creditAmount || 0);
+  const statusCardTone = requestData ? 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60' : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20';
 
   const handleConfirm = async () => {
-    if (!paramsAreValid) {
-      setStatus('error');
-      setMessage('رابط الشحن غير صالح أو انتهى. ارجع للتطبيق وابدأ طلب شحن جديد.');
-      return;
-    }
-
-    if (!isReady) return;
-
-    const alreadyPaid = readWalletTopupPaidState(requestId);
-    if (
-      matchesPaidState(alreadyPaid, {
-        requestId,
-        userId,
-        grossAmount,
-        feeAmount,
-        creditAmount,
-      })
-    ) {
-      markAsPaid('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
-      return;
-    }
+    if (!requestData || status === 'loading' || status === 'success') return;
 
     setStatus('loading');
     setMessage('');
 
     try {
-      const result = await publicTopupWallet({
-        userId,
-        amount: creditAmount,
-        requestId,
-        paymentChannel: 'public_qr_net',
+      const result = await confirmPublicWalletTopupRequest({
+        requestId: requestData.requestId,
+        paymentChannel: requestData.paymentChannel || 'public_qr',
         clientId,
       });
 
-      if (result?.already_processed) {
-        markAsPaid('العملية دي كانت متأكدة بالفعل، وتم اعتبارها مدفوعة بدون تكرار.');
-        return;
-      }
-
-      markAsPaid(`تم تأكيد الشحن بنجاح. رجع للتطبيق وهتلاقي ${formatCurrency(creditAmount)} اتضافت لنفس الحساب.`);
+      const nextRequest = result?.request || requestData;
+      setRequestData(nextRequest);
+      markWalletTopupPaid(nextRequest.requestId, {
+        userId: nextRequest.userId,
+        grossAmount: nextRequest.grossAmount,
+        feeAmount: nextRequest.feeAmount,
+        creditAmount: nextRequest.creditAmount,
+        clientId,
+      });
+      setStatus('success');
+      setMessage(
+        result?.alreadyPaid
+          ? 'العملية دي كانت متأكدة بالفعل وتم منع التكرار.'
+          : result?.message || 'تم تأكيد الدفع وإضافة صافي المبلغ للمحفظة بنجاح.'
+      );
     } catch (error) {
-      if (isDuplicatePaidError(error)) {
-        markAsPaid('تم دفع العملية دي بالفعل. منعنا تكرار الخصم أو التسجيل مرة تانية.');
-        return;
-      }
-
       setStatus('error');
-      setMessage(error?.message || 'تعذر تأكيد عملية الشحن حالياً.');
+      setMessage(getErrorMessage(error));
     }
   };
 
-  const actionLabel =
-    status === 'loading'
-      ? 'جاري التأكيد…'
-      : status === 'success'
-      ? 'تم الدفع بالفعل'
-      : 'تأكيد الشحن';
-
   return (
     <Shell>
-      <section className="relative overflow-hidden rounded-[36px] bg-[linear-gradient(135deg,#10233f_0%,#163c98_48%,#2156d9_100%)] p-6 text-white shadow-[0_30px_60px_-36px_rgba(16,35,63,0.6)]">
-        <div className="pointer-events-none absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at top right, rgba(255,255,255,0.22), transparent 28%)' }} />
-        <div className="relative z-10 flex items-start justify-between gap-4">
+      <section className="rounded-[32px] bg-[linear-gradient(135deg,#10233f_0%,#163c98_48%,#2156d9_100%)] p-5 text-white shadow-[0_24px_60px_-34px_rgba(16,35,63,0.52)]">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black tracking-[0.16em] text-white/70">شحن محفظة طريقي</p>
+            <p className="text-xs font-black tracking-[0.18em] text-white/70">شحن محفظة طريقي</p>
             <h1 className="mt-3 text-3xl font-black">{formatCurrency(grossAmount)}</h1>
             <p className="mt-2 text-sm font-bold text-white/80">سيتم إضافة صافي المبلغ مباشرة لنفس الحساب بعد خصم رسوم التشغيل.</p>
           </div>
@@ -210,26 +191,26 @@ export default function PublicWalletTopUpView() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span>رقم العملية</span>
-                <span className="font-mono text-slate-900 dark:text-white">{requestId || '—'}</span>
+                <span className="font-mono text-slate-900 dark:text-white">{requestData?.requestId || requestId || '—'}</span>
               </div>
             </div>
           </div>
 
-          <div className={`rounded-[24px] border px-4 py-4 ${paramsAreValid ? 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/60' : 'border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20'}`}>
+          <div className={`rounded-[24px] border px-4 py-4 ${statusCardTone}`}>
             <div className="flex items-center gap-2">
-              {paramsAreValid ? (
+              {requestData ? (
                 <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
               ) : (
                 <TriangleAlert className="h-5 w-5 text-amber-700 dark:text-amber-300" />
               )}
               <p className="text-sm font-black text-slate-900 dark:text-white">
-                {paramsAreValid ? 'العملية مرتبطة بنفس الحساب' : 'الرابط محتاج إعادة إصدار'}
+                {requestData ? 'الطلب صادر من السيرفر ومربوط بنفس الحساب' : 'الرابط محتاج إعادة إصدار'}
               </p>
             </div>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
-              {paramsAreValid
-                ? 'لو العملية دي اتدفعت قبل كده، الصفحة هتمنع تكرار التأكيد وتوضح لك إنها مدفوعة بالفعل.'
-                : 'البيانات المرسلة في الرابط لا تطابق حسابات الرسوم الحالية أو فيها قيم ناقصة.'}
+              {requestData
+                ? 'الصفحة بتقرأ الطلب من السيرفر مباشرة. تغيير أي باراميتر في الرابط لن ينشئ طلبًا جديدًا.'
+                : 'رقم العملية غير معروف على السيرفر أو انتهت صلاحيته. ارجع للتطبيق وطلّع رابط جديد.'}
             </p>
           </div>
 

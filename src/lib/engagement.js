@@ -224,6 +224,22 @@ export function getReferralCodeFromUrl() {
   }
 }
 
+export function captureReferralCodeFromUrl({ removeFromUrl = true } = {}) {
+  const safeCode = getReferralCodeFromUrl();
+  if (!safeCode || !removeFromUrl || typeof window === 'undefined') return safeCode;
+
+  try {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.delete('ref');
+    const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`;
+    window.history.replaceState(window.history.state, '', nextPath);
+  } catch {
+    // ignore URL cleanup issues and still return the captured code
+  }
+
+  return safeCode;
+}
+
 export function stashPendingReferralCode(code) {
   const safeCode = normalizeUpperText(code);
   if (!safeCode) return '';

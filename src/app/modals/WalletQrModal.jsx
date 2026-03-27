@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { ExternalLink, QrCode, ShieldCheck } from 'lucide-react';
 import ModalShell from '../components/ui/ModalShell';
@@ -6,10 +6,8 @@ import { InlineNotice } from '../components/ui/StateBlocks';
 import { MetaChip, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
 import {
-  buildWalletTopupUrl,
-  calculateWalletTopupBreakdown,
   copyTextWithFallback,
-  createWalletRequestId,
+  issueWalletTopupRequest,
 } from '../public/publicPortal';
 
 const QUICK_AMOUNTS = [50, 100, 200, 500];
@@ -17,6 +15,9 @@ const QUICK_AMOUNTS = [50, 100, 200, 500];
 export default function WalletQrModal({ closeModal, userId, showToast, initialAmount = 100 }) {
   const [amount, setAmount] = useState(() => String(initialAmount || 100));
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [requestData, setRequestData] = useState(null);
+  const [issuing, setIssuing] = useState(false);
+  const [issueError, setIssueError] = useState('');
 
   useEffect(() => {
     if (initialAmount) {
@@ -25,53 +26,110 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
   }, [initialAmount]);
 
   const numericAmount = Math.max(0, Number(amount) || 0);
-  const { grossAmount, feeAmount, netAmount } = useMemo(
-    () => calculateWalletTopupBreakdown(numericAmount),
-    [numericAmount],
-  );
-  const requestId = useMemo(() => createWalletRequestId(), []);
-  const canGeneratePaymentLink = Boolean(userId && grossAmount >= 50);
-  const payUrl = useMemo(
-    () => (canGeneratePaymentLink ? buildWalletTopupUrl({ userId, amount: grossAmount, requestId }) : ''),
-    [canGeneratePaymentLink, grossAmount, requestId, userId],
-  );
+  const grossAmount = Number(requestData?.grossAmount ?? numericAmount ?? 0);
+  const feeAmount = Number(requestData?.feeAmount ?? 0);
+  const netAmount = Number(requestData?.creditAmount ?? 0);
+  const canIssueRequest = Boolean(userId && numericAmount >= 50);
+  const payUrl = requestData?.url || '';
+  const requestId = requestData?.requestId || '';
+
+  useEffect(() => {
+    setRequestData(null);
+    setIssueError('');
+    setQrDataUrl('');
+  }, [numericAmount, userId]);
+
+  const ensureRequest = useCallback(async () => {
+    if (!canIssueRequest) {
+      showToast('أقل شحن 50 ج.م ولازم يكون فيه حساب مرتبط بالرابط.', 'error');
+      return null;
+    }
+
+    if (requestData?.requestId && requestData.grossAmount === numericAmount) {
+      return requestData;
+    }
+
+    setIssuing(true);
+    setIssueError('');
+
+    try {
+      const issued = await issueWalletTopupRequest({
+        userId,
+        amount: numericAmount,
+        paymentChannel: 'public_qr',
+      });
+
+      if (!issued?.requestId || !issued?.url) {
+        throw new Error('wallet_topup_request_issue_failed');
+      }
+
+      setRequestData(issued);
+      return issued;
+    } catch (error) {
+      const payload = JSON.stringify({
+        message: error?.message || '',
+        details: error?.details || '',
+        hint: error?.hint || '',
+        code: error?.code || '',
+      }).toLowerCase();
+
+      const nextMessage = payload.includes('issue_public_wallet_topup_request')
+        ? 'ميزة شحن المحفظة الآمنة محتاجة SQL pass 3 على Supabase قبل ما تولّد QR جديد.'
+        : 'تعذر تجهيز طلب الشحن حالياً. جرّب تاني بعد شوية.';
+
+      setIssueError(nextMessage);
+      showToast(nextMessage, 'error');
+      return null;
+    } finally {
+      setIssuing(false);
+    }
+  }, [canIssueRequest, numericAmount, requestData, showToast, userId]);
 
   useEffect(() => {
     let active = true;
 
-    if (!canGeneratePaymentLink) {
+    if (!canIssueRequest) {
       setQrDataUrl('');
       return undefined;
     }
 
-    QRCode.toDataURL(payUrl, {
-      errorCorrectionLevel: 'H',
-      margin: 2,
-      width: 320,
-      color: {
-        dark: '#163C98',
-        light: '#F8FAFC',
-      },
-    })
-      .then((nextUrl) => {
+    const timeoutId = window.setTimeout(async () => {
+      const issued = await ensureRequest();
+      if (!active || !issued?.url) return;
+
+      try {
+        const nextUrl = await QRCode.toDataURL(issued.url, {
+          errorCorrectionLevel: 'H',
+          margin: 2,
+          width: 320,
+          color: {
+            dark: '#163C98',
+            light: '#F8FAFC',
+          },
+        });
         if (active) setQrDataUrl(nextUrl);
-      })
-      .catch(() => {
+      } catch {
         if (active) setQrDataUrl('');
-      });
+      }
+    }, 260);
 
     return () => {
       active = false;
+      window.clearTimeout(timeoutId);
     };
-  }, [canGeneratePaymentLink, payUrl]);
+  }, [canIssueRequest, ensureRequest]);
 
   const handleCopy = async () => {
-    if (!canGeneratePaymentLink) {
-      showToast('أقل شحن 50 ج.م ولازم يكون فيه حساب مرتبط بالرابط.', 'error');
-      return;
-    }
-    const copied = await copyTextWithFallback(payUrl, 'رابط الشحن');
+    const issued = await ensureRequest();
+    if (!issued?.url) return;
+    const copied = await copyTextWithFallback(issued.url, 'رابط الشحن');
     showToast(copied ? 'تم نسخ رابط الشحن.' : 'تعذر نسخ الرابط حالياً.', copied ? 'success' : 'error');
+  };
+
+  const handleOpen = async () => {
+    const issued = await ensureRequest();
+    if (!issued?.url) return;
+    window.open(issued.url, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -84,17 +142,13 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>إغلاق</SecondaryButton>
-          <SecondaryButton onClick={handleCopy} disabled={!canGeneratePaymentLink}>نسخ الرابط</SecondaryButton>
+          <SecondaryButton onClick={handleCopy} disabled={!canIssueRequest || issuing}>نسخ الرابط</SecondaryButton>
           <PrimaryButton
-            onClick={() => {
-              if (!canGeneratePaymentLink) {
-                showToast('أقل شحن 50 ج.م ولازم يكون فيه حساب مرتبط بالرابط.', 'error');
-                return;
-              }
-              window.open(payUrl, '_blank', 'noopener,noreferrer');
-            }}
+            onClick={handleOpen}
             icon={<ExternalLink className="h-4 w-4" />}
-            disabled={!canGeneratePaymentLink}
+            disabled={!canIssueRequest || issuing}
+            loading={issuing}
+            loadingText="جاري تجهيز الطلب…"
           >
             افتح صفحة الدفع
           </PrimaryButton>
@@ -103,11 +157,11 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
     >
       <div className="space-y-5">
         <InlineNotice
-          tone={canGeneratePaymentLink ? 'info' : 'warning'}
-          title={canGeneratePaymentLink ? 'متى يظهر الرصيد؟' : 'راجع مبلغ الشحن'}
+          tone={canIssueRequest && !issueError ? 'info' : 'warning'}
+          title={canIssueRequest && !issueError ? 'متى يظهر الرصيد؟' : 'راجع مبلغ الشحن أو إعداد السيرفر'}
           text={
-            canGeneratePaymentLink
-              ? 'بعد تأكيد الدفع بنجاح، الرصيد هيتحدث تلقائيًا على نفس الحساب.'
+            canIssueRequest
+              ? issueError || 'بعد تأكيد الدفع بنجاح، الرصيد هيتحدث تلقائيًا على نفس الحساب.'
               : 'أقل شحن 50 ج.م. عدّل المبلغ قبل فتح صفحة الدفع أو نسخ الرابط.'
           }
           icon={ShieldCheck}
@@ -141,7 +195,7 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
         <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-center dark:border-slate-800 dark:bg-slate-950/60">
           <div className="mx-auto flex w-fit items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
             <span>عملية</span>
-            <span className="font-mono">{requestId}</span>
+            <span className="font-mono">{requestId || (issuing ? 'جاري التجهيز…' : 'سيُنشأ عند الاستخدام')}</span>
           </div>
 
           <div className="mx-auto mt-5 w-fit rounded-[32px] bg-white p-4 shadow-[0_20px_45px_-28px_rgba(16,35,63,0.35)] dark:bg-slate-900">
@@ -170,7 +224,7 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
           </div>
 
           <div className="mt-3 flex flex-wrap justify-center gap-2">
-            <MetaChip label="يفتح من أي جهاز" tone="brand" />
+            <MetaChip label="طلب موثّق من السيرفر" tone="brand" />
             <MetaChip label="ينزل على نفس الحساب" tone="success" />
           </div>
         </div>

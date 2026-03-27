@@ -17,8 +17,8 @@ import {
 import { createLogger, isMissingRpcError } from '../../lib/logger';
 import {
   applyReferralCode as applyReferralCodeRpc,
+  captureReferralCodeFromUrl,
   clearPendingReferralCode,
-  getReferralCodeFromUrl,
   getReferralSummary,
   readPendingReferralCode,
   recordCampaignEvent,
@@ -236,8 +236,10 @@ export default function UserApp({
   const promoHighlightImpressionsRef = useRef(new Set());
   const promoPopupImpressionsRef = useRef(new Set());
   const dismissedPromoPopupRef = useRef(new Set());
-  const appliedReferralCodesRef = useRef(new Set());
-  const referralCodeFromUrl = useMemo(() => getReferralCodeFromUrl(), []);
+  const pendingReferralApplyRef = useRef(new Set());
+  const successfulReferralApplyRef = useRef(new Set());
+  const attemptedAutoReferralApplyRef = useRef(new Set());
+  const referralCodeFromUrl = useMemo(() => captureReferralCodeFromUrl(), []);
 
   const { isGuideOpen, openGuide, closeGuide, completeGuide } = useOnboardingGuide({
     userId,
@@ -280,13 +282,13 @@ export default function UserApp({
     return () => window.clearTimeout(timeoutId);
   }, [isMobileMenuOpen]);
 
-  const showToast = (msg, type = 'success') => {
+  const showToast = useCallback((msg, type = 'success') => {
     const id = Date.now() + Math.floor(Math.random() * 1000);
     setToasts((prev) => [...prev, { id, msg, type }]);
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, 4000);
-  };
+  }, []);
 
   useEffect(() => {
     if (!authWarning) return;
@@ -344,13 +346,96 @@ export default function UserApp({
     return summary;
   }, [userId]);
 
-  const handleApplyReferralCode = async (code) => {
-    const result = await applyReferralCodeRpc({ userId, code });
-    if (result?.ok) clearPendingReferralCode();
-    if (result?.message) showToast(result.message, result.ok ? 'success' : 'error');
-    await refreshReferralSummary();
-    return result;
-  };
+  const applyReferralCodeSafely = useCallback(
+    async (code, { silent = false, clearPendingOnFailure = false } = {}) => {
+      if (!userId) {
+        const result = {
+          ok: false,
+          code: 'auth_required',
+          message: 'سجّل الدخول أولاً لاستخدام كود الدعوة.',
+          data: {},
+        };
+        if (!silent) showToast(result.message, 'error');
+        return result;
+      }
+
+      const normalizedCode = String(code || '').trim().toUpperCase();
+      if (!normalizedCode) {
+        const result = {
+          ok: false,
+          code: 'referral_empty',
+          message: 'اكتب كود الدعوة أولاً.',
+          data: {},
+        };
+        if (!silent) showToast(result.message, 'error');
+        return result;
+      }
+
+      const ownCode = String(referralSummary?.code || '').trim().toUpperCase();
+      const appliedCode = String(referralSummary?.appliedCode || '').trim().toUpperCase();
+      const requestKey = `${userId}:${normalizedCode}`;
+
+      if (appliedCode) {
+        const result = {
+          ok: false,
+          code: 'referral_already_applied',
+          message: `الحساب مرتبط بالفعل بالكود ${appliedCode}.`,
+          data: {},
+        };
+        clearPendingReferralCode();
+        if (!silent) showToast(result.message, 'info');
+        return result;
+      }
+
+      if (ownCode && ownCode === normalizedCode) {
+        const result = {
+          ok: false,
+          code: 'referral_self_blocked',
+          message: 'ما ينفعش تربط حسابك بنفس كود الدعوة الخاص بيك.',
+          data: {},
+        };
+        clearPendingReferralCode();
+        if (!silent) showToast(result.message, 'error');
+        return result;
+      }
+
+      if (successfulReferralApplyRef.current.has(requestKey) || pendingReferralApplyRef.current.has(requestKey)) {
+        return {
+          ok: false,
+          code: 'referral_inflight',
+          message: '',
+          data: {},
+        };
+      }
+
+      pendingReferralApplyRef.current.add(requestKey);
+
+      try {
+        const result = await applyReferralCodeRpc({ userId, code: normalizedCode });
+        if (result?.ok) {
+          successfulReferralApplyRef.current.add(requestKey);
+          clearPendingReferralCode();
+        } else if (clearPendingOnFailure) {
+          clearPendingReferralCode();
+        }
+
+        if (result?.message && !silent) {
+          showToast(result.message, result.ok ? 'success' : 'error');
+        }
+
+        await refreshReferralSummary();
+        return result;
+      } finally {
+        pendingReferralApplyRef.current.delete(requestKey);
+      }
+    },
+    [referralSummary?.appliedCode, referralSummary?.code, refreshReferralSummary, showToast, userId],
+  );
+
+  const handleApplyReferralCode = useCallback(
+    async (code) => applyReferralCodeSafely(code),
+    [applyReferralCodeSafely],
+  );
 
   const handlePromoHighlightInteraction = (offer, action = 'opened') => {
     if (!userId || !offer?.campaignId) return;
@@ -379,33 +464,57 @@ export default function UserApp({
         active = false;
       };
     }
+
     (async () => {
       const summary = await getReferralSummary({ userId });
-      if (!active) return;
-      setReferralSummary(summary);
-
-      if (summary?.appliedCode) {
-        clearPendingReferralCode();
-      }
-
-      const pendingCode = readPendingReferralCode() || referralCodeFromUrl;
-      if (!pendingCode || summary?.canApplyCode === false) return;
-      if (appliedReferralCodesRef.current.has(`${userId}:${pendingCode}`)) return;
-
-      appliedReferralCodesRef.current.add(`${userId}:${pendingCode}`);
-      const result = await applyReferralCodeRpc({ userId, code: pendingCode });
-      if (!active) return;
-      if (result?.ok) {
-        clearPendingReferralCode();
-      }
-      if (result?.message) showToast(result.message, result.ok ? 'success' : 'error');
-      const refreshed = await getReferralSummary({ userId });
-      if (active) setReferralSummary(refreshed);
+      if (active) setReferralSummary(summary);
     })();
+
     return () => {
       active = false;
     };
-  }, [userId, myTrips.length, referralCodeFromUrl]);
+  }, [userId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!userId || !referralSummary) {
+      return () => {
+        active = false;
+      };
+    }
+
+    if (referralSummary?.appliedCode) {
+      clearPendingReferralCode();
+      return () => {
+        active = false;
+      };
+    }
+
+    const pendingCode = String(readPendingReferralCode() || referralCodeFromUrl || '').trim().toUpperCase();
+    if (!pendingCode || referralSummary?.canApplyCode === false) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const autoApplyKey = `${userId}:${pendingCode}`;
+    if (attemptedAutoReferralApplyRef.current.has(autoApplyKey)) {
+      return () => {
+        active = false;
+      };
+    }
+    attemptedAutoReferralApplyRef.current.add(autoApplyKey);
+
+    (async () => {
+      const result = await applyReferralCodeSafely(pendingCode, { silent: true });
+      if (!active || !result?.message || result.code === 'referral_inflight') return;
+      showToast(result.message, result.ok ? 'success' : 'error');
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [applyReferralCodeSafely, referralCodeFromUrl, referralSummary, showToast, userId]);
 
   useEffect(() => {
     let active = true;

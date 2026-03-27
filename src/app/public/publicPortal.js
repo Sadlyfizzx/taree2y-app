@@ -42,29 +42,10 @@ export function calculateWalletTopupBreakdown(inputAmount) {
   return { grossAmount, feeAmount, netAmount };
 }
 
-export function buildWalletTopupUrl({ userId, amount, requestId }) {
-  const { grossAmount, feeAmount, netAmount } = calculateWalletTopupBreakdown(amount);
+export function buildWalletTopupUrl({ requestId }) {
   const params = new URLSearchParams();
-  params.set('uid', String(userId || '').trim());
-  params.set('amount', String(grossAmount));
-  params.set('fee', String(feeAmount));
-  params.set('credit', String(netAmount));
   params.set('req', String(requestId || '').trim());
   return `${getAppOrigin()}/wallet-topup?${params.toString()}`;
-}
-
-export function createWalletRequestId() {
-  const now = new Date();
-  const stamp = [
-    String(now.getFullYear()).slice(-2),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0'),
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0'),
-  ].join('');
-
-  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
-  return `TOP-${stamp}-${random}`;
 }
 
 export function buildWalletTopupClientId(requestId) {
@@ -115,7 +96,7 @@ export function markWalletTopupPaid(requestId, payload = {}) {
       }),
     );
   } catch {
-    // ignore storage errors; backend idempotency remains the source of truth
+    // ignore storage errors; backend request status remains the source of truth
   }
 }
 
@@ -161,6 +142,53 @@ export async function copyTextWithFallback(text, label = 'الرابط') {
   return false;
 }
 
+function normalizeWalletTopupRequestPayload(payload) {
+  const source = payload && typeof payload === 'object'
+    ? payload.request && typeof payload.request === 'object'
+      ? payload.request
+      : payload
+    : null;
+
+  if (!source) return null;
+
+  const requestId = String(source.requestId || source.request_id || '').trim();
+  if (!requestId) return null;
+
+  const grossAmount = roundMoney(source.grossAmount ?? source.gross_amount ?? source.amount ?? 0);
+  const feeAmount = roundMoney(source.feeAmount ?? source.fee_amount ?? source.fee ?? 0);
+  const creditAmount = roundMoney(source.creditAmount ?? source.credit_amount ?? source.netAmount ?? source.net_amount ?? source.credit ?? 0);
+  const status = String(source.status || '').trim().toLowerCase() || 'issued';
+
+  return {
+    requestId,
+    userId: String(source.userId || source.user_id || '').trim(),
+    grossAmount,
+    feeAmount,
+    creditAmount,
+    paymentChannel: String(source.paymentChannel || source.payment_channel || '').trim() || 'public_qr',
+    status,
+    isPaid: Boolean(source.isPaid ?? source.is_paid ?? status == 'paid'),
+    expiresAt: String(source.expiresAt || source.expires_at || '').trim(),
+    paidAt: String(source.paidAt || source.paid_at || '').trim(),
+    createdAt: String(source.createdAt || source.created_at || '').trim(),
+    url: buildWalletTopupUrl({ requestId }),
+    raw: source,
+  };
+}
+
+function normalizeWalletTopupActionResult(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  const request = normalizeWalletTopupRequestPayload(source);
+
+  return {
+    ok: Boolean(source.ok ?? true),
+    alreadyPaid: Boolean(source.alreadyPaid ?? source.already_paid ?? request?.isPaid),
+    message: String(source.message || '').trim(),
+    request,
+    raw: source,
+  };
+}
+
 export async function createPublicTripShare(payload) {
   const { data, error } = await supabase.rpc('create_public_trip_share', {
     p_payload: payload,
@@ -186,6 +214,51 @@ export async function getPublicTripShare(token) {
 
   if (error) throw error;
   return data?.payload || data || null;
+}
+
+export async function issueWalletTopupRequest({
+  userId,
+  amount,
+  paymentChannel = 'public_qr',
+}) {
+  const { data, error } = await supabase.rpc('issue_public_wallet_topup_request', {
+    p_user_id: userId,
+    p_amount: Number(amount),
+    p_payment_channel: paymentChannel,
+  });
+
+  if (error) throw error;
+  return normalizeWalletTopupRequestPayload(data);
+}
+
+export async function getPublicWalletTopupRequest(requestId) {
+  const safeRequestId = String(requestId || '').trim();
+  if (!safeRequestId) return null;
+
+  const { data, error } = await supabase.rpc('get_public_wallet_topup_request', {
+    p_request_id: safeRequestId,
+  });
+
+  if (error) throw error;
+  return normalizeWalletTopupRequestPayload(data);
+}
+
+export async function confirmPublicWalletTopupRequest({
+  requestId,
+  paymentChannel = 'public_qr',
+  clientId,
+}) {
+  const safeRequestId = String(requestId || '').trim();
+  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
+
+  const { data, error } = await supabase.rpc('confirm_public_wallet_topup_request', {
+    p_request_id: safeRequestId,
+    p_payment_channel: paymentChannel,
+    p_client_id: safeClientId,
+  });
+
+  if (error) throw error;
+  return normalizeWalletTopupActionResult(data);
 }
 
 export async function publicTopupWallet({
