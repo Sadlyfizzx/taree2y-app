@@ -189,12 +189,8 @@ function TicketView({ ticket, user, onTrack, showToast }) {
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <KeyValueRow label="اسم الراكب" value={user.name} />
             <KeyValueRow label="المقاعد" value={formatSeatsText(data.selectedSeats)} valueClassName="font-black text-[var(--brand-strong)] dark:text-[var(--brand)]" />
-            <div className="hidden sm:block">
-              <KeyValueRow label="الشركة" value={data.company} />
-            </div>
-            <div className="hidden sm:block">
-              <KeyValueRow label="الدرجة" value={data.class} />
-            </div>
+            <KeyValueRow label="الشركة" value={data.company} />
+            <KeyValueRow label="الدرجة" value={data.class} />
             <KeyValueRow label="الدفع" value={data.paymentMethod === 'wallet' ? 'محفظة طريقي' : data.paymentMethod} />
             <KeyValueRow label="إجمالي العملية" value={formatCurrency(data.finalTotal || data.price)} />
           </div>

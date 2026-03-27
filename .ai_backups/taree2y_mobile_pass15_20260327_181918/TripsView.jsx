@@ -189,6 +189,11 @@ export default function TripsView({
                   {renderStatusBadge(displayStatus, isPendingCancellation)}
                 </div>
 
+                <div className="mt-3 flex items-center gap-2 sm:hidden">
+                  <MetaChip className="min-h-9 rounded-[16px] px-3 py-1.5 text-[11px]" label={operatorLabel} tone="brand" />
+                  <MetaChip className="min-h-9 rounded-[16px] px-3 py-1.5 text-[11px]" label={classLabel} tone="neutral" />
+                </div>
+
                 <div className="mt-3.5 sm:mt-4">
                   <RouteTimeline trip={trip} className="sm:rounded-[24px]" />
                 </div>

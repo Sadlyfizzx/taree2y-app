@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { cx } from './AppPrimitives';
+
+const MODAL_LOCK_KEY = 'taree2yModalLocks';
 
 export default function ModalShell({
   onClose,
@@ -13,45 +15,52 @@ export default function ModalShell({
   className = '',
   bodyClassName = '',
 }) {
-  const scrollSnapshotRef = useRef({
-    bodyOverflow: '',
-    bodyPosition: '',
-    bodyTop: '',
-    bodyWidth: '',
-    docOverflow: '',
-    scrollY: 0,
-  });
-
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+    if (typeof window === 'undefined') return undefined;
 
     const body = document.body;
-    const doc = document.documentElement;
-    const scrollY = window.scrollY || window.pageYOffset || 0;
+    const html = document.documentElement;
+    const previousLocks = Number(body.dataset[MODAL_LOCK_KEY] || 0);
+    const nextLocks = previousLocks + 1;
+    body.dataset[MODAL_LOCK_KEY] = String(nextLocks);
 
-    scrollSnapshotRef.current = {
+    const snapshot = {
+      scrollY: window.scrollY,
       bodyOverflow: body.style.overflow,
       bodyPosition: body.style.position,
       bodyTop: body.style.top,
       bodyWidth: body.style.width,
-      docOverflow: doc.style.overflow,
-      scrollY,
+      bodyLeft: body.style.left,
+      bodyRight: body.style.right,
+      htmlOverflow: html.style.overflow,
     };
 
-    body.style.overflow = 'hidden';
-    body.style.position = 'fixed';
-    body.style.top = `-${scrollY}px`;
-    body.style.width = '100%';
-    doc.style.overflow = 'hidden';
+    if (nextLocks === 1) {
+      body.style.overflow = 'hidden';
+      body.style.position = 'fixed';
+      body.style.top = `-${snapshot.scrollY}px`;
+      body.style.left = '0';
+      body.style.right = '0';
+      body.style.width = '100%';
+      html.style.overflow = 'hidden';
+    }
 
     return () => {
-      const snapshot = scrollSnapshotRef.current;
+      const currentLocks = Math.max(0, Number(body.dataset[MODAL_LOCK_KEY] || 1) - 1);
+      if (currentLocks > 0) {
+        body.dataset[MODAL_LOCK_KEY] = String(currentLocks);
+        return;
+      }
+
+      delete body.dataset[MODAL_LOCK_KEY];
       body.style.overflow = snapshot.bodyOverflow;
       body.style.position = snapshot.bodyPosition;
       body.style.top = snapshot.bodyTop;
       body.style.width = snapshot.bodyWidth;
-      doc.style.overflow = snapshot.docOverflow;
-      window.scrollTo({ top: snapshot.scrollY || 0, left: 0, behavior: 'auto' });
+      body.style.left = snapshot.bodyLeft;
+      body.style.right = snapshot.bodyRight;
+      html.style.overflow = snapshot.htmlOverflow;
+      window.scrollTo({ top: snapshot.scrollY, left: 0, behavior: 'auto' });
     };
   }, []);
 
@@ -61,7 +70,7 @@ export default function ModalShell({
         role="dialog"
         aria-modal="true"
         className={cx(
-          'app-surface app-surface-strong flex w-full max-h-[min(82dvh,760px)] flex-col overflow-hidden rounded-[28px] shadow-[var(--shadow-floating)] sm:max-h-[min(86vh,820px)] sm:rounded-[32px]',
+          'app-surface app-surface-strong flex w-full max-h-[min(84dvh,760px)] flex-col overflow-hidden rounded-[28px] shadow-[var(--shadow-floating)] sm:max-h-[min(88vh,860px)] sm:rounded-[32px]',
           maxWidth,
           className,
         )}
@@ -94,12 +103,12 @@ export default function ModalShell({
           </div>
         </div>
 
-        <div className={cx('hide-scrollbar overflow-y-auto px-4 py-4 sm:max-h-[70vh] sm:px-6 sm:py-5', bodyClassName)}>
+        <div className={cx('hide-scrollbar max-h-[min(56dvh,430px)] overflow-y-auto px-4 py-4 sm:max-h-[70vh] sm:px-6 sm:py-5', bodyClassName)}>
           {children}
         </div>
 
         {footer ? (
-          <div className="border-t border-[var(--line)] bg-[var(--surface-overlay)] px-4 py-3.5 backdrop-blur-md sm:px-6 sm:py-4">
+          <div className="border-t border-[var(--line)] bg-[var(--surface-overlay)] px-4 py-4 backdrop-blur-md sm:px-6">
             {footer}
           </div>
         ) : null}

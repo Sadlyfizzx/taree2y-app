@@ -180,51 +180,11 @@ function scrollViewportToTop(behavior = 'auto') {
   if (typeof window === 'undefined') return;
 
   const safeBehavior = behavior === 'smooth' ? 'smooth' : 'auto';
-  const root = typeof document !== 'undefined' ? document.documentElement : null;
-  const body = typeof document !== 'undefined' ? document.body : null;
-
-  const tryScroll = () => {
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: safeBehavior });
-    } catch {
-      window.scrollTo(0, 0);
-    }
-
-    if (root) root.scrollTop = 0;
-    if (body) body.scrollTop = 0;
-
-    if (typeof document !== 'undefined') {
-      const candidates = document.querySelectorAll(
-        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, main, [role="main"]',
-      );
-      candidates.forEach((node) => {
-        if (node && typeof node.scrollTop === 'number') {
-          node.scrollTop = 0;
-        }
-      });
-    }
-  };
-
-  tryScroll();
-}
-
-function scheduleViewportScrollReset(behavior = 'auto') {
-  if (typeof window === 'undefined') return;
-
-  scrollViewportToTop(behavior);
-
-  [0, 40, 120, 220, 360].forEach((delay) => {
-    window.setTimeout(() => {
-      scrollViewportToTop('auto');
-    }, delay);
-  });
-
-  window.requestAnimationFrame(() => {
-    scrollViewportToTop('auto');
-    window.requestAnimationFrame(() => {
-      scrollViewportToTop('auto');
-    });
-  });
+  window.scrollTo({ top: 0, left: 0, behavior: safeBehavior });
+  if (typeof document !== 'undefined') {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
 }
 
 export default function UserApp({
@@ -277,7 +237,6 @@ export default function UserApp({
   const [viewedTicket, setViewedTicket] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [activeModal, setActiveModal] = useState(null);
-  const [notificationAnchorTick, setNotificationAnchorTick] = useState(0);
   const [walletQrInitialAmount, setWalletQrInitialAmount] = useState(null);
   const [pendingCancellationBookingIds, setPendingCancellationBookingIds] = useState([]);
   const [promoPopupOffer, setPromoPopupOffer] = useState(null);
@@ -674,17 +633,19 @@ export default function UserApp({
       setActivePage(nextPage);
       syncLocation(nextView, nextPage, options);
       setIsMobileMenuOpen(false);
-      if (activeModal === 'notifications') {
-        setActiveModal(null);
-      }
-      scheduleViewportScrollReset(options.instant ? 'auto' : 'auto');
+      scrollViewportToTop(options.instant ? 'auto' : 'auto');
     },
-    [activeModal, activePage, syncLocation],
+    [activePage, syncLocation],
   );
 
 useEffect(() => {
-  scheduleViewportScrollReset('auto');
-  return undefined;
+  if (typeof window === 'undefined') return undefined;
+
+  const frameId = window.requestAnimationFrame(() => {
+    scrollViewportToTop('auto');
+  });
+
+  return () => window.cancelAnimationFrame(frameId);
 }, [activePage, activeView]);
 
   const handleNotificationAction = useCallback(
@@ -775,7 +736,6 @@ useEffect(() => {
       const next = resolveStateFromPath(window.location.pathname || '/home');
       setActiveView(next.view);
       setActivePage(next.page);
-      scheduleViewportScrollReset('auto');
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -1109,10 +1069,7 @@ useEffect(() => {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setNotificationAnchorTick(Date.now());
-                    setActiveModal((current) => (current === 'notifications' ? null : 'notifications'));
-                  }}
+                  onClick={() => setActiveModal('notifications')}
                   className="app-pressable relative grid h-11 w-11 place-items-center rounded-[18px] border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   aria-label="التنبيهات"
                 >
@@ -1367,7 +1324,6 @@ useEffect(() => {
 
       {activeModal === 'notifications' ? (
         <NotificationsModal
-          key={notificationAnchorTick}
           closeModal={() => setActiveModal(null)}
           notifications={notifications}
           unreadCount={unreadCount}

@@ -180,51 +180,11 @@ function scrollViewportToTop(behavior = 'auto') {
   if (typeof window === 'undefined') return;
 
   const safeBehavior = behavior === 'smooth' ? 'smooth' : 'auto';
-  const root = typeof document !== 'undefined' ? document.documentElement : null;
-  const body = typeof document !== 'undefined' ? document.body : null;
-
-  const tryScroll = () => {
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: safeBehavior });
-    } catch {
-      window.scrollTo(0, 0);
-    }
-
-    if (root) root.scrollTop = 0;
-    if (body) body.scrollTop = 0;
-
-    if (typeof document !== 'undefined') {
-      const candidates = document.querySelectorAll(
-        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, main, [role="main"]',
-      );
-      candidates.forEach((node) => {
-        if (node && typeof node.scrollTop === 'number') {
-          node.scrollTop = 0;
-        }
-      });
-    }
-  };
-
-  tryScroll();
-}
-
-function scheduleViewportScrollReset(behavior = 'auto') {
-  if (typeof window === 'undefined') return;
-
-  scrollViewportToTop(behavior);
-
-  [0, 40, 120, 220, 360].forEach((delay) => {
-    window.setTimeout(() => {
-      scrollViewportToTop('auto');
-    }, delay);
-  });
-
-  window.requestAnimationFrame(() => {
-    scrollViewportToTop('auto');
-    window.requestAnimationFrame(() => {
-      scrollViewportToTop('auto');
-    });
-  });
+  window.scrollTo({ top: 0, left: 0, behavior: safeBehavior });
+  if (typeof document !== 'undefined') {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }
 }
 
 export default function UserApp({
@@ -677,14 +637,33 @@ export default function UserApp({
       if (activeModal === 'notifications') {
         setActiveModal(null);
       }
-      scheduleViewportScrollReset(options.instant ? 'auto' : 'auto');
+      scrollViewportToTop(options.instant ? 'auto' : 'auto');
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => {
+          scrollViewportToTop('auto');
+        });
+        window.setTimeout(() => {
+          scrollViewportToTop('auto');
+        }, 60);
+      }
     },
     [activeModal, activePage, syncLocation],
   );
 
 useEffect(() => {
-  scheduleViewportScrollReset('auto');
-  return undefined;
+  if (typeof window === 'undefined') return undefined;
+
+  const frameId = window.requestAnimationFrame(() => {
+    scrollViewportToTop('auto');
+  });
+  const timeoutId = window.setTimeout(() => {
+    scrollViewportToTop('auto');
+  }, 80);
+
+  return () => {
+    window.cancelAnimationFrame(frameId);
+    window.clearTimeout(timeoutId);
+  };
 }, [activePage, activeView]);
 
   const handleNotificationAction = useCallback(
@@ -775,7 +754,6 @@ useEffect(() => {
       const next = resolveStateFromPath(window.location.pathname || '/home');
       setActiveView(next.view);
       setActivePage(next.page);
-      scheduleViewportScrollReset('auto');
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);

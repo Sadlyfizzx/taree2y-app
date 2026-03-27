@@ -202,7 +202,7 @@ function SearchResultsView({
           ) : null}
 
           {isSearching ? (
-            <div className="grid gap-2.5 sm:gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => (
                 <TripCardSkeleton key={index} />
               ))}
@@ -222,7 +222,7 @@ function SearchResultsView({
               onAction={onGoHome}
             />
           ) : (
-            <div className="grid gap-2.5 sm:gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-3 lg:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {displayedTrips.map((trip) => (
                 <TripCard
                   key={trip.instanceId || trip.id}
