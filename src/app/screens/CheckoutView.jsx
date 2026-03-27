@@ -125,19 +125,27 @@ function findOverlappingTrip(nextTrip, existingTrips = []) {
   );
 }
 
-function buildOverlapWarningMessage(nextTrip, existingTrip) {
+function buildOverlapWarningKey(nextTrip, existingTrip) {
   return [
-    'تنبيه قبل تأكيد الحجز',
-    '',
-    'يبدو أن لديك رحلة أخرى يتداخل توقيتها مع الرحلة التي تحاول حجزها الآن.',
-    '',
-    `الرحلة الجديدة: ${formatTripLabel(nextTrip)}`,
-    `الرحلة الحالية: ${formatTripLabel(existingTrip)}`,
-    '',
-    'قد يؤدي ذلك إلى تعارض في المواعيد أو صعوبة في اللحاق بإحدى الرحلتين.',
-    'إذا كنت متأكدًا من خطتك، اضغط "موافق" للمتابعة.',
-    'وإذا أردت المراجعة أولًا، اضغط "إلغاء".',
-  ].join('\n');
+    nextTrip?.instanceId || nextTrip?.bookingId || nextTrip?.id || nextTrip?.pnr || 'next',
+    existingTrip?.bookingId || existingTrip?.id || existingTrip?.pnr || 'existing',
+  ].join('::');
+}
+
+function formatTripWindowLabel(tripLike) {
+  const from = String(tripLike?.from || '').trim() || 'غير محدد';
+  const to = String(tripLike?.to || '').trim() || 'غير محدد';
+  const date = String(tripLike?.date || '').trim() || 'بدون تاريخ';
+  return `${from} ← ${to} · ${date}`;
+}
+
+function formatTripTimeLabel(tripLike) {
+  const departure = String(tripLike?.departureTime || '').trim() || '--:--';
+  const arrival = String(tripLike?.arrivalTime || '').trim() || '--:--';
+  const station = String(tripLike?.fromStationName || tripLike?.from || '').trim();
+  return station
+    ? `${departure} → ${arrival} · التحرك من ${station}`
+    : `${departure} → ${arrival}`;
 }
 
 function mapPromoResultToState(result, normalizedCode) {
@@ -416,13 +424,13 @@ function CheckoutView({
 
     const overlappingTrip = findOverlappingTrip(data, currentTrips);
     if (overlappingTrip) {
-      const shouldContinue =
-        typeof window === 'undefined'
-          ? true
-          : window.confirm(buildOverlapWarningMessage(data, overlappingTrip));
-
-      if (!shouldContinue) {
-        showToast('تمام، راجع الرحلتين أولًا قبل تأكيد الحجز.', 'info');
+      const overlapKey = buildOverlapWarningKey(data, overlappingTrip);
+      if (overlapApprovalRef.current !== overlapKey) {
+        setOverlapWarning({
+          key: overlapKey,
+          nextTrip: data,
+          existingTrip: overlappingTrip,
+        });
         return;
       }
     }

@@ -40,6 +40,20 @@ function amountsMatch(expectedValue, actualValue) {
   return Math.abs(Number(expectedValue || 0) - Number(actualValue || 0)) < 0.01;
 }
 
+function matchesPaidState(paidState, { requestId, userId, grossAmount, feeAmount, creditAmount }) {
+  if (!paidState?.paid) return false;
+  if (String(paidState.requestId || '').trim() !== String(requestId || '').trim()) return false;
+  if (String(paidState.userId || '').trim() && String(paidState.userId || '').trim() !== String(userId || '').trim()) {
+    return false;
+  }
+
+  return (
+    amountsMatch(paidState.grossAmount, grossAmount) &&
+    amountsMatch(paidState.feeAmount, feeAmount) &&
+    amountsMatch(paidState.creditAmount, creditAmount)
+  );
+}
+
 export default function PublicWalletTopUpView() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const userId = String(params.get('uid') || '').trim();
@@ -76,7 +90,15 @@ export default function PublicWalletTopUpView() {
     if (!paramsAreValid) return;
 
     const paidState = readWalletTopupPaidState(requestId);
-    if (paidState?.paid) {
+    if (
+      matchesPaidState(paidState, {
+        requestId,
+        userId,
+        grossAmount,
+        feeAmount,
+        creditAmount,
+      })
+    ) {
       setStatus('success');
       setMessage('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
     }
@@ -104,7 +126,15 @@ export default function PublicWalletTopUpView() {
     if (!isReady) return;
 
     const alreadyPaid = readWalletTopupPaidState(requestId);
-    if (alreadyPaid?.paid) {
+    if (
+      matchesPaidState(alreadyPaid, {
+        requestId,
+        userId,
+        grossAmount,
+        feeAmount,
+        creditAmount,
+      })
+    ) {
       markAsPaid('تم دفع العملية دي بالفعل قبل كده. مش محتاج تضغط تأكيد مرة تانية.');
       return;
     }

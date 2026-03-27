@@ -127,6 +127,12 @@ const NAV_ITEMS = [
   { key: 'profile', label: 'الحساب', icon: User },
 ];
 
+const _buildInvoiceItems = ({ passengers, baseTotal, luggageFee, autoDiscount, promoDiscount }) => [
+  { name: `تذاكر (${passengers})`, price: baseTotal },
+  ...(luggageFee > 0 ? [{ name: 'وزن إضافي', price: luggageFee }] : []),
+  ...(autoDiscount > 0 ? [{ name: 'خصم الباقة', price: -autoDiscount }] : []),
+  ...(promoDiscount > 0 ? [{ name: 'كود خصم', price: -promoDiscount }] : []),
+];
 
 const formatCancellationErrorMessage = (result) => {
   if (!result) return 'تعذر إلغاء الحجز حالياً.';
@@ -443,15 +449,15 @@ export default function UserApp({
       if (!offer.popupEnabled) return;
 
       const popupKey = offer.campaignId || offer.code || offer.title || 'popup';
-      const cooldownHours = Math.max(1, Number(offer.cooldownHours || 24) || 24);
-      const popupCooldownMs = cooldownHours * 60 * 60 * 1000;
-      const backendLastSeenMs = profile?.last_offer_popup_at
+      const lastSeenMs = profile?.last_offer_popup_at
         ? new Date(profile.last_offer_popup_at).getTime()
         : 0;
-      const localLastSeenMs = readPromoPopupLastSeen(userId, popupKey);
-      const lastSeenMs = Math.max(backendLastSeenMs || 0, localLastSeenMs || 0);
+      const popupCooldownMs = 24 * 60 * 60 * 1000;
 
       if (lastSeenMs && Date.now() - lastSeenMs < popupCooldownMs) return;
+      const lastSeenAt = profile?.last_offer_popup_at ? new Date(profile.last_offer_popup_at).getTime() : 0;
+      const fallbackCooldownMs = 24 * 60 * 60 * 1000;
+      if (lastSeenAt && Date.now() - lastSeenAt < fallbackCooldownMs) return;
       if (dismissedPromoPopupRef.current.has(`${userId}:${popupKey}`)) return;
       if (offer.popupEnabled && !activeModal && !isGuideOpen) {
         setPromoPopupOffer(offer);

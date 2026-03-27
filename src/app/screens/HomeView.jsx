@@ -444,7 +444,7 @@ function HomeView({
     <div className="app-page-frame min-w-0 overflow-x-clip space-y-6 pb-[calc(env(safe-area-inset-bottom)+116px)] md:space-y-7 md:pb-0">
       <section className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr] xl:items-start">
         <section
-          className="app-surface relative z-20 order-1 rounded-[30px] p-5 md:rounded-[32px] md:p-6 xl:order-2"
+          className="app-surface relative z-20 order-1 rounded-[32px] p-5 md:rounded-[32px] md:p-6 xl:order-2"
           style={{ overflow: 'visible' }}
         >
           <SectionHeader title="دور على رحلتك" subtitle="كل اختيار يفتح فوق البطاقة بشكل واضح، ومن غير ما القوائم تتخبى تحتها." />

@@ -30,15 +30,16 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
     [numericAmount],
   );
   const requestId = useMemo(() => createWalletRequestId(), []);
+  const canGeneratePaymentLink = Boolean(userId && grossAmount >= 50);
   const payUrl = useMemo(
-    () => buildWalletTopupUrl({ userId, amount: grossAmount, requestId }),
-    [grossAmount, requestId, userId],
+    () => (canGeneratePaymentLink ? buildWalletTopupUrl({ userId, amount: grossAmount, requestId }) : ''),
+    [canGeneratePaymentLink, grossAmount, requestId, userId],
   );
 
   useEffect(() => {
     let active = true;
 
-    if (!grossAmount || !userId) {
+    if (!canGeneratePaymentLink) {
       setQrDataUrl('');
       return undefined;
     }
@@ -62,9 +63,13 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
     return () => {
       active = false;
     };
-  }, [grossAmount, payUrl, userId]);
+  }, [canGeneratePaymentLink, payUrl]);
 
   const handleCopy = async () => {
+    if (!canGeneratePaymentLink) {
+      showToast('أقل شحن 50 ج.م ولازم يكون فيه حساب مرتبط بالرابط.', 'error');
+      return;
+    }
     const copied = await copyTextWithFallback(payUrl, 'رابط الشحن');
     showToast(copied ? 'تم نسخ رابط الشحن.' : 'تعذر نسخ الرابط حالياً.', copied ? 'success' : 'error');
   };
@@ -79,8 +84,18 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={closeModal}>إغلاق</SecondaryButton>
-          <SecondaryButton onClick={handleCopy}>نسخ الرابط</SecondaryButton>
-          <PrimaryButton onClick={() => window.open(payUrl, '_blank', 'noopener,noreferrer')} icon={<ExternalLink className="h-4 w-4" />}>
+          <SecondaryButton onClick={handleCopy} disabled={!canGeneratePaymentLink}>نسخ الرابط</SecondaryButton>
+          <PrimaryButton
+            onClick={() => {
+              if (!canGeneratePaymentLink) {
+                showToast('أقل شحن 50 ج.م ولازم يكون فيه حساب مرتبط بالرابط.', 'error');
+                return;
+              }
+              window.open(payUrl, '_blank', 'noopener,noreferrer');
+            }}
+            icon={<ExternalLink className="h-4 w-4" />}
+            disabled={!canGeneratePaymentLink}
+          >
             افتح صفحة الدفع
           </PrimaryButton>
         </div>
@@ -88,9 +103,13 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
     >
       <div className="space-y-5">
         <InlineNotice
-          tone="info"
-          title="متى يظهر الرصيد؟"
-          text="بعد تأكيد الدفع بنجاح، الرصيد هيتحدث تلقائيًا على نفس الحساب."
+          tone={canGeneratePaymentLink ? 'info' : 'warning'}
+          title={canGeneratePaymentLink ? 'متى يظهر الرصيد؟' : 'راجع مبلغ الشحن'}
+          text={
+            canGeneratePaymentLink
+              ? 'بعد تأكيد الدفع بنجاح، الرصيد هيتحدث تلقائيًا على نفس الحساب.'
+              : 'أقل شحن 50 ج.م. عدّل المبلغ قبل فتح صفحة الدفع أو نسخ الرابط.'
+          }
           icon={ShieldCheck}
         />
 
@@ -98,7 +117,7 @@ export default function WalletQrModal({ closeModal, userId, showToast, initialAm
           <span className="text-sm font-black text-slate-900 dark:text-white">المبلغ المدفوع</span>
           <input
             type="number"
-            min="10"
+            min="50"
             step="10"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}

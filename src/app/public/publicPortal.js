@@ -77,12 +77,46 @@ export function getWalletTopupPaidStorageKey(requestId) {
   return `taree2y_topup_paid_${String(requestId || '').trim()}`;
 }
 
-export function readWalletTopupPaidState(_requestId) {
-  return null;
+export function readWalletTopupPaidState(requestId) {
+  const safeRequestId = String(requestId || '').trim();
+  if (typeof window === 'undefined' || !safeRequestId) return null;
+
+  try {
+    const raw = window.localStorage.getItem(getWalletTopupPaidStorageKey(safeRequestId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.requestId !== safeRequestId || parsed.paid !== true) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
-export function markWalletTopupPaid(_requestId, _payload = {}) {
-  // backend-only mode: top-up confirmation must be read from the backend, not browser storage
+export function markWalletTopupPaid(requestId, payload = {}) {
+  const safeRequestId = String(requestId || '').trim();
+  if (typeof window === 'undefined' || !safeRequestId) return;
+
+  try {
+    window.localStorage.setItem(
+      getWalletTopupPaidStorageKey(safeRequestId),
+      JSON.stringify({
+        paid: true,
+        requestId: safeRequestId,
+        markedAt: new Date().toISOString(),
+        userId: String(payload.userId || '').trim(),
+        grossAmount: roundMoney(payload.grossAmount),
+        creditAmount: roundMoney(payload.creditAmount),
+        feeAmount: roundMoney(payload.feeAmount),
+        clientId: String(payload.clientId || '').trim(),
+      }),
+    );
+  } catch {
+    // ignore storage errors; backend idempotency remains the source of truth
+  }
 }
 
 export async function copyTextWithFallback(text, label = 'الرابط') {
