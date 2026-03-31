@@ -131,11 +131,6 @@ export default function TripCard({
             label={data.hasRestStop ? 'فيه استراحة في النص' : 'خط مباشر'}
             tone={data.hasRestStop ? 'warning' : 'success'}
           />
-          <MetaChip
-            icon={<Tag className="h-3.5 w-3.5" />}
-            label="الـ QR ظاهر في التذكرة"
-            tone="neutral"
-          />
         </div>
       </div>
 
