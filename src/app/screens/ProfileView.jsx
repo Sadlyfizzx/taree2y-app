@@ -30,6 +30,7 @@ import {
   SecondaryButton,
   SectionHeader,
 } from '../components/ui/AppPrimitives';
+import { formatInteger } from '../utils/formatting';
 
 const log = createLogger('profile-view');
 
@@ -213,7 +214,7 @@ function ProfileView({
           <SectionHeader title="النقاط والمزايا" subtitle="كل رحلة مكتملة بتزوّد رصيد نقاطك." />
           <div className="mt-5 flex items-end justify-between gap-4">
             <div>
-              <p className="text-4xl font-black text-indigo-700 dark:text-indigo-300">{points}</p>
+              <p className="text-4xl font-black text-indigo-700 dark:text-indigo-300">{formatInteger(points)}</p>
               <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">نقطة متاحة حاليًا</p>
             </div>
             <SecondaryButton onClick={() => openModal('points')} icon={<Award className="h-4 w-4" />}>
@@ -224,7 +225,7 @@ function ProfileView({
             <div className="h-full rounded-full bg-[linear-gradient(90deg,#2156d9_0%,#0f9f8a_100%)]" style={{ width: `${Math.min(100, (points / 1000) * 100)}%` }} />
           </div>
           <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-400">
-            {isGold ? 'أنت داخل العضوية الذهبية حاليًا.' : `فاضلك ${Math.max(0, 1000 - points)} نقطة عشان توصل للذهبي.`}
+            {isGold ? 'أنت داخل العضوية الذهبية حاليًا.' : `فاضلك ${formatInteger(Math.max(0, 1000 - points))} نقطة عشان توصل للذهبي.`}
           </p>
         </AppSurface>
       </div>

@@ -143,7 +143,7 @@ export function TripCardSkeleton() {
 
 export function LoadingPanel({
   title = 'جاري التحميل',
-  text = 'بنجهز البيانات حالاً…',
+  text = 'بنجهز المحتوى دلوقتي…',
   className = '',
 }) {
   return (

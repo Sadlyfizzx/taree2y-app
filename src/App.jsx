@@ -5,6 +5,7 @@ import { useDarkMode } from './app/hooks/useDarkMode';
 import { useDeploymentRefresh } from './app/hooks/useDeploymentRefresh';
 import PublicPortalRouter, { isPublicPortalPath } from './app/public/PublicPortalRouter';
 import LoginScreen from './app/screens/LoginScreen';
+import { formatPercent } from './app/utils/formatting';
 
 function normalizeBootConnection(raw = {}) {
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -59,8 +60,8 @@ function getBootProgressConfig(connectionInfo) {
       tickMs: 180,
       step: 1.2,
       animationMs: 2200,
-      hint: 'في انتظار رجوع الشبكة قبل استكمال التحميل.',
-      footerLabel: 'جاري انتظار الاتصال',
+      hint: 'هنكمل تلقائيًا أول ما الاتصال يرجع.',
+      footerLabel: 'بانتظار الاتصال',
     };
   }
 
@@ -71,8 +72,8 @@ function getBootProgressConfig(connectionInfo) {
       tickMs: 180,
       step: 1.6,
       animationMs: 1900,
-      hint: 'سرعة الشبكة أبطأ شوية، فبنخلي التحميل تدريجي وواضح.',
-      footerLabel: 'تحميل مناسب لسرعة الشبكة',
+      hint: 'الشبكة أبطأ شوية، فبنجهز التطبيق بشكل تدريجي.',
+      footerLabel: 'جاري التجهيز',
     };
   }
 
@@ -83,8 +84,8 @@ function getBootProgressConfig(connectionInfo) {
       tickMs: 140,
       step: 2.2,
       animationMs: 1500,
-      hint: 'التحميل شغال بسرعة متوسطة وموزون على حالة الاتصال الحالية.',
-      footerLabel: 'تحميل متوازن حسب الشبكة',
+      hint: 'بنجهز البيانات الأساسية دلوقتي.',
+      footerLabel: 'جاري التجهيز',
     };
   }
 
@@ -94,12 +95,35 @@ function getBootProgressConfig(connectionInfo) {
     tickMs: 120,
     step: 3.4,
     animationMs: 1200,
-    hint: 'الواجهة بتكمل بسرعة لأن الاتصال الحالي مستقر.',
-    footerLabel: 'تحميل سريع حسب الشبكة',
+    hint: 'لحظات ونفتح لك التطبيق.',
+    footerLabel: 'جاري التجهيز',
   };
 }
 
-function UnifiedBootScreen({ text }) {
+function readBootUiState() {
+  if (typeof window === 'undefined') {
+    return {
+      routeLabel: 'تجهيز التطبيق',
+      title: 'جاري تجهيز حسابك…',
+      text: 'بنجهز الرصيد والتذاكر وآخر حالة لرحلاتك.',
+      chips: ['الحجز', 'التذاكر', 'المحفظة'],
+    };
+  }
+
+  const boot = window.__TAREE2Y_BOOT__ || {};
+  return {
+    routeLabel: String(boot.routeLabel || 'تجهيز التطبيق'),
+    title: String(boot.routeTitle || 'جاري تجهيز حسابك…'),
+    text: String(boot.routeText || 'بنجهز الرصيد والتذاكر وآخر حالة لرحلاتك.'),
+    chips:
+      Array.isArray(boot.chips) && boot.chips.length
+        ? boot.chips.slice(0, 3)
+        : ['الحجز', 'التذاكر', 'المحفظة'],
+  };
+}
+
+function UnifiedBootScreen() {
+  const bootUi = useMemo(() => readBootUiState(), []);
   const [connectionInfo, setConnectionInfo] = useState(readRuntimeConnection);
   const progressConfig = useMemo(
     () => getBootProgressConfig(connectionInfo),
@@ -153,7 +177,7 @@ function UnifiedBootScreen({ text }) {
   }, [progressConfig.cap, progressConfig.step, progressConfig.tickMs]);
 
   return (
-    <div className="boot-shell app-shell-bg" aria-live="polite">
+    <div className="boot-shell app-shell-bg" aria-live="polite" aria-busy="true">
       <div className="boot-card">
         <div className="boot-brand">
           <div className="boot-brand-top">
@@ -166,18 +190,16 @@ function UnifiedBootScreen({ text }) {
         </div>
 
         <div className="boot-body">
-          <span className="boot-route">تجهيز التطبيق</span>
+          <span className="boot-route">{bootUi.routeLabel}</span>
 
-          <h2 className="boot-title">{text}</h2>
+          <h2 className="boot-title">{bootUi.title}</h2>
 
-          <p className="boot-text">
-            بنحمّل الحساب، المحفظة، التذاكر، والإعدادات بنفس منطق الشاشة الأولى من غير ما تحس إن فيه لودينج تاني مختلف.
-          </p>
+          <p className="boot-text">{bootUi.text}</p>
 
           <div className="boot-progress" aria-hidden="true">
             <div className="boot-progress-head">
               <span>{progressConfig.footerLabel}</span>
-              <span>{Math.round(progress)}%</span>
+              <span>{formatPercent(progress)}</span>
             </div>
             <div className="boot-progress-track">
               <div
@@ -191,11 +213,15 @@ function UnifiedBootScreen({ text }) {
           </div>
 
           <div className="boot-chips">
-            <span className="boot-chip boot-chip--brand">الحجز</span>
+            {bootUi.chips.map((chip, index) => (
+              <span
+                key={chip}
+                className={`boot-chip ${index === 0 ? 'boot-chip--brand' : ''}`}
+              >
+                {chip}
+              </span>
+            ))}
             <span className="boot-chip">{connectionInfo.connectionLabel}</span>
-            <span className="boot-chip">
-              {connectionInfo.isOnline ? 'جاهز للدخول' : 'بانتظار الاتصال'}
-            </span>
           </div>
 
           <div className="boot-note">{progressConfig.hint}</div>
@@ -205,7 +231,7 @@ function UnifiedBootScreen({ text }) {
               <span className="boot-pulse" />
               <span>{connectionInfo.connectionLabel}</span>
             </span>
-            <span>{connectionInfo.isOnline ? 'تحميل فعلي حسب الشبكة' : 'الشبكة غير متاحة الآن'}</span>
+            <span>{connectionInfo.isOnline ? 'بنجهز دخولك الآن' : 'بانتظار رجوع الاتصال'}</span>
           </div>
         </div>
       </div>
@@ -228,7 +254,7 @@ export default function App() {
   }
 
   if (authLoading) {
-    return <UnifiedBootScreen text="جاري تحميل الحساب والتجربة الأساسية…" />;
+    return <UnifiedBootScreen />;
   }
 
   if (!session || !profile) {

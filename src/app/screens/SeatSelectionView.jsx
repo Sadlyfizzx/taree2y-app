@@ -12,6 +12,7 @@ import {
 import { InlineNotice } from '../components/ui/StateBlocks';
 import { getTripBookability } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
+import { formatInteger } from '../utils/formatting';
 
 const LEGEND_ITEMS = [
   { label: 'مختار', tone: 'brand' },
@@ -83,7 +84,7 @@ function SeatSelectionView({
     }
 
     if (selectedSeats.length >= passengers) {
-      showToast(`مطلوب ${passengers} مقاعد فقط في الحجز ده.`, 'error');
+      showToast(`مطلوب ${formatInteger(passengers)} مقاعد فقط في الحجز ده.`, 'error');
       return;
     }
 
@@ -105,11 +106,11 @@ function SeatSelectionView({
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <MetaChip
-            label={`مطلوب ${passengers} ${passengers === 1 ? 'مقعد' : 'مقاعد'}`}
+            label={`مطلوب ${formatInteger(passengers)} ${passengers === 1 ? 'مقعد' : 'مقاعد'}`}
             tone="brand"
           />
           <MetaChip
-            label={`المختار ${selectedSeats.length}`}
+            label={`المختار ${formatInteger(selectedSeats.length)}`}
             tone={isReady ? 'success' : 'neutral'}
           />
           <MetaChip label={data.class} tone="neutral" />
@@ -240,7 +241,7 @@ function SeatSelectionView({
             <p className="text-sm font-black text-[var(--ink)]">
               {isReady
                 ? 'المقاعد جاهزة للمراجعة والدفع'
-                : `اختار ${remainingSeats} ${remainingSeats === 1 ? 'مقعد كمان' : 'مقاعد كمان'}`}
+                : `اختار ${formatInteger(remainingSeats)} ${remainingSeats === 1 ? 'مقعد كمان' : 'مقاعد كمان'}`}
             </p>
             <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">
               لو غيرت رأيك، تقدر تشيل أي كرسي قبل ما تكمل.
@@ -273,3 +274,4 @@ function SectionHeaderLite({ title, subtitle }) {
 }
 
 export default SeatSelectionView;
+

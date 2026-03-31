@@ -11,9 +11,15 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:booking": "vitest run src/lib/promoEngine.test.js src/app/screens/CheckoutView.test.jsx",
-    "qa:phase3": "npm run test:booking",
+    "qa:phase3": "npm run test:all && npm run e2e:smoke",
     "test:core": "vitest run src/app/components/internal/InternalOpsPanel.test.jsx src/app/public/publicPortal.test.js src/app/public/PublicWalletTopUpView.test.jsx src/app/components/UserApp.smoke.test.jsx",
-    "test:all": "npm run test:booking && npm run test:core"
+    "test:all": "npm run test:booking && npm run test:core",
+    "e2e": "playwright test",
+    "e2e:smoke": "playwright test tests/e2e/smoke.spec.js --project=chromium",
+    "e2e:headed": "playwright test --headed",
+    "qa:phase4": "npm run test:booking && npm run e2e:smoke",
+    "playwright:install": "playwright install chromium",
+    "e2e:smoke:headed": "playwright test tests/e2e/smoke.spec.js --project=chromium --headed"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -29,7 +35,8 @@
     "globals": "^17.4.0",
     "jsdom": "^29.0.1",
     "vite": "^8.0.1",
-    "vitest": "^4.1.1"
+    "vitest": "^4.1.1",
+    "@playwright/test": "^1.55.0"
   },
   "dependencies": {
     "@fontsource/cairo": "^5.2.7",
@@ -42,5 +49,9 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwindcss": "^4.2.2"
+  },
+  "test": {
+    "environment": "jsdom",
+    "globals": true
   }
 }

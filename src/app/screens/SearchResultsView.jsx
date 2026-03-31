@@ -15,7 +15,7 @@ import {
   TripCardSkeleton,
 } from '../components/ui/StateBlocks';
 import { withStationNames } from '../utils/stations';
-import { formatDateText } from '../utils/formatting';
+import { formatCountText, formatDateText, formatInteger } from '../utils/formatting';
 import {
   getLocalDateInputValue,
   getSearchAvailabilityNotice,
@@ -158,17 +158,17 @@ function SearchResultsView({
                   {searchParams.from} إلى {searchParams.to}
                 </h2>
                 <p className="mt-2 text-sm font-bold text-[var(--ink-muted)]">
-                  {formatDateText(searchParams.date)} · {searchParams.passengers}{' '}
+                  {formatDateText(searchParams.date)} · {formatInteger(searchParams.passengers)}{' '}
                   {searchParams.passengers === 1 ? 'راكب' : 'ركاب'}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <MetaChip label={`${displayedTrips.length} رحلة`} tone="brand" />
-                  <MetaChip label={`${totalAvailableSeats} مقعد متاح`} tone="success" />
+                  <MetaChip label={formatCountText(displayedTrips.length, "رحلة", "رحلات")} tone="brand" />
+                  <MetaChip label={`${formatInteger(totalAvailableSeats)} مقعد متاح`} tone="success" />
                   {closedTripsCount > 0 ? (
-                    <MetaChip label={`${closedTripsCount} غير متاحة`} tone="warning" />
+                    <MetaChip label={`${formatInteger(closedTripsCount)} غير متاحة`} tone="warning" />
                   ) : null}
                   {soldOutTripsCount > 0 ? (
-                    <MetaChip label={`${soldOutTripsCount} ممتلئة`} tone="warning" />
+                    <MetaChip label={`${formatInteger(soldOutTripsCount)} ممتلئة`} tone="warning" />
                   ) : null}
                 </div>
               </div>
@@ -191,7 +191,7 @@ function SearchResultsView({
                 <div className="min-w-0">
                   <p className="text-sm font-black text-[var(--ink)]">اعرض الرحلات المتاحة فقط</p>
                   <p className="mt-1 text-xs font-bold leading-5 text-[var(--ink-muted)]">
-                    يخفي الرحلات اللي فات وقت الحجز عليها أو انتهت، ويعرض {activeTripsCount} رحلة متاحة فقط.
+                    يخفي الرحلات اللي فات وقت الحجز عليها أو انتهت، ويعرض {formatInteger(activeTripsCount)} رحلة متاحة فقط.
                   </p>
                 </div>
 

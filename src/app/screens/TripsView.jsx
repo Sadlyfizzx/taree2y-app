@@ -18,15 +18,9 @@ import {
   cx,
 } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
-import { formatCurrency, formatSeatsText } from '../utils/formatting';
+import { formatCurrency, formatInteger, formatPercent, formatSeatsText } from '../utils/formatting';
 import { getCancellationPolicy, getTripBookingUiState } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
-
-const UPCOMING_FILTERS = [
-  { key: 'all', label: 'الكل' },
-  { key: 'available', label: 'المتاحة' },
-  { key: 'refund_pending', label: 'استرداد جاري' },
-];
 
 function renderStatusBadge(displayStatus, isPendingCancellation) {
   if (isPendingCancellation) {
@@ -53,7 +47,6 @@ export default function TripsView({
   isOnline = true,
 }) {
   const [activeTab, setActiveTab] = useState('upcoming');
-  const [activeUpcomingFilter, setActiveUpcomingFilter] = useState('all');
   const [cancelingTrip, setCancelingTrip] = useState(null);
   const [isCancelSubmitting, setIsCancelSubmitting] = useState(false);
 
@@ -73,40 +66,28 @@ export default function TripsView({
   );
 
   const counts = useMemo(() => {
-    const available = computedTrips.filter((trip) => trip.bookingUi?.isAvailable).length;
-    const refundPending = computedTrips.filter((trip) => trip.bookingUi?.isRefundPending).length;
-
     return {
-      upcoming: available + refundPending,
-      available,
-      refundPending,
+      upcoming: computedTrips.filter((trip) =>
+        ['upcoming', 'refund_pending'].includes(trip.displayStatus),
+      ).length,
       past: computedTrips.filter((trip) => trip.bookingUi?.isPast).length,
       cancelled: computedTrips.filter((trip) => trip.bookingUi?.isCancelled).length,
     };
   }, [computedTrips]);
 
   const filteredTrips = useMemo(() => {
-    const baseTrips =
-      activeTab === 'upcoming'
-        ? computedTrips.filter((trip) =>
-            ['upcoming', 'refund_pending'].includes(trip.displayStatus),
-          )
-        : activeTab === 'past'
-        ? computedTrips.filter((trip) => trip.bookingUi?.isPast)
-        : computedTrips.filter((trip) => trip.bookingUi?.isCancelled);
-
-    if (activeTab !== 'upcoming') return baseTrips;
-
-    if (activeUpcomingFilter === 'available') {
-      return baseTrips.filter((trip) => trip.bookingUi?.isAvailable);
+    if (activeTab === 'upcoming') {
+      return computedTrips.filter((trip) =>
+        ['upcoming', 'refund_pending'].includes(trip.displayStatus),
+      );
     }
 
-    if (activeUpcomingFilter === 'refund_pending') {
-      return baseTrips.filter((trip) => trip.bookingUi?.isRefundPending);
+    if (activeTab === 'past') {
+      return computedTrips.filter((trip) => trip.bookingUi?.isPast);
     }
 
-    return baseTrips;
-  }, [activeTab, activeUpcomingFilter, computedTrips]);
+    return computedTrips.filter((trip) => trip.bookingUi?.isCancelled);
+  }, [activeTab, computedTrips]);
 
   useEffect(() => {
     if (!cancelingTrip) setIsCancelSubmitting(false);
@@ -171,67 +152,26 @@ export default function TripsView({
             >
               <span>{item.label}</span>
               <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] dark:bg-white/10">
-                {item.count}
+                {formatInteger(item.count)}
               </span>
             </button>
           ))}
         </div>
       </AppSurface>
 
-      {activeTab === 'upcoming' ? (
-        <AppSurface className="p-4">
-          <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
-            {UPCOMING_FILTERS.map((item) => {
-              const count =
-                item.key === 'available'
-                  ? counts.available
-                  : item.key === 'refund_pending'
-                  ? counts.refundPending
-                  : counts.upcoming;
-
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setActiveUpcomingFilter(item.key)}
-                  className={`interactive-press inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-black transition-all ${
-                    activeUpcomingFilter === item.key
-                      ? 'border-transparent bg-[var(--info-bg)] text-[var(--brand-strong)] dark:text-[var(--brand)]'
-                      : 'border-[var(--line)] bg-[var(--surface-strong)] text-[var(--ink-muted)]'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] dark:bg-white/10">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </AppSurface>
-      ) : null}
-
       {filteredTrips.length === 0 ? (
         <EmptyStateCard
           icon={ReceiptText}
           title={
             activeTab === 'upcoming'
-              ? activeUpcomingFilter === 'available'
-                ? 'مفيش رحلات متاحة للسفر حالياً'
-                : activeUpcomingFilter === 'refund_pending'
-                ? 'مفيش رحلات في استرداد جاري'
-                : 'مفيش حجوزات قادمة'
+              ? 'مفيش رحلات قادمة'
               : activeTab === 'past'
               ? 'مفيش رحلات سابقة'
               : 'مفيش رحلات ملغية'
           }
           text={
             activeTab === 'upcoming'
-              ? activeUpcomingFilter === 'available'
-                ? 'الفلتر ده بيعرض الرحلات اللي لسه صالحة ومهمة للسفر فقط.'
-                : activeUpcomingFilter === 'refund_pending'
-                ? 'أي حجز دخل مرحلة الاسترداد هيظهر هنا لحد ما المعالجة تكتمل.'
-                : 'أول ما تحجز رحلة، هتظهر هنا عشان تراجعها أو تفتح التذكرة.'
+              ? 'أول ما تحجز رحلة، هتظهر هنا عشان تراجعها أو تفتح التذكرة. ولو فيه استرداد جاري هيفضل ظاهر هنا لحد ما يكتمل.'
               : activeTab === 'past'
               ? 'بعد ما الرحلة تنتهي، هتفضل هنا كمرجع سريع.'
               : 'أي رحلة يتم إلغاؤها هتظهر هنا مع حالة الاسترداد.'
@@ -400,7 +340,7 @@ export default function TripsView({
                   </span>
                 </div>
                 <div className="flex items-start justify-between gap-3 text-sm font-bold text-rose-700 dark:text-rose-300">
-                  <span>رسوم الإلغاء ({Math.round(cancelPolicy.feeRatio * 100)}%)</span>
+                  <span>رسوم الإلغاء ({formatPercent(cancelPolicy.feeRatio, { scale: 100 })})</span>
                   <span>
                     - {formatCurrency(Math.round(cancelingTrip.finalTotal * cancelPolicy.feeRatio))}
                   </span>

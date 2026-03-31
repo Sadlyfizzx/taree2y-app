@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { EmptyStateCard } from '../components/ui/StateBlocks';
 import { MetaChip, SecondaryButton, cx } from '../components/ui/AppPrimitives';
+import { formatInteger } from '../utils/formatting';
 
 const FILTERS = [
   { key: 'all', label: 'الكل' },
@@ -159,7 +160,7 @@ export default function NotificationsModal({
                 <div className="min-w-0">
                   <p className="truncate text-lg font-black text-[var(--ink)]">التنبيهات</p>
                   <p className="mt-0.5 text-xs font-bold text-[var(--ink-muted)]">
-                    {unreadCount > 0 ? `عندك ${unreadCount} غير مقروءة` : 'كل التنبيهات واضحة ومقروءة'}
+                    {unreadCount > 0 ? `عندك ${formatInteger(unreadCount)} غير مقروءة` : 'كل التنبيهات واضحة ومقروءة'}
                   </p>
                 </div>
               </div>

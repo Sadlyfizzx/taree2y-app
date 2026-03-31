@@ -3,6 +3,7 @@ import { loadSupabaseAppState } from '../../lib/supabaseAppState';
 import { supabase } from '../../lib/supabase';
 import { createLogger } from '../../lib/logger';
 import { sortWalletTransactions } from '../../lib/wallet';
+import { isQaModeEnabled, readQaAppState } from '../utils/qaMode';
 
 const log = createLogger('cloud-app-state');
 
@@ -75,6 +76,19 @@ export function useCloudAppState(userId) {
 
   const refreshCloudState = useCallback(
     async ({ silent = false, force = false } = {}) => {
+      if (isQaModeEnabled()) {
+        const qaState = readQaAppState() || EMPTY_APP_STATE;
+        applyAppState(qaState);
+        setBackendReady(true);
+        setBackendLoading(false);
+        return {
+          ok: true,
+          code: 'qa_mode',
+          message: 'تم تحميل حالة الاختبار المحلية.',
+          data: qaState,
+        };
+      }
+
       if (!userId) {
         applyAppState(EMPTY_APP_STATE);
         setBackendReady(false);
@@ -162,6 +176,14 @@ export function useCloudAppState(userId) {
     let active = true;
 
     (async () => {
+      if (isQaModeEnabled()) {
+        const qaState = readQaAppState() || EMPTY_APP_STATE;
+        applyAppState(qaState);
+        setBackendReady(true);
+        setBackendLoading(false);
+        return;
+      }
+
       if (!userId) {
         applyAppState(EMPTY_APP_STATE);
         setBackendReady(false);
@@ -187,7 +209,7 @@ export function useCloudAppState(userId) {
   }, [applyAppState, refreshCloudState, userId]);
 
   useEffect(() => {
-    if (!backendReady || !userId) return;
+    if (isQaModeEnabled() || !backendReady || !userId) return;
 
     const syncNow = () =>
       refreshCloudState({ silent: true }).catch((error) =>
@@ -259,3 +281,4 @@ export function useCloudAppState(userId) {
     refreshCloudState,
   };
 }
+

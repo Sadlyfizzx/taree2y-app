@@ -5,6 +5,7 @@ import { AppSurface, MetaChip } from '../components/ui/AppPrimitives';
 import { InlineNotice, LoadingPanel } from '../components/ui/StateBlocks';
 import { ROUTE_META, getTripLifecycleStatus } from '../utils/travel';
 import { getPublicTripShare } from './publicPortal';
+import { formatPercent, formatTimeText } from '../utils/formatting';
 
 function Shell({ children }) {
   return (
@@ -106,7 +107,7 @@ export default function PublicTripTrackingView({ token }) {
           <div className="text-right">
             <p className="text-sm font-black text-slate-500 dark:text-slate-400">وقت الوصول المتوقع</p>
             <h2 className="mt-2 text-right text-4xl font-black text-slate-900 dark:text-white" dir="ltr">
-              {payload.arrivalTime}
+              {formatTimeText(payload.arrivalTime)}
             </h2>
             <p className="mt-2 text-sm font-bold text-slate-500 dark:text-slate-400">يتم تحديث الحالة تلقائياً كل 30 ثانية.</p>
           </div>
@@ -114,7 +115,7 @@ export default function PublicTripTrackingView({ token }) {
           <div className="w-full max-w-[320px] rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
             <div className="flex items-center justify-between text-sm font-black text-slate-900 dark:text-white">
               <span>تقدم الرحلة</span>
-              <span>{Math.round(lifecycle?.progress || 0)}%</span>
+              <span>{formatPercent(lifecycle?.progress || 0)}</span>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
               <div className="h-full rounded-full bg-[linear-gradient(90deg,#2156d9_0%,#0f9f8a_100%)]" style={{ width: `${Math.max(0, Math.min(100, lifecycle?.progress || 0))}%` }} />

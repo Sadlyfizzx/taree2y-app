@@ -24,7 +24,7 @@ import {
   StickyActionBar,
 } from '../components/ui/AppPrimitives';
 import { InlineNotice } from '../components/ui/StateBlocks';
-import { formatCurrency, formatHoldCountdown } from '../utils/formatting';
+import { formatCurrency, formatHoldCountdown, formatInteger, formatPercent, formatSeatsText } from '../utils/formatting';
 import { getCancellationPolicy, getTripBookability } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
 
@@ -311,6 +311,15 @@ function CheckoutView({
   }, [trip?.holdExpiresAt]);
 
   useEffect(() => {
+    setRemainingHoldMs(getRemainingHoldMs(trip?.holdExpiresAt));
+  }, [trip?.holdExpiresAt]);
+
+  useEffect(() => {
+    overlapApprovalRef.current = '';
+    setOverlapWarning(null);
+  }, [trip?.instanceId, seats, passengers, promoInput, currentTrips]);
+
+  useEffect(() => {
     const normalizedInput = String(promoInput || '').trim().toUpperCase();
 
     if (!normalizedInput && promoState.status !== 'idle') {
@@ -541,9 +550,9 @@ function CheckoutView({
           <RouteTimeline trip={data} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <MetaChip label={`المقاعد: ${seats.join('، ')}`} tone="brand" />
+          <MetaChip label={`المقاعد: ${formatSeatsText(seats)}`} tone="brand" />
           <MetaChip
-            label={`${passengers} ${passengers === 1 ? 'راكب' : 'ركاب'}`}
+            label={`${formatInteger(passengers)} ${passengers === 1 ? 'راكب' : 'ركاب'}`}
             tone="neutral"
           />
           <MetaChip
@@ -675,7 +684,7 @@ function CheckoutView({
               ملخص المبلغ
             </h3>
             <div className="mt-4 space-y-3">
-              <KeyValueRow label={`تذاكر × ${passengers}`} value={formatCurrency(baseTotal)} />
+              <KeyValueRow label={`تذاكر × ${formatInteger(passengers)}`} value={formatCurrency(baseTotal)} />
               {luggageFee > 0 ? <KeyValueRow label="وزن إضافي" value={formatCurrency(luggageFee)} /> : null}
               {autoDiscount > 0 ? (
                 <KeyValueRow
@@ -705,7 +714,7 @@ function CheckoutView({
                 label={`رصيدك الحالي ${formatCurrency(wallet)}`}
                 tone={isWalletSufficient ? 'success' : 'warning'}
               />
-              <MetaChip label={`نقاط بعد الرحلة ${pointsToAwardLater}`} tone="brand" />
+              <MetaChip label={`نقاط بعد الرحلة ${formatInteger(pointsToAwardLater)}`} tone="brand" />
             </div>
           </AppSurface>
 
@@ -717,7 +726,7 @@ function CheckoutView({
                 label="الرسوم المتوقعة"
                 value={
                   cancellationPreview.allowed
-                    ? `${Math.round(cancellationPreview.feeRatio * 100)}%`
+                    ? formatPercent(cancellationPreview.feeRatio, { scale: 100 })
                     : 'غير متاح'
                 }
               />
@@ -831,3 +840,4 @@ function CheckoutView({
 }
 
 export default CheckoutView;
+

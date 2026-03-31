@@ -32,11 +32,11 @@ function getErrorMessage(error) {
   }).toLowerCase();
 
   if (payload.includes('get_public_wallet_topup_request')) {
-    return 'ميزة طلبات الشحن الآمنة محتاجة SQL pass 3 على Supabase قبل استخدام روابط الـ QR الجديدة.';
+    return 'خدمة الشحن غير متاحة حالياً. ارجع للتطبيق وجرّب رابط جديد بعد شوية.';
   }
 
   if (payload.includes('confirm_public_wallet_topup_request')) {
-    return 'تأكيد الشحن الآمن محتاج SQL pass 3 على Supabase قبل ما العملية تشتغل بشكل صحيح.';
+    return 'تعذر تأكيد الشحن حالياً. جرّب مرة تانية أو ارجع للتطبيق واطلع رابط جديد.';
   }
 
   if (payload.includes('expired')) {
@@ -204,13 +204,13 @@ export default function PublicWalletTopUpView() {
                 <TriangleAlert className="h-5 w-5 text-amber-700 dark:text-amber-300" />
               )}
               <p className="text-sm font-black text-slate-900 dark:text-white">
-                {requestData ? 'الطلب صادر من السيرفر ومربوط بنفس الحساب' : 'الرابط محتاج إعادة إصدار'}
+                {requestData ? 'الطلب مربوط بنفس الحساب' : 'الرابط محتاج إعادة إصدار'}
               </p>
             </div>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
               {requestData
-                ? 'الصفحة بتقرأ الطلب من السيرفر مباشرة. تغيير أي باراميتر في الرابط لن ينشئ طلبًا جديدًا.'
-                : 'رقم العملية غير معروف على السيرفر أو انتهت صلاحيته. ارجع للتطبيق وطلّع رابط جديد.'}
+                ? 'الرابط ده مخصص لنفس العملية، وأي تعديل عليه مش هيكمل الشحن.'
+                : 'الرابط غير متاح دلوقتي أو انتهت صلاحيته. ارجع للتطبيق وطلّع رابط جديد.'}
             </p>
           </div>
 

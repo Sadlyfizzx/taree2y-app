@@ -7,6 +7,7 @@ import {
 } from '../../lib/auth';
 import { isInactiveProfile, normalizeProfileRow } from '../../lib/account';
 import { supabase } from '../../lib/supabase';
+import { isQaModeEnabled, readQaIdentity } from '../utils/qaMode';
 
 const log = createLogger('auth-session');
 
@@ -138,6 +139,17 @@ export function useAuthSession() {
       setAuthLoading(true);
 
       try {
+        if (isQaModeEnabled()) {
+          const qaIdentity = readQaIdentity();
+          if (!qaIdentity) throw new Error('qa_identity_missing');
+          if (unsubscribed || !mountedRef.current) return;
+          setSession(qaIdentity.session);
+          setProfile(qaIdentity.profile);
+          setAuthWarning('');
+          setAuthLoading(false);
+          return;
+        }
+
         const { data, error } = await supabase.auth.getSession();
         if (error) throw error;
 
@@ -164,6 +176,13 @@ export function useAuthSession() {
     };
 
     bootstrap();
+
+    if (isQaModeEnabled()) {
+      return () => {
+        unsubscribed = true;
+        mountedRef.current = false;
+      };
+    }
 
     const {
       data: { subscription },
@@ -210,3 +229,4 @@ export function useAuthSession() {
     refreshProfile,
   };
 }
+

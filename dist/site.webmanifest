@@ -1,0 +1,51 @@
+{
+  "name": "طريقي",
+  "short_name": "طريقي",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#2156d9",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/app-icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/app-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "الرحلات",
+      "short_name": "الرحلات",
+      "url": "/"
+    },
+    {
+      "name": "التذاكر",
+      "short_name": "التذاكر",
+      "url": "/tickets"
+    },
+    {
+      "name": "المحفظة",
+      "short_name": "المحفظة",
+      "url": "/wallet"
+    }
+  ]
+}

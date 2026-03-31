@@ -11,6 +11,7 @@ import { InlineNotice } from '../components/ui/StateBlocks';
 import { getTripLifecycleStatus, ROUTE_META } from '../utils/travel';
 import { withStationNames } from '../utils/stations';
 import { createPublicTripShare, copyTextWithFallback } from '../public/publicPortal';
+import { formatInteger, formatPercent, formatTimeText } from '../utils/formatting';
 
 function TrackingView({ ticket, showToast }) {
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -99,14 +100,14 @@ function TrackingView({ ticket, showToast }) {
           <div className="space-y-3 text-right">
             <MetaChip label={lifecycle.statusText} tone={lifecycle.key === 'rest_stop' ? 'warning' : progress === 100 ? 'success' : 'brand'} className="border-white/10 bg-white/10 text-white" />
             <h2 className="text-right text-4xl font-black" dir="ltr">
-              {data.arrivalTime}
+              {formatTimeText(data.arrivalTime)}
             </h2>
             <p className="text-right text-sm font-bold text-white/80">وقت الوصول المتوقع حسب الحالة الحالية.</p>
           </div>
           <div className="w-full max-w-[340px] rounded-[26px] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
             <div className="flex items-center justify-between text-sm font-black text-white">
               <span>تقدم الرحلة</span>
-              <span>{Math.round(progress)}%</span>
+              <span>{formatPercent(progress)}</span>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/15">
               <div className="h-full rounded-full bg-[linear-gradient(90deg,#ffffff_0%,#9ff4e2_100%)] transition-all" style={{ width: `${progress}%` }} />
@@ -129,7 +130,7 @@ function TrackingView({ ticket, showToast }) {
               </span>
               <div>
                 <p className="text-lg font-black text-[var(--ink)]">{data.driver.name}</p>
-                <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">كابتن الرحلة · {data.driver.trips} رحلة سابقة</p>
+                <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">كابتن الرحلة · {formatInteger(data.driver.trips)} رحلة سابقة</p>
               </div>
             </div>
             <MetaChip icon={<Star className="h-3.5 w-3.5 fill-current" />} label={`تقييم ${data.driver.rating}`} tone="warning" />
@@ -152,7 +153,7 @@ function TrackingView({ ticket, showToast }) {
             <div className="flex-1 space-y-6">
               <div>
                 <p className="text-sm font-black text-[var(--ink)]">التحرك من {data.fromStationName}</p>
-                <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">{data.departureTime} · {data.from}</p>
+                <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">{formatTimeText(data.departureTime)} · {data.from}</p>
               </div>
               {routeMeta.hasRestStop ? (
                 <div className="rounded-[24px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-4">
@@ -164,7 +165,7 @@ function TrackingView({ ticket, showToast }) {
               ) : null}
               <div>
                 <p className="text-sm font-black text-[var(--ink)]">الوصول إلى {data.toStationName}</p>
-                <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">{data.arrivalTime} · {data.to}</p>
+                <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">{formatTimeText(data.arrivalTime)} · {data.to}</p>
               </div>
             </div>
           </div>

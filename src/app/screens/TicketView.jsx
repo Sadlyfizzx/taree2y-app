@@ -13,7 +13,7 @@ import {
   StatusBadge,
 } from '../components/ui/AppPrimitives';
 import { InlineNotice } from '../components/ui/StateBlocks';
-import { formatCurrency, formatSeatsText } from '../utils/formatting';
+import { formatCurrency, formatDateText, formatSeatsText } from '../utils/formatting';
 import { withStationNames } from '../utils/stations';
 import { createPublicTripShare, copyTextWithFallback } from '../public/publicPortal';
 import { buildTripPublicTrackingUrl } from '../utils/share';
@@ -179,7 +179,7 @@ function TicketView({ ticket, user, onTrack, showToast }) {
                 {data.pnr || data.id}
               </p>
             </div>
-            <MetaChip label={`التاريخ ${data.date}`} tone="brand" />
+            <MetaChip label={`التاريخ ${formatDateText(data.date)}`} tone="brand" />
           </div>
 
           <div className="mt-4">

@@ -27,7 +27,7 @@ import {
 } from '../components/ui/AppPrimitives';
 import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
 import { CITIES, getLocalDateInputValue } from '../utils/travel';
-import { formatCurrency, formatDateText } from '../utils/formatting';
+import { formatCurrency, formatDateText, formatInteger } from '../utils/formatting';
 import { getPrimaryStationName, withStationNames } from '../utils/stations';
 import { copyTextWithFallback } from '../public/publicPortal';
 
@@ -535,7 +535,7 @@ function HomeView({
 
             <div className="mt-5 flex flex-wrap gap-2">
               <MetaChip label={`رصيدك ${formatCurrency(wallet)}`} tone="brand" className="border-white/10 bg-white/10 text-white" />
-              <MetaChip label={`${points} نقطة`} tone="success" className="border-white/10 bg-white/10 text-white" />
+              <MetaChip label={`${formatInteger(points)} نقطة`} tone="success" className="border-white/10 bg-white/10 text-white" />
               <MetaChip
                 label={subscription !== 'none' ? `باقة ${subscription === 'vip' ? 'VIP' : 'طالب'}` : 'بدون باقة'}
                 tone="warning"

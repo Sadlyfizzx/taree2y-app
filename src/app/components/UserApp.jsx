@@ -31,6 +31,8 @@ import { useCloudAppState } from '../hooks/useCloudAppState';
 import { useTripNotifications } from '../hooks/useTripNotifications';
 import { getLocalDateInputValue, getTripBookingUiState } from '../utils/travel';
 import { ensureTicketIdentity } from '../utils/tripIdentity';
+import { formatCurrency, formatInteger } from '../utils/formatting';
+import { buildQaSearchResults, isQaModeEnabled } from '../utils/qaMode';
 import {
   createBookingAtomic,
   holdTripSeats,
@@ -40,6 +42,8 @@ import {
 import { cancelBookingAtomicCompat } from '../../lib/cancelBookingCompat';
 import { useOnboardingGuide } from '../hooks/useOnboardingGuide';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAppNavigation, scheduleViewportScrollReset } from '../hooks/useAppNavigation';
+import { useTimedToasts } from '../hooks/useTimedToasts';
 import { BottomNavItem, MetaChip } from './ui/AppPrimitives';
 import HeaderNetworkIndicator from './ui/HeaderNetworkIndicator';
 import NetworkStatusBanner from './ui/NetworkStatusBanner';
@@ -93,56 +97,6 @@ function writePromoPopupLastSeen(userId, popupKey, timestamp = Date.now()) {
 }
 
 
-const ROUTE_TO_STATE = {
-  '/': { view: 'main', page: 'home' },
-  '/home': { view: 'main', page: 'home' },
-  '/bookings': { view: 'main', page: 'bookings' },
-  '/tickets': { view: 'main', page: 'tickets' },
-  '/wallet': { view: 'main', page: 'wallet' },
-  '/profile': { view: 'main', page: 'profile' },
-  '/search': { view: 'search', page: 'home' },
-  '/seats': { view: 'seats', page: 'home' },
-  '/payment': { view: 'checkout', page: 'home' },
-  '/booking-success': { view: 'invoice', page: 'home' },
-  '/ticket': { view: 'ticket', page: 'tickets' },
-  '/trip-status': { view: 'tracking', page: 'tickets' },
-};
-
-const STATE_TO_PATH = {
-  'main:home': '/home',
-  'main:bookings': '/bookings',
-  'main:tickets': '/tickets',
-  'main:wallet': '/wallet',
-  'main:profile': '/profile',
-  'search:home': '/search',
-  'seats:home': '/seats',
-  'checkout:home': '/payment',
-  'invoice:home': '/booking-success',
-  'ticket:tickets': '/ticket',
-  'tracking:tickets': '/trip-status',
-};
-
-const NAV_ITEMS = [
-  { key: 'home', label: 'الرئيسية', icon: Home },
-  { key: 'bookings', label: 'رحلاتي', icon: Route },
-  { key: 'tickets', label: 'التذاكر', icon: QrCode },
-  { key: 'wallet', label: 'المحفظة', icon: WalletIcon },
-  { key: 'profile', label: 'الحساب', icon: User },
-];
-
-
-const formatCancellationErrorMessage = (result) => {
-  if (!result) return 'تعذر إلغاء الحجز حالياً.';
-  const payload = String(result?.message || result?.error?.message || '').toLowerCase();
-  if (payload.includes('has no field "date"')) {
-    return 'الإلغاء غير متاح حاليًا بسبب تحديث في الخادم. لو محتاج تلغي الحجز الآن، شغّل ملف SQL المرفق أو راجع إدارة قاعدة البيانات.';
-  }
-  if (result.errorClass === 'missing_rpc' || isMissingRpcError(result, 'cancel_booking_atomic')) {
-    return 'الإلغاء غير متاح حاليًا. جرّب مرة تانية بعد شوية أو تواصل مع الدعم.';
-  }
-  return result.message || 'تعذر إلغاء الحجز حالياً.';
-};
-
 function readInternalOpsEnabled() {
   if (String(import.meta.env.VITE_ENABLE_INTERNAL_OPS || '').toLowerCase() === 'true') return true;
   try {
@@ -153,13 +107,14 @@ function readInternalOpsEnabled() {
   }
 }
 
-function resolveStateFromPath(pathname) {
-  return ROUTE_TO_STATE[pathname] || { view: 'main', page: 'home' };
-}
 
-function createPath(view, page) {
-  return STATE_TO_PATH[`${view}:${page}`] || '/home';
-}
+const NAV_ITEMS = [
+  { key: 'home', label: 'الرئيسية', icon: Home },
+  { key: 'bookings', label: 'رحلاتي', icon: Route },
+  { key: 'tickets', label: 'التذاكر', icon: QrCode },
+  { key: 'wallet', label: 'المحفظة', icon: WalletIcon },
+  { key: 'profile', label: 'الحساب', icon: User },
+];
 
 function SidebarNavButton({ item, active, compact, onClick }) {
   const Icon = item.icon;
@@ -179,57 +134,6 @@ function SidebarNavButton({ item, active, compact, onClick }) {
   );
 }
 
-function scrollViewportToTop(behavior = 'auto') {
-  if (typeof window === 'undefined') return;
-
-  const safeBehavior = behavior === 'smooth' ? 'smooth' : 'auto';
-  const root = typeof document !== 'undefined' ? document.documentElement : null;
-  const body = typeof document !== 'undefined' ? document.body : null;
-
-  const tryScroll = () => {
-    try {
-      window.scrollTo({ top: 0, left: 0, behavior: safeBehavior });
-    } catch {
-      window.scrollTo(0, 0);
-    }
-
-    if (root) root.scrollTop = 0;
-    if (body) body.scrollTop = 0;
-
-    if (typeof document !== 'undefined') {
-      const candidates = document.querySelectorAll(
-        '[data-scroll-root="true"], .app-shell-scroll, .app-page-scroll, .app-page-frame, main, [role="main"]',
-      );
-      candidates.forEach((node) => {
-        if (node && typeof node.scrollTop === 'number') {
-          node.scrollTop = 0;
-        }
-      });
-    }
-  };
-
-  tryScroll();
-}
-
-function scheduleViewportScrollReset(behavior = 'auto') {
-  if (typeof window === 'undefined') return;
-
-  scrollViewportToTop(behavior);
-
-  [0, 40, 120, 220, 360, 520, 760, 980].forEach((delay) => {
-    window.setTimeout(() => {
-      scrollViewportToTop('auto');
-    }, delay);
-  });
-
-  window.requestAnimationFrame(() => {
-    scrollViewportToTop('auto');
-    window.requestAnimationFrame(() => {
-      scrollViewportToTop('auto');
-    });
-  });
-}
-
 export default function UserApp({
   userId,
   profile,
@@ -239,8 +143,8 @@ export default function UserApp({
   setIsDark,
   runtimeMode = 'supabase',
 }) {
-  const initialRoute = resolveStateFromPath(typeof window !== 'undefined' ? window.location.pathname || '/home' : '/home');
   const todayDate = getLocalDateInputValue();
+  const isQaMode = isQaModeEnabled();
 
   const user = useMemo(
     () => ({
@@ -257,7 +161,7 @@ export default function UserApp({
     transactions,
     setTransactions,
     myTrips,
-    _setMyTrips,
+    setMyTrips,
     points,
     setPoints,
     subscription,
@@ -267,11 +171,9 @@ export default function UserApp({
   } = useCloudAppState(userId);
 
   const networkStatus = useNetworkStatus();
+  const { isOnline, showBanner: showNetworkBanner, justRestored } = networkStatus;
+  const { toasts, showToast } = useTimedToasts();
 
-  const { isOnline, showBanner: showNetworkBanner, justRestored } = useNetworkStatus();
-
-  const [activePage, setActivePage] = useState(initialRoute.page);
-  const [activeView, setActiveView] = useState(initialRoute.view);
   const [isSidebarCompact, setIsSidebarCompact] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileMenuVisible, setIsMobileMenuVisible] = useState(false);
@@ -282,8 +184,16 @@ export default function UserApp({
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [currentInvoice, setCurrentInvoice] = useState(null);
   const [viewedTicket, setViewedTicket] = useState(null);
-  const [toasts, setToasts] = useState([]);
   const [activeModal, setActiveModal] = useState(null);
+  const { activePage, activeView, navigateTo, goBack } = useAppNavigation({
+    activeModal,
+    onNavigate: () => {
+      setIsMobileMenuOpen(false);
+      if (activeModal === 'notifications') {
+        setActiveModal(null);
+      }
+    },
+  });
   const [notificationAnchorTick, setNotificationAnchorTick] = useState(0);
   const [walletQrInitialAmount, setWalletQrInitialAmount] = useState(null);
   const [pendingCancellationBookingIds, setPendingCancellationBookingIds] = useState([]);
@@ -340,14 +250,6 @@ export default function UserApp({
     const timeoutId = window.setTimeout(() => setIsMobileMenuVisible(false), 220);
     return () => window.clearTimeout(timeoutId);
   }, [isMobileMenuOpen]);
-
-  const showToast = useCallback((msg, type = 'success') => {
-    const id = Date.now() + Math.floor(Math.random() * 1000);
-    setToasts((prev) => [...prev, { id, msg, type }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, 4000);
-  }, []);
 
   const requireOnline = useCallback(
     (message = 'العملية دي محتاجة إنترنت ثابت حالياً.', tone = 'warning') => {
@@ -676,28 +578,6 @@ export default function UserApp({
     setActiveModal(null);
   };
 
-  const syncLocation = useCallback((view, page, { replace = false } = {}) => {
-    const path = createPath(view, page);
-    const currentPath = typeof window !== 'undefined' ? window.location.pathname || '/home' : '/home';
-    if (currentPath === path) return;
-    const method = replace ? 'replaceState' : 'pushState';
-    window.history[method]({}, '', path);
-  }, []);
-
-  const navigateTo = useCallback(
-    (nextView, nextPage = activePage, options = {}) => {
-      setActiveView(nextView);
-      setActivePage(nextPage);
-      syncLocation(nextView, nextPage, options);
-      setIsMobileMenuOpen(false);
-      if (activeModal === 'notifications') {
-        setActiveModal(null);
-      }
-      scheduleViewportScrollReset(options.instant ? 'auto' : 'auto');
-    },
-    [activeModal, activePage, syncLocation],
-  );
-
 useEffect(() => {
   scheduleViewportScrollReset('auto');
   return undefined;
@@ -786,32 +666,18 @@ useEffect(() => {
     [markNotificationRead, navigateTo, setActiveModal, showToast],
   );
 
-  useEffect(() => {
-    const handlePopState = () => {
-      const next = resolveStateFromPath(window.location.pathname || '/home');
-      setActiveView(next.view);
-      setActivePage(next.page);
-      scheduleViewportScrollReset('auto');
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
 
-  const goBack = () => {
-    if (activeView === 'invoice') navigateTo('ticket', 'tickets');
-    else if (activeView === 'checkout') navigateTo('seats');
-    else if (activeView === 'seats') navigateTo('search');
-    else if (activeView === 'search') navigateTo('main', 'home');
-    else if (activeView === 'ticket') navigateTo('main', 'tickets');
-    else if (activeView === 'tracking') navigateTo('ticket', 'tickets');
-    else navigateTo('main', 'home');
-  };
 
   const handleSearch = async (predefinedParams = null) => {
     const params = predefinedParams || searchParams;
     if (!params.from || !params.to || !params.date) return showToast('حدد مكان التحرك والوصول وتاريخ الرحلة الأول.', 'error');
     if (params.from === params.to) return showToast('محافظة التحرك هي نفس محافظة الوصول.', 'error');
     if (predefinedParams) setSearchParams(params);
+
+    setSelectedTrip(null);
+    setSelectedSeats([]);
+    setCurrentInvoice(null);
+    setViewedTicket(null);
 
     if (!requireOnline('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل تحديث نتائج الرحلات.', 'warning')) {
       return;
@@ -821,6 +687,10 @@ useEffect(() => {
     navigateTo('search');
 
     try {
+      if (isQaMode) {
+        setSearchResults(buildQaSearchResults(params));
+        return;
+      }
       const results = await searchTripInventory({ from: params.from, to: params.to, date: params.date, passengers: params.passengers });
       const authoritativeTrips = Array.isArray(results?.trips) ? results.trips.filter((trip) => String(trip?.instanceId || '').trim()) : [];
       const hasFallbackSource = String(results?.source || '').toLowerCase().includes('fallback');
@@ -850,6 +720,8 @@ useEffect(() => {
     });
     setCurrentInvoice(invoice);
     setViewedTicket(normalizedTicket);
+    setSelectedTrip(normalizedTicket);
+    setSelectedSeats([]);
     log.info('booking_finalized', { bookingId: normalizedTicket?.bookingId || normalizedTicket?.id || null, pnr: normalizedTicket?.pnr || null, runtimeMode });
     scheduleViewportScrollReset('auto');
     navigateTo('invoice');
@@ -859,6 +731,38 @@ useEffect(() => {
   const createBookingForTrip = async ({ trip, seatNumbers, passengers, promoCode, promoDiscountAmount: _promoDiscountAmount = 0, hasLuggage, needsAccess }) => {
     if (!requireOnline('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل الدفع وتأكيد الحجز.', 'warning')) {
       return { ok: false, code: 'offline', message: 'أنت حالياً أوفلاين. اتأكد من الإنترنت قبل الدفع وتأكيد الحجز.' };
+    }
+
+    if (isQaMode) {
+      const safeTrip = ensureTicketIdentity({
+        ...trip,
+        bookingId: trip?.bookingId || `qa-booking-${Date.now()}`,
+        pnr: trip?.pnr || `QA${String(Date.now()).slice(-6)}`,
+        seats: trip?.seats || [],
+        seatNumbers,
+        passengers,
+        finalTotal: Number(trip?.price || 0) * Number(passengers || 1),
+        status: 'upcoming',
+      });
+      const invoice = {
+        pnr: safeTrip.pnr,
+        total: safeTrip.finalTotal || 0,
+        items: [
+          { name: `تذاكر × ${formatInteger(passengers)}`, price: safeTrip.finalTotal || 0 },
+        ],
+      };
+      setWallet((currentValue) => Math.max(0, Number(currentValue || 0) - Number(invoice.total || 0)));
+      setPoints((currentValue) => Number(currentValue || 0) + Math.max(0, Math.floor(Number(invoice.total || 0) / 10)));
+      setTransactions((currentValue) => [{
+        id: `qa-txn-${Date.now()}`,
+        type: 'booking_payment',
+        amount: -Number(invoice.total || 0),
+        createdAt: new Date().toISOString(),
+        title: `حجز ${safeTrip.from} إلى ${safeTrip.to}`,
+        status: 'completed',
+      }, ...(Array.isArray(currentValue) ? currentValue : [])]);
+      setMyTrips((currentValue) => [safeTrip, ...(Array.isArray(currentValue) ? currentValue : [])]);
+      return { ok: true, booking: safeTrip, invoice };
     }
 
     if (!trip?.instanceId) {
@@ -874,16 +778,28 @@ useEffect(() => {
 
   const commitSeatSelection = async (tripArg = selectedTrip, seatNumbersArg = selectedSeats) => {
     if (!tripArg) return { ok: false, message: 'No trip selected' };
+    const normalizedSeatNumbers = Array.from(new Set(Array.isArray(seatNumbersArg) ? seatNumbersArg : [])).sort();
     if (!requireOnline('أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.', 'warning')) {
       return { ok: false, code: 'offline', message: 'أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.' };
     }
+
+    if (isQaMode) {
+      const holdExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      setSelectedSeats(normalizedSeatNumbers);
+      setSelectedTrip((prev) => ({ ...(prev || tripArg), holdExpiresAt }));
+      scheduleViewportScrollReset('auto');
+      navigateTo('checkout');
+      window.setTimeout(() => scheduleViewportScrollReset('auto'), 80);
+      return { ok: true, holdExpiresAt, hold_expires_at: holdExpiresAt };
+    }
+
     if (!tripArg?.instanceId) {
       const result = { ok: false, code: 'backend_trip_required', message: 'اختيار المقاعد غير متاح على الرحلة دي حالياً. جرّب تحديث النتائج واختيار رحلة تانية.' };
       showToast(result.message, 'error');
       return result;
     }
 
-    const holdResult = await holdTripSeats({ tripInstanceId: tripArg.instanceId, seatNumbers: seatNumbersArg });
+    const holdResult = await holdTripSeats({ tripInstanceId: tripArg.instanceId, seatNumbers: normalizedSeatNumbers });
     if (!holdResult?.ok) {
       showToast(holdResult?.message || 'بعض المقاعد لم تعد متاحة.', 'error');
       try {
@@ -917,7 +833,7 @@ useEffect(() => {
         await refreshCloudState({ silent: true, force: true });
         return;
       }
-      showToast(`تم الإلغاء، ورجعلك ${Number(result?.refundAmount || 0)} ج.م للمحفظة.`, 'success');
+      showToast(`تم الإلغاء، ورجعلك ${formatCurrency(result?.refundAmount || 0)} للمحفظة.`, 'success');
       await refreshCloudState({ silent: true, force: true });
     } catch (error) {
       log.error('booking_cancel_failed', { bookingId, pnr: tripToCancel?.pnr || null, error });
@@ -944,13 +860,20 @@ useEffect(() => {
       async search(params = {}) {
         const next = { from: params.from || qaStateRef.current.searchParams?.from || 'القاهرة', to: params.to || qaStateRef.current.searchParams?.to || 'الإسكندرية', date: params.date || getLocalDateInputValue(), passengers: Number(params.passengers || qaStateRef.current.searchParams?.passengers || 1) };
         await handleSearch(next);
-        await wait(250);
+        await wait(isQaMode ? 120 : 250);
         return this.snapshot().searchResults;
       },
       async openTrip(index = 0) {
         const trips = qaStateRef.current.searchResults?.trips || [];
         const trip = trips[index];
         if (!trip) return null;
+        if (isQaMode) {
+          setSelectedTrip(trip);
+          setSelectedSeats([]);
+          navigateTo('seats');
+          await wait(120);
+          return trip;
+        }
         const hydrated = await hydrateTripWithSeats(trip);
         setSelectedTrip(hydrated);
         setSelectedSeats([]);
@@ -958,10 +881,43 @@ useEffect(() => {
         await wait(150);
         return hydrated;
       },
+      async selectFirstAvailableSeats(count = Number(qaStateRef.current.searchParams?.passengers || 1)) {
+        const trip = qaStateRef.current.selectedTrip;
+        const available = Array.isArray(trip?.seats)
+          ? trip.seats.filter((seat) => seat?.status === 'available').slice(0, Math.max(1, count)).map((seat) => seat.number)
+          : [];
+        setSelectedSeats(available);
+        await wait(80);
+        return available;
+      },
+      async goCheckout() {
+        await commitSeatSelection(qaStateRef.current.selectedTrip, qaStateRef.current.selectedSeats);
+        await wait(150);
+        return this.snapshot();
+      },
+      async completeBooking() {
+        const state = this.snapshot();
+        const result = await createBookingForTrip({
+          trip: state.selectedTrip,
+          seatNumbers: state.selectedSeats,
+          passengers: state.searchParams?.passengers || 1,
+          promoCode: '',
+          hasLuggage: false,
+          needsAccess: false,
+        });
+        if (result?.ok) {
+          finalizeBookingSuccess(result.booking, result.invoice);
+        }
+        await wait(150);
+        return this.snapshot();
+      },
       async smoke() {
         await this.goHome();
         await this.search({ from: 'القاهرة', to: 'الإسكندرية', passengers: 1 });
         await this.openTrip(0);
+        await this.selectFirstAvailableSeats(1);
+        await this.goCheckout();
+        await this.completeBooking();
         await wait(150);
         return this.snapshot();
       },
@@ -1079,9 +1035,9 @@ useEffect(() => {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-black tracking-[0.16em] text-[var(--sidebar-ink-muted)]">الرصيد الحالي</p>
-                      <p className="mt-2 text-xl font-black">{wallet} ج.م</p>
+                      <p className="mt-2 text-xl font-black">{formatCurrency(wallet)}</p>
                     </div>
-                    <MetaChip label={`${Number(points || 0)} نقطة`} tone="neutral" className="border-[var(--sidebar-line)] bg-[var(--sidebar-soft)] text-[var(--sidebar-ink)] dark:border-[var(--sidebar-line)] dark:bg-[var(--sidebar-soft)] dark:text-[var(--sidebar-ink)]" />
+                    <MetaChip label={`${formatInteger(points || 0)} نقطة`} tone="neutral" className="border-[var(--sidebar-line)] bg-[var(--sidebar-soft)] text-[var(--sidebar-ink)] dark:border-[var(--sidebar-line)] dark:bg-[var(--sidebar-soft)] dark:text-[var(--sidebar-ink)]" />
                   </div>
                 </div>
               ) : null}
@@ -1182,10 +1138,9 @@ useEffect(() => {
                   type="button"
                   onClick={() => navigateTo('main', 'wallet')}
                   className="app-pressable hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-700 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-800 dark:hover:text-indigo-300 sm:inline-flex"
-                  dir="ltr"
                 >
                   <WalletIcon className="h-4 w-4 text-emerald-500" />
-                  {wallet} ج
+                  {formatCurrency(wallet)}
                 </button>
               </div>
             </div>
@@ -1498,3 +1453,4 @@ useEffect(() => {
     </>
   );
 }
+
