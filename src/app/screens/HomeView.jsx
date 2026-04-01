@@ -25,7 +25,7 @@ import {
   SectionHeader,
   cx,
 } from '../components/ui/AppPrimitives';
-import { EmptyStateCard, InlineNotice } from '../components/ui/StateBlocks';
+import { EmptyStateCard } from '../components/ui/StateBlocks';
 import { CITIES, getLocalDateInputValue } from '../utils/travel';
 import { formatCurrency, formatDateText, formatInteger } from '../utils/formatting';
 import { getPrimaryStationName, withStationNames } from '../utils/stations';
@@ -442,9 +442,9 @@ function HomeView({
 
   return (
     <div className="app-page-frame min-w-0 overflow-x-clip space-y-6 pb-[calc(env(safe-area-inset-bottom)+116px)] md:space-y-7 md:pb-0">
-      <section className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr] xl:items-start">
+      <section className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr] xl:items-stretch">
         <section
-          className="app-surface relative z-20 order-1 rounded-[32px] p-5 md:rounded-[32px] md:p-6 xl:order-2"
+          className="app-surface relative z-20 order-1 flex h-full flex-col rounded-[32px] p-5 md:rounded-[32px] md:p-6 xl:order-2"
           style={{ overflow: 'visible' }}
         >
           <SectionHeader title="دور على رحلتك" subtitle="كل اختيار يفتح فوق البطاقة بشكل واضح، ومن غير ما القوائم تتخبى تحتها." />
@@ -513,7 +513,7 @@ function HomeView({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-dashed border-[var(--line-strong)] bg-[var(--surface-soft)] px-4 py-3">
-            <p className="text-sm font-bold text-[var(--ink-muted)]">لو محتاج تبدّل الاتجاه بسرعة، استخدم الزر ده.</p>
+            <p className="text-sm font-bold text-[var(--ink-muted)]">بدّل الاتجاه بسرعة.</p>
             <SecondaryButton icon={<ArrowRightLeft className="h-4 w-4" />} onClick={handleSwap}>
               بدّل الاتجاه
             </SecondaryButton>
@@ -524,8 +524,8 @@ function HomeView({
           </PrimaryButton>
         </section>
 
-        <div className="order-2 space-y-5 xl:order-1">
-          <div className="app-brand-panel app-grid-pattern rounded-[32px] p-5 md:rounded-[36px] md:p-7">
+        <div className="order-2 xl:order-1">
+          <div className="app-brand-panel app-grid-pattern flex h-full min-h-[100%] flex-col justify-between rounded-[32px] p-5 md:rounded-[36px] md:p-7">
             <PageHeading
               eyebrow="رحلات مصر بشكل أوضح"
               title="احجز وانت مطمّن من أول خطوة"
@@ -552,7 +552,7 @@ function HomeView({
                 <p className="text-sm font-black">الدليل السريع</p>
                 <p className="mt-1 text-sm font-bold leading-6 text-white/78">
                   {isFirstTimeUser
-                    ? 'لو دي أول مرة، هيوضح لك خطوات الحجز في أقل من دقيقة.'
+                    ? 'لو دي أول مرة، افتحه وخد جولة سريعة على خطوات الحجز.'
                     : 'افتحه وقت ما تحب تراجع الحجز أو التذكرة أو الإلغاء.'}
                 </p>
               </button>
@@ -569,16 +569,6 @@ function HomeView({
               </button>
             </div>
           </div>
-
-          {isFirstTimeUser ? (
-            <InlineNotice
-              title="ابدأ من البحث فقط"
-              text="حدد منين ورايح فين ويوم السفر. التطبيق هيكمل معاك خطوة بخطوة لحد التذكرة."
-              actionLabel="افتح الدليل"
-              onAction={openGuide}
-              icon={Sparkles}
-            />
-          ) : null}
         </div>
       </section>
 

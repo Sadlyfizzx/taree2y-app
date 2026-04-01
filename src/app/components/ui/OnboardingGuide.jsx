@@ -72,8 +72,8 @@ export default function OnboardingGuide({ isOpen, onClose, onComplete }) {
         setStepIndex(0);
         onClose();
       }}
-      title="ابدأ بسرعة مع طريقي"
-      subtitle="نسخة أخف وأنظف للموبايل تشرح أهم 6 حاجات فقط، وبعد أول مرة هتقدر تفتح الدليل يدويًا وقت ما تحب."
+      title="جولة سريعة مع طريقي"
+      subtitle="دليل مختصر يوضح أهم خطوات الحجز والتذكرة والمتابعة."
       icon={<Sparkles className="h-5 w-5 sm:h-6 sm:w-6" />}
       maxWidth="max-w-3xl"
       bodyClassName="px-4 pb-4 pt-3 sm:px-6 sm:pb-5"
@@ -81,7 +81,6 @@ export default function OnboardingGuide({ isOpen, onClose, onComplete }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <MetaChip label={progressText} tone="neutral" />
-            <MetaChip label="مرة واحدة تلقائيًا" tone="brand" />
           </div>
           <div className="flex gap-2 sm:gap-3">
             <SecondaryButton
@@ -158,11 +157,7 @@ export default function OnboardingGuide({ isOpen, onClose, onComplete }) {
         <div className="rounded-[24px] border border-dashed border-[var(--line-strong)] bg-[var(--surface-strong)] px-4 py-4 sm:rounded-[26px]">
           <p className="text-sm font-black text-[var(--ink)]">مهم قبل ما تكمل</p>
           <p className="mt-2 text-sm font-bold leading-6 text-[var(--ink-muted)]">{step.hint}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <MetaChip label="موبايل أولاً" tone="brand" />
-            <MetaChip label="شرح مختصر" tone="neutral" />
-            <MetaChip label="تقدر تفتحه لاحقًا" tone="success" />
-          </div>
+
         </div>
       </div>
     </ModalShell>

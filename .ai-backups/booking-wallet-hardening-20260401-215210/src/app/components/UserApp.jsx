@@ -176,7 +176,6 @@ export default function UserApp({
     commitSeatSelection,
     processDelayedRefund,
     selectTripForSeats,
-    refreshSelectedTripState,
     normalizedTrips,
     latestTrip,
     upcomingTickets,
@@ -551,9 +550,6 @@ export default function UserApp({
                     onSuccess={finalizeBookingSuccess}
                     showToast={showToast}
                     openModal={setActiveModal}
-                    onRefreshTripState={refreshSelectedTripState}
-                    onRefreshAccountState={refreshCloudState}
-                    onReturnToSeats={() => navigateTo('seats')}
                     isOnline={isOnline}
                   />
                 ) : null}

@@ -13,23 +13,12 @@ function normalizeRefundAmount(candidate) {
   return Number.isFinite(value) ? value : 0;
 }
 
-function hasMeaningfulCancelPayload(payload) {
-  return Boolean(payload && typeof payload === 'object' && Object.keys(payload).length);
-}
-
-function normalizeCancelResult(data, { contractVariant = 'unknown' } = {}) {
+function normalizeCancelResult(data) {
   const payload = data && typeof data === 'object' ? data : {};
-  const explicitOk =
-    typeof payload.ok === 'boolean'
-      ? payload.ok
-      : typeof payload.success === 'boolean'
-      ? payload.success
-      : null;
-  const ok = explicitOk ?? hasMeaningfulCancelPayload(payload);
+  const ok = Boolean(payload.ok ?? payload.success ?? true);
   return {
     ...payload,
     ok,
-    contractVariant,
     refundAmount: normalizeRefundAmount(payload),
     message: String(payload.message || payload.notice || '').trim(),
   };
@@ -90,7 +79,6 @@ export async function cancelBookingAtomicCompat({ bookingId, clientActionId = ''
   try {
     let data;
     let error;
-    let contractVariant = 'two_args';
 
     ({ data, error } = await callCancelBookingAtomicTwoArgs({
       safeBookingId,
@@ -98,21 +86,17 @@ export async function cancelBookingAtomicCompat({ bookingId, clientActionId = ''
     }));
 
     if (error && isSignatureMismatch(error)) {
-      log.warn('cancel_booking_atomic_signature_mismatch_fallback', {
+      log.warn('cancel_booking_retrying_single_signature', {
         bookingId: safeBookingId,
         error: normalizeSupabaseError(error),
       });
 
-      contractVariant = 'single_arg_fallback';
       ({ data, error } = await callCancelBookingAtomicSingleArg({ safeBookingId }));
     }
 
     if (error) throw error;
 
-    const result = normalizeCancelResult(data, { contractVariant });
-    if (!result.ok && !result.message) {
-      result.message = 'استجابة الإلغاء من السيرفر ناقصة أو غير مفهومة.';
-    }
+    const result = normalizeCancelResult(data);
     if (!result.message && result.ok) {
       result.message = 'تم إلغاء الحجز بنجاح.';
     }

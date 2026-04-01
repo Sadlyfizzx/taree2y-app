@@ -48,59 +48,10 @@ export function buildWalletTopupUrl({ requestId }) {
   return `${getAppOrigin()}/wallet-topup?${params.toString()}`;
 }
 
-function safeTopupLocalStorage() {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function createTopupNonce() {
-  if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 export function buildWalletTopupClientId(requestId) {
   const safe = String(requestId || '').trim();
   if (!safe) return `topup-${Date.now()}`;
   return `topup-${safe}`;
-}
-
-export function getWalletTopupClientStorageKey(requestId) {
-  return `taree2y_topup_client_${String(requestId || '').trim()}`;
-}
-
-export function getOrCreateWalletTopupClientId(requestId) {
-  const safe = String(requestId || '').trim();
-  if (!safe) return buildWalletTopupClientId(safe);
-
-  const storage = safeTopupLocalStorage();
-  const storageKey = getWalletTopupClientStorageKey(safe);
-
-  if (storage) {
-    try {
-      const existing = String(storage.getItem(storageKey) || '').trim();
-      if (existing) return existing;
-    } catch {
-      // ignore storage read errors
-    }
-  }
-
-  const nextClientId = `${buildWalletTopupClientId(safe)}-${createTopupNonce()}`;
-
-  if (storage) {
-    try {
-      storage.setItem(storageKey, nextClientId);
-    } catch {
-      // ignore storage write errors
-    }
-  }
-
-  return nextClientId;
 }
 
 export function getWalletTopupPaidStorageKey(requestId) {
@@ -225,65 +176,16 @@ function normalizeWalletTopupRequestPayload(payload) {
   };
 }
 
-export function isWalletTopupRequestExpired(request) {
-  const safeExpiry = String(request?.expiresAt || '').trim();
-  if (!safeExpiry) return false;
-  const timestamp = new Date(safeExpiry).getTime();
-  return Number.isFinite(timestamp) ? timestamp <= Date.now() : false;
-}
-
 function normalizeWalletTopupActionResult(payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
   const request = normalizeWalletTopupRequestPayload(source);
-  const explicitOk =
-    typeof source.ok === 'boolean'
-      ? source.ok
-      : typeof source.success === 'boolean'
-      ? source.success
-      : null;
-  const inferredOk = Boolean(
-    explicitOk === true ||
-      source.alreadyPaid === true ||
-      source.already_paid === true ||
-      request?.isPaid ||
-      request?.status === 'paid'
-  );
 
   return {
-    ok: inferredOk,
+    ok: Boolean(source.ok ?? true),
     alreadyPaid: Boolean(source.alreadyPaid ?? source.already_paid ?? request?.isPaid),
     message: String(source.message || '').trim(),
     request,
     raw: source,
-  };
-}
-
-function normalizePublicTripSharePayload(payload) {
-  const source = payload && typeof payload === 'object'
-    ? payload.payload && typeof payload.payload === 'object'
-      ? payload.payload
-      : payload
-    : null;
-
-  if (!source) return null;
-
-  const from = String(source.from || '').trim();
-  const to = String(source.to || '').trim();
-  const date = String(source.date || '').trim();
-  const departureTime = String(source.departureTime || source.departure_time || '').trim();
-  const arrivalTime = String(source.arrivalTime || source.arrival_time || '').trim();
-
-  if (!from || !to || !date || !departureTime || !arrivalTime) {
-    return null;
-  }
-
-  return {
-    ...source,
-    from,
-    to,
-    date,
-    departureTime,
-    arrivalTime,
   };
 }
 
@@ -311,7 +213,7 @@ export async function getPublicTripShare(token) {
   });
 
   if (error) throw error;
-  return normalizePublicTripSharePayload(data);
+  return data?.payload || data || null;
 }
 
 export async function issueWalletTopupRequest({
@@ -326,11 +228,7 @@ export async function issueWalletTopupRequest({
   });
 
   if (error) throw error;
-  const request = normalizeWalletTopupRequestPayload(data);
-  if (!request?.requestId) {
-    throw new Error('wallet_topup_issue_contract_invalid');
-  }
-  return request;
+  return normalizeWalletTopupRequestPayload(data);
 }
 
 export async function getPublicWalletTopupRequest(requestId) {
@@ -351,16 +249,7 @@ export async function confirmPublicWalletTopupRequest({
   clientId,
 }) {
   const safeRequestId = String(requestId || '').trim();
-  const safeClientId = String(clientId || getOrCreateWalletTopupClientId(safeRequestId)).trim();
-  if (!safeRequestId) {
-    return {
-      ok: false,
-      alreadyPaid: false,
-      message: 'رقم طلب الشحن غير صالح.',
-      request: null,
-      raw: {},
-    };
-  }
+  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
 
   const { data, error } = await supabase.rpc('confirm_public_wallet_topup_request', {
     p_request_id: safeRequestId,
@@ -369,15 +258,7 @@ export async function confirmPublicWalletTopupRequest({
   });
 
   if (error) throw error;
-  const result = normalizeWalletTopupActionResult(data);
-  if (!result.request?.requestId) {
-    return {
-      ...result,
-      ok: false,
-      message: result.message || 'استجابة تأكيد الشحن من السيرفر ناقصة أو غير مفهومة.',
-    };
-  }
-  return result;
+  return normalizeWalletTopupActionResult(data);
 }
 
 export async function publicTopupWallet({
@@ -388,16 +269,7 @@ export async function publicTopupWallet({
   clientId,
 }) {
   const safeRequestId = String(requestId || '').trim();
-  const safeClientId = String(clientId || getOrCreateWalletTopupClientId(safeRequestId)).trim();
-  if (!safeRequestId) {
-    return {
-      ok: false,
-      alreadyPaid: false,
-      message: 'رقم طلب الشحن غير صالح.',
-      request: null,
-      raw: {},
-    };
-  }
+  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
 
   const { data, error } = await supabase.rpc('public_topup_wallet', {
     p_user_id: userId,

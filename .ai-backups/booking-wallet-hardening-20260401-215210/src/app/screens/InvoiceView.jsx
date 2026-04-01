@@ -42,16 +42,6 @@ function InvoiceView({ invoice, ticket, onContinue }) {
           </div>
           <MetaChip label={`رقم العملية ${invoice.pnr}`} tone="brand" className="border-white/10 bg-white/10 text-white" />
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <MetaChip label="تم التأكيد من السيرفر" tone="success" className="border-white/10 bg-white/10 text-white" />
-          {preparedTicket?.bookingId || preparedTicket?.id ? (
-            <MetaChip
-              label={`مرجع الحجز ${preparedTicket?.bookingId || preparedTicket?.id}`}
-              tone="brand"
-              className="border-white/10 bg-white/10 text-white"
-            />
-          ) : null}
-        </div>
       </section>
 
       {preparedTicket?.from ? (
@@ -84,10 +74,7 @@ function InvoiceView({ invoice, ticket, onContinue }) {
         </AppSurface>
 
         <AppSurface className="p-5">
-          <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-bold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
-            المبلغ الظاهر هنا هو المبلغ المؤكد بعد رد السيرفر، وليس مجرد معاينة الدفع قبل التأكيد.
-          </div>
-          <h3 className="mt-4 text-lg font-black text-[var(--ink)]">إيه اللي بعد كده؟</h3>
+          <h3 className="text-lg font-black text-[var(--ink)]">إيه اللي بعد كده؟</h3>
           <div className="mt-4 space-y-3">
             <div className="rounded-[24px] border border-[var(--line)] bg-[var(--surface-soft)] px-4 py-4">
               <p className="text-sm font-black text-[var(--ink)]">١) افتح التذكرة</p>

@@ -3,10 +3,9 @@ import { CheckCircle2, CreditCard, ShieldCheck, TriangleAlert } from 'lucide-rea
 import { AppSurface, PrimaryButton, SecondaryButton } from '../components/ui/AppPrimitives';
 import { formatCurrency } from '../utils/formatting';
 import {
+  buildWalletTopupClientId,
   confirmPublicWalletTopupRequest,
-  getOrCreateWalletTopupClientId,
   getPublicWalletTopupRequest,
-  isWalletTopupRequestExpired,
   markWalletTopupPaid,
   readWalletTopupPaidState,
 } from './publicPortal';
@@ -58,7 +57,7 @@ export default function PublicWalletTopUpView() {
     requestId ? '' : 'رابط الشحن غير صالح أو ناقص. اطلب رابط جديد من داخل التطبيق.'
   );
 
-  const clientId = useMemo(() => getOrCreateWalletTopupClientId(requestId), [requestId]);
+  const clientId = useMemo(() => buildWalletTopupClientId(requestId), [requestId]);
 
   useEffect(() => {
     let active = true;
@@ -87,12 +86,6 @@ export default function PublicWalletTopUpView() {
 
         setRequestData(nextRequest);
 
-        if (isWalletTopupRequestExpired(nextRequest)) {
-          setStatus('error');
-          setMessage('رابط الشحن انتهت صلاحيته. ارجع للتطبيق واطلع رابط جديد لنفس الحساب.');
-          return;
-        }
-
         const paidState = readWalletTopupPaidState(nextRequest.requestId);
         if (matchesPaidState(paidState, nextRequest) || nextRequest.isPaid) {
           setStatus('success');
@@ -116,44 +109,6 @@ export default function PublicWalletTopUpView() {
     };
   }, [requestId]);
 
-  useEffect(() => {
-    if (!requestId) return undefined;
-
-    const refreshRequest = async () => {
-      try {
-        const nextRequest = await getPublicWalletTopupRequest(requestId);
-        if (!nextRequest) return;
-        setRequestData(nextRequest);
-        if (isWalletTopupRequestExpired(nextRequest)) {
-          setStatus((currentValue) => (currentValue === 'success' ? currentValue : 'error'));
-          setMessage((currentValue) => currentValue || 'رابط الشحن انتهت صلاحيته. ارجع للتطبيق واطلع رابط جديد.');
-          return;
-        }
-        if (nextRequest.isPaid) {
-          setStatus('success');
-          setMessage('العملية دي اتدفعت بالفعل قبل كده وتم احتسابها على نفس الحساب.');
-        }
-      } catch {
-        // keep latest rendered state
-      }
-    };
-
-    const intervalId = window.setInterval(refreshRequest, 15000);
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void refreshRequest();
-      }
-    };
-
-    window.addEventListener('focus', refreshRequest);
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', refreshRequest);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [requestId]);
-
   const actionLabel = loadingRequest
     ? 'جاري تجهيز الطلب…'
     : status == 'loading'
@@ -162,8 +117,7 @@ export default function PublicWalletTopUpView() {
     ? 'تم التأكيد'
     : 'تأكيد الدفع الآن';
 
-  const requestExpired = isWalletTopupRequestExpired(requestData);
-  const isReady = Boolean(requestData && !loadingRequest && status !== 'loading' && status !== 'success' && !requestExpired);
+  const isReady = Boolean(requestData && !loadingRequest && status !== 'loading' && status !== 'success');
   const grossAmount = Number(requestData?.grossAmount || 0);
   const feeAmount = Number(requestData?.feeAmount || 0);
   const creditAmount = Number(requestData?.creditAmount || 0);
@@ -176,56 +130,14 @@ export default function PublicWalletTopUpView() {
     setMessage('');
 
     try {
-      const latestRequest = await getPublicWalletTopupRequest(requestData.requestId);
-      if (!latestRequest) {
-        setRequestData(null);
-        setStatus('error');
-        setMessage('الطلب ده غير موجود أو انتهى. ارجع للتطبيق وطلّع رابط شحن جديد.');
-        return;
-      }
-
-      setRequestData(latestRequest);
-
-      if (isWalletTopupRequestExpired(latestRequest)) {
-        setStatus('error');
-        setMessage('رابط الشحن انتهت صلاحيته. ارجع للتطبيق وطلّع رابط جديد.');
-        return;
-      }
-
-      if (latestRequest.isPaid || latestRequest.status === 'paid') {
-        markWalletTopupPaid(latestRequest.requestId, {
-          userId: latestRequest.userId,
-          grossAmount: latestRequest.grossAmount,
-          feeAmount: latestRequest.feeAmount,
-          creditAmount: latestRequest.creditAmount,
-          clientId,
-        });
-        setStatus('success');
-        setMessage('العملية دي كانت متأكدة بالفعل وتم منع التكرار.');
-        return;
-      }
-
       const result = await confirmPublicWalletTopupRequest({
-        requestId: latestRequest.requestId,
-        paymentChannel: latestRequest.paymentChannel || 'public_qr',
+        requestId: requestData.requestId,
+        paymentChannel: requestData.paymentChannel || 'public_qr',
         clientId,
       });
 
-      const nextRequest = result?.request || latestRequest;
-      const confirmedPaid = Boolean(
-        result?.ok &&
-          nextRequest?.requestId &&
-          (result?.alreadyPaid || nextRequest?.isPaid || nextRequest?.status === 'paid')
-      );
-
+      const nextRequest = result?.request || requestData;
       setRequestData(nextRequest);
-
-      if (!confirmedPaid) {
-        setStatus('error');
-        setMessage(result?.message || 'تعذر تأكيد الشحن لأن استجابة السيرفر ناقصة أو غير نهائية.');
-        return;
-      }
-
       markWalletTopupPaid(nextRequest.requestId, {
         userId: nextRequest.userId,
         grossAmount: nextRequest.grossAmount,
@@ -292,12 +204,12 @@ export default function PublicWalletTopUpView() {
                 <TriangleAlert className="h-5 w-5 text-amber-700 dark:text-amber-300" />
               )}
               <p className="text-sm font-black text-slate-900 dark:text-white">
-                {requestData ? 'الطلب مربوط بنفس الحساب والسيرفر هو المرجع' : 'الرابط محتاج إعادة إصدار'}
+                {requestData ? 'الطلب مربوط بنفس الحساب' : 'الرابط محتاج إعادة إصدار'}
               </p>
             </div>
             <p className="mt-2 text-sm font-bold leading-6 text-slate-500 dark:text-slate-400">
               {requestData
-                ? 'الرابط ده مخصص لنفس العملية، وأي علامة محلية على الجهاز مجرد منع لتكرار الضغط. التأكيد الحقيقي بيجي من السيرفر.'
+                ? 'الرابط ده مخصص لنفس العملية، وأي تعديل عليه مش هيكمل الشحن.'
                 : 'الرابط غير متاح دلوقتي أو انتهت صلاحيته. ارجع للتطبيق وطلّع رابط جديد.'}
             </p>
           </div>

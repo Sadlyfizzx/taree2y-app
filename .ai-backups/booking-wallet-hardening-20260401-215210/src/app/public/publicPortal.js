@@ -48,59 +48,10 @@ export function buildWalletTopupUrl({ requestId }) {
   return `${getAppOrigin()}/wallet-topup?${params.toString()}`;
 }
 
-function safeTopupLocalStorage() {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function createTopupNonce() {
-  if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
-    return window.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 export function buildWalletTopupClientId(requestId) {
   const safe = String(requestId || '').trim();
   if (!safe) return `topup-${Date.now()}`;
   return `topup-${safe}`;
-}
-
-export function getWalletTopupClientStorageKey(requestId) {
-  return `taree2y_topup_client_${String(requestId || '').trim()}`;
-}
-
-export function getOrCreateWalletTopupClientId(requestId) {
-  const safe = String(requestId || '').trim();
-  if (!safe) return buildWalletTopupClientId(safe);
-
-  const storage = safeTopupLocalStorage();
-  const storageKey = getWalletTopupClientStorageKey(safe);
-
-  if (storage) {
-    try {
-      const existing = String(storage.getItem(storageKey) || '').trim();
-      if (existing) return existing;
-    } catch {
-      // ignore storage read errors
-    }
-  }
-
-  const nextClientId = `${buildWalletTopupClientId(safe)}-${createTopupNonce()}`;
-
-  if (storage) {
-    try {
-      storage.setItem(storageKey, nextClientId);
-    } catch {
-      // ignore storage write errors
-    }
-  }
-
-  return nextClientId;
 }
 
 export function getWalletTopupPaidStorageKey(requestId) {
@@ -225,13 +176,6 @@ function normalizeWalletTopupRequestPayload(payload) {
   };
 }
 
-export function isWalletTopupRequestExpired(request) {
-  const safeExpiry = String(request?.expiresAt || '').trim();
-  if (!safeExpiry) return false;
-  const timestamp = new Date(safeExpiry).getTime();
-  return Number.isFinite(timestamp) ? timestamp <= Date.now() : false;
-}
-
 function normalizeWalletTopupActionResult(payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
   const request = normalizeWalletTopupRequestPayload(source);
@@ -351,16 +295,7 @@ export async function confirmPublicWalletTopupRequest({
   clientId,
 }) {
   const safeRequestId = String(requestId || '').trim();
-  const safeClientId = String(clientId || getOrCreateWalletTopupClientId(safeRequestId)).trim();
-  if (!safeRequestId) {
-    return {
-      ok: false,
-      alreadyPaid: false,
-      message: 'رقم طلب الشحن غير صالح.',
-      request: null,
-      raw: {},
-    };
-  }
+  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
 
   const { data, error } = await supabase.rpc('confirm_public_wallet_topup_request', {
     p_request_id: safeRequestId,
@@ -388,16 +323,7 @@ export async function publicTopupWallet({
   clientId,
 }) {
   const safeRequestId = String(requestId || '').trim();
-  const safeClientId = String(clientId || getOrCreateWalletTopupClientId(safeRequestId)).trim();
-  if (!safeRequestId) {
-    return {
-      ok: false,
-      alreadyPaid: false,
-      message: 'رقم طلب الشحن غير صالح.',
-      request: null,
-      raw: {},
-    };
-  }
+  const safeClientId = String(clientId || buildWalletTopupClientId(safeRequestId)).trim();
 
   const { data, error } = await supabase.rpc('public_topup_wallet', {
     p_user_id: userId,

@@ -93,18 +93,6 @@ export function createEmptyPromoResult() {
       requiresServerBooking: false,
       routeParams: null,
       source: 'none',
-      contractFallbackUsed: false,
-    },
-  };
-}
-
-function withPromoContractMeta(result, { source = 'none', fallbackUsed = false } = {}) {
-  return {
-    ...result,
-    data: {
-      ...(result?.data || {}),
-      source,
-      contractFallbackUsed: Boolean(fallbackUsed),
     },
   };
 }
@@ -485,10 +473,7 @@ export async function validatePromoCode({
 
     if (error) throw error;
 
-    return withPromoContractMeta(
-      normalizePromoPreview(data, normalizedCode, 'preview_app_promo'),
-      { source: 'preview_app_promo', fallbackUsed: false },
-    );
+    return normalizePromoPreview(data, normalizedCode, 'preview_app_promo');
   } catch (error) {
     if (!isMissingRpcError(error, 'preview_app_promo')) {
       const normalized = normalizeSupabaseError(error);
@@ -516,13 +501,10 @@ export async function validatePromoCode({
 
     if (error) throw error;
 
-    return withPromoContractMeta(
-      normalizePromoPreview(
-        data,
-        normalizedCode,
-        'validate_app_promo_code',
-      ),
-      { source: 'validate_app_promo_code', fallbackUsed: true },
+    return normalizePromoPreview(
+      data,
+      normalizedCode,
+      'validate_app_promo_code',
     );
   } catch (error) {
     if (isMissingRpcError(error, 'validate_app_promo_code')) {

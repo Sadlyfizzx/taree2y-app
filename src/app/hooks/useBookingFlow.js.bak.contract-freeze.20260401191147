@@ -89,69 +89,6 @@ function shouldPersistFlowDraft({ activeView, currentInvoice, viewedTicket, sele
   return Boolean(selectedTrip && getHoldExpiry(selectedTrip));
 }
 
-
-function hasValidBookingResult(result) {
-  return Boolean(result?.ok && result?.booking && result?.invoice);
-}
-
-function hasValidHoldResult(result) {
-  return Boolean(result?.ok && getHoldExpiry(result));
-}
-
-function normalizeSeatNumbers(seatNumbers = []) {
-  return Array.from(
-    new Set(
-      (Array.isArray(seatNumbers) ? seatNumbers : [])
-        .map((seat) => String(seat || '').trim())
-        .filter(Boolean),
-    ),
-  ).sort();
-}
-
-function isSeatSelectableForCurrentUser(seat) {
-  if (!seat?.number) return false;
-  if (seat.status === 'booked') return false;
-  if (seat.status === 'held' && !seat.heldByCurrentUser) return false;
-  return true;
-}
-
-function sanitizeSelectedSeatsForTrip(tripLike, seatNumbers = []) {
-  const seatMap = new Map(
-    (Array.isArray(tripLike?.seats) ? tripLike.seats : []).map((seat) => [
-      String(seat?.number || '').trim(),
-      seat,
-    ]),
-  );
-
-  return normalizeSeatNumbers(seatNumbers).reduce(
-    (accumulator, seatNumber) => {
-      const matchedSeat = seatMap.get(seatNumber);
-      if (matchedSeat && isSeatSelectableForCurrentUser(matchedSeat)) {
-        accumulator.validSeats.push(seatNumber);
-      } else {
-        accumulator.invalidSeats.push(seatNumber);
-      }
-      return accumulator;
-    },
-    { validSeats: [], invalidSeats: [] },
-  );
-}
-
-function mergeTripWithServerState(localTrip, serverTrip, preferredHoldExpiry = '') {
-  const safeLocalTrip = localTrip && typeof localTrip === 'object' ? localTrip : {};
-  const safeServerTrip = serverTrip && typeof serverTrip === 'object' ? serverTrip : {};
-
-  return {
-    ...safeLocalTrip,
-    ...safeServerTrip,
-    holdExpiresAt:
-      getHoldExpiry(safeServerTrip) ||
-      String(preferredHoldExpiry || '').trim() ||
-      getHoldExpiry(safeLocalTrip) ||
-      null,
-  };
-}
-
 export function useBookingFlow({
   userId,
   todayDate = getLocalDateInputValue(),
@@ -185,69 +122,6 @@ export function useBookingFlow({
   const qaStateRef = useRef({});
   const restoreAttemptedRef = useRef(false);
   const restoredDraftSignatureRef = useRef('');
-
-  const refreshSelectedTripState = useCallback(
-    async ({
-      tripArg = selectedTrip,
-      seatNumbers = selectedSeats,
-      preferredHoldExpiry = '',
-      syncState = true,
-    } = {}) => {
-      if (!tripArg) {
-        return {
-          ok: false,
-          code: 'trip_missing',
-          trip: null,
-          seats: normalizeSeatNumbers(seatNumbers),
-          invalidSeats: [],
-          selectionChanged: false,
-          holdExpired: true,
-        };
-      }
-
-      if (isQaMode || !tripArg?.instanceId) {
-        const mergedTrip = mergeTripWithServerState(tripArg, null, preferredHoldExpiry);
-        const sanitized = sanitizeSelectedSeatsForTrip(mergedTrip, seatNumbers);
-        if (syncState) {
-          setSelectedTrip(mergedTrip);
-          setSelectedSeats(sanitized.validSeats);
-        }
-        return {
-          ok: true,
-          code: 'local_only',
-          trip: mergedTrip,
-          seats: sanitized.validSeats,
-          invalidSeats: sanitized.invalidSeats,
-          selectionChanged:
-            sanitized.invalidSeats.length > 0 ||
-            sanitized.validSeats.length !== normalizeSeatNumbers(seatNumbers).length,
-          holdExpired: isHoldExpired(mergedTrip),
-        };
-      }
-
-      const hydrated = await hydrateTripWithSeats(tripArg);
-      const mergedTrip = mergeTripWithServerState(tripArg, hydrated, preferredHoldExpiry);
-      const sanitized = sanitizeSelectedSeatsForTrip(mergedTrip, seatNumbers);
-      if (syncState) {
-        setSelectedTrip(mergedTrip);
-        setSelectedSeats(sanitized.validSeats);
-      }
-
-      return {
-        ok: true,
-        code: 'synced',
-        trip: mergedTrip,
-        seats: sanitized.validSeats,
-        invalidSeats: sanitized.invalidSeats,
-        selectionChanged:
-          sanitized.invalidSeats.length > 0 ||
-          sanitized.validSeats.length !== normalizeSeatNumbers(seatNumbers).length,
-        holdExpired: isHoldExpired(mergedTrip),
-      };
-    },
-    [isQaMode, selectedSeats, selectedTrip],
-  );
-
   qaStateRef.current = {
     wallet,
     transactions,
@@ -410,65 +284,18 @@ export function useBookingFlow({
       return { ok: false, code: 'backend_trip_required', message: 'الحجز غير متاح على الرحلة دي حالياً. حدّث النتائج وجرب رحلة متاحة.' };
     }
     const result = await createBookingAtomic({ tripInstanceId: trip.instanceId, seatNumbers, passengers, promoCode, hasLuggage, rideToStation: false, needsAccess });
-    if (!result?.ok) {
-      try {
-        await refreshCloudState({ silent: true, force: true });
-      } catch (refreshError) {
-        log.warn('booking_rejected_refresh_failed', {
-          tripInstanceId: trip.instanceId,
-          error: refreshError,
-        });
-      }
-      return result;
+    if (result?.ok) {
+      await refreshCloudState({ silent: true, force: true });
+      if (result.booking) result.booking = ensureTicketIdentity(result.booking);
     }
-
-    if (!hasValidBookingResult(result)) {
-      log.error('booking_contract_invalid', {
-        tripInstanceId: trip.instanceId,
-        hasBooking: Boolean(result?.booking),
-        hasInvoice: Boolean(result?.invoice),
-      });
-      try {
-        await refreshCloudState({ silent: true, force: true });
-      } catch (refreshError) {
-        log.warn('booking_contract_invalid_refresh_failed', {
-          tripInstanceId: trip.instanceId,
-          error: refreshError,
-        });
-      }
-      return {
-        ok: false,
-        code: 'booking_contract_invalid',
-        message: 'استجابة تأكيد الحجز من السيرفر ناقصة. حدّث الحالة وحاول تاني.',
-      };
-    }
-
-    await refreshCloudState({ silent: true, force: true });
-    result.booking = ensureTicketIdentity(result.booking);
     return result;
   }, [isQaMode, requireOnline, refreshCloudState, setMyTrips, setPoints, setTransactions, setWallet]);
 
   const commitSeatSelection = useCallback(async (tripArg = selectedTrip, seatNumbersArg = selectedSeats) => {
     if (!tripArg) return { ok: false, message: 'No trip selected' };
-    const normalizedSeatNumbers = normalizeSeatNumbers(seatNumbersArg);
+    const normalizedSeatNumbers = Array.from(new Set(Array.isArray(seatNumbersArg) ? seatNumbersArg : [])).sort();
     if (!requireOnline('أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.', 'warning')) {
       return { ok: false, code: 'offline', message: 'أنت حالياً أوفلاين. لازم إنترنت لتثبيت المقاعد الحالية.' };
-    }
-
-    if (!normalizedSeatNumbers.length) {
-      const result = { ok: false, code: 'seat_selection_required', message: 'اختار المقاعد الأول قبل ما تثبتها.' };
-      showToast(result.message, 'error');
-      return result;
-    }
-
-    if (normalizedSeatNumbers.length !== Number(searchParams.passengers || 1)) {
-      const result = {
-        ok: false,
-        code: 'seat_count_mismatch',
-        message: `لازم تختار ${formatInteger(searchParams.passengers || 1)} ${Number(searchParams.passengers || 1) === 1 ? 'مقعد' : 'مقاعد'} قبل ما تكمل.`,
-      };
-      showToast(result.message, 'error');
-      return result;
     }
 
     if (isQaMode) {
@@ -489,77 +316,23 @@ export function useBookingFlow({
 
     const holdResult = await holdTripSeats({ tripInstanceId: tripArg.instanceId, seatNumbers: normalizedSeatNumbers });
     if (!holdResult?.ok) {
+      setSelectedSeats([]);
       showToast(holdResult?.message || 'بعض المقاعد لم تعد متاحة.', 'error');
       try {
-        const refreshed = await refreshSelectedTripState({
-          tripArg,
-          seatNumbers: normalizedSeatNumbers,
-          preferredHoldExpiry: getHoldExpiry(tripArg),
-        });
-        if (refreshed?.selectionChanged) {
-          showToast('بعض المقاعد اتغيرت من السيرفر. راجع الاختيار قبل ما تكمل.', 'warning');
-        }
+        setSelectedTrip(await hydrateTripWithSeats(tripArg));
       } catch (error) {
         log.warn('seat_rehydrate_after_hold_failure_failed', { tripInstanceId: tripArg.instanceId, error });
-        setSelectedSeats([]);
       }
       return holdResult;
     }
 
-    const holdExpiresAt = getHoldExpiry(holdResult);
-    if (!holdExpiresAt) {
-      try {
-        await refreshSelectedTripState({
-          tripArg,
-          seatNumbers: normalizedSeatNumbers,
-          preferredHoldExpiry: getHoldExpiry(tripArg),
-        });
-      } catch (error) {
-        log.warn('seat_refresh_after_hold_contract_invalid_failed', { tripInstanceId: tripArg.instanceId, error });
-      }
-      const result = {
-        ok: false,
-        code: 'hold_contract_invalid',
-        message: 'استجابة تثبيت المقاعد من السيرفر ناقصة. راجع المقاعد وحاول تاني.',
-      };
-      showToast(result.message, 'error');
-      return result;
-    }
-
-    const refreshed = await refreshSelectedTripState({
-      tripArg,
-      seatNumbers: normalizedSeatNumbers,
-      preferredHoldExpiry: holdExpiresAt,
-    });
-
-    if (!refreshed?.ok || refreshed.holdExpired) {
-      const result = {
-        ok: false,
-        code: 'hold_expired',
-        message: 'مهلة تثبيت المقاعد انتهت أو لم تعد صالحة. اختار المقاعد من جديد.',
-      };
-      showToast(result.message, 'error');
-      navigateTo('seats');
-      return result;
-    }
-
-    if (refreshed.selectionChanged) {
-      showToast('بعض المقاعد اتغيرت بعد التثبيت من السيرفر. راجع الاختيار قبل الدفع.', 'warning');
-      navigateTo('seats');
-      return {
-        ...holdResult,
-        ok: false,
-        code: 'seat_state_changed_after_hold',
-        holdExpiresAt,
-        hold_expires_at: holdExpiresAt,
-      };
-    }
-
+    setSelectedSeats(normalizedSeatNumbers);
+    setSelectedTrip((prev) => ({ ...(prev || tripArg), holdExpiresAt: holdResult.hold_expires_at || holdResult.holdExpiresAt || null }));
     scheduleViewportScrollReset('auto');
     navigateTo('checkout');
     window.setTimeout(() => scheduleViewportScrollReset('auto'), 80);
-    return { ...holdResult, holdExpiresAt, hold_expires_at: holdExpiresAt };
-  }, [isQaMode, navigateTo, refreshSelectedTripState, requireOnline, searchParams.passengers, selectedSeats, selectedTrip, showToast]);
+    return holdResult;
+  }, [isQaMode, navigateTo, requireOnline, selectedSeats, selectedTrip, showToast]);
 
   const processDelayedRefund = useCallback(async (tripToCancel) => {
     const bookingId = tripToCancel?.bookingId || tripToCancel?.id || null;
@@ -676,48 +449,32 @@ export function useBookingFlow({
           return;
         }
 
-        if (isQaMode) {
+        if (isQaMode || !savedTrip?.instanceId) {
           setSelectedTrip(savedTrip);
           setSelectedSeats(Array.isArray(draft.selectedSeats) ? draft.selectedSeats : []);
           navigateTo(desiredView);
           return;
         }
 
-        if (!savedTrip?.instanceId) {
-          clearBookingFlowDraft();
-          setSelectedTrip(savedTrip);
-          setSelectedSeats([]);
-          navigateTo('search');
-          showToast('الرابط المحفوظ للحجز لم يعد صالحًا لأن الرحلة لم تعد مرتبطة بعقد حجز معتمد من السيرفر.', 'warning');
-          return;
-        }
-
-        const restored = await refreshSelectedTripState({
-          tripArg: savedTrip,
-          seatNumbers: Array.isArray(draft.selectedSeats) ? draft.selectedSeats : [],
-          preferredHoldExpiry: savedHold,
-          syncState: false,
-        });
+        const hydrated = await hydrateTripWithSeats(savedTrip);
         if (cancelled) return;
 
-        if (!restored?.ok || restored.holdExpired) {
+        const hydratedWithHold = {
+          ...(hydrated || savedTrip),
+          holdExpiresAt: savedHold || hydrated?.holdExpiresAt || hydrated?.hold_expires_at || null,
+        };
+
+        if (isHoldExpired(hydratedWithHold)) {
           clearBookingFlowDraft();
-          setSelectedTrip(restored?.trip || savedTrip);
+          setSelectedTrip(hydrated || savedTrip);
           setSelectedSeats([]);
           navigateTo('search');
           showToast('انتهى وقت تثبيت المقاعد. اختار المقاعد من جديد.', 'warning');
           return;
         }
 
-        setSelectedTrip(restored.trip);
-        setSelectedSeats(restored.seats);
-
-        if (restored.selectionChanged) {
-          navigateTo('seats');
-          showToast('بعض المقاعد المحفوظة لم تعد متاحة. راجع الاختيار قبل ما تكمل.', 'warning');
-          return;
-        }
-
+        setSelectedTrip(hydratedWithHold);
+        setSelectedSeats(Array.isArray(draft.selectedSeats) ? draft.selectedSeats : []);
         navigateTo(desiredView);
       } catch (error) {
         if (cancelled) return;
@@ -730,49 +487,39 @@ export function useBookingFlow({
     return () => {
       cancelled = true;
     };
-  }, [isQaMode, navigateTo, refreshSelectedTripState, showToast, userId]);
+  }, [isQaMode, navigateTo, showToast, userId]);
 
   useEffect(() => {
-    if (isQaMode || !['seats', 'checkout'].includes(activeView) || !selectedTrip?.instanceId) {
-      return undefined;
-    }
+    if (isQaMode || activeView !== 'seats' || !selectedTrip?.instanceId) return undefined;
 
     let cancelled = false;
     const syncSeatsFromServer = async () => {
       try {
-        await refreshSelectedTripState({
-          tripArg: selectedTrip,
-          seatNumbers: selectedSeats,
-          preferredHoldExpiry: getHoldExpiry(selectedTrip),
-        });
+        const hydrated = await hydrateTripWithSeats(selectedTrip);
+        if (cancelled || !hydrated) return;
+        setSelectedTrip((prev) => ({
+          ...(hydrated || prev || {}),
+          holdExpiresAt: getHoldExpiry(prev) || getHoldExpiry(hydrated) || null,
+        }));
       } catch (error) {
         if (!cancelled) {
-          log.warn('seat_live_refresh_failed', {
-            tripInstanceId: selectedTrip?.instanceId || null,
-            activeView,
-            error,
-          });
+          log.warn('seat_live_refresh_failed', { tripInstanceId: selectedTrip?.instanceId || null, error });
         }
       }
     };
 
-    const intervalId = window.setInterval(
-      syncSeatsFromServer,
-      activeView === 'checkout' ? 8000 : 12000,
-    );
+    const intervalId = window.setInterval(syncSeatsFromServer, 12000);
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') syncSeatsFromServer();
     };
 
-    window.addEventListener('focus', syncSeatsFromServer);
     document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      window.removeEventListener('focus', syncSeatsFromServer);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [activeView, isQaMode, refreshSelectedTripState, selectedSeats, selectedTrip]);
+  }, [activeView, isQaMode, selectedTrip?.instanceId]);
 
   const openTicket = useCallback((ticket) => {
     setViewedTicket(ensureTicketIdentity(ticket));
@@ -905,7 +652,6 @@ export function useBookingFlow({
     commitSeatSelection,
     processDelayedRefund,
     selectTripForSeats,
-    refreshSelectedTripState,
     normalizedTrips,
     latestTrip,
     upcomingTickets,

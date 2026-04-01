@@ -234,9 +234,6 @@ function CheckoutView({
   onSuccess,
   showToast,
   openModal,
-  onRefreshTripState,
-  onRefreshAccountState,
-  onReturnToSeats,
   isOnline = true,
 }) {
   const [promoInput, setPromoInput] = useState('');
@@ -245,7 +242,6 @@ function CheckoutView({
   const [hasLuggage, setHasLuggage] = useState(false);
   const [needsAccess, setNeedsAccess] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isRefreshingState, setIsRefreshingState] = useState(false);
   const [overlapWarning, setOverlapWarning] = useState(null);
   const overlapApprovalRef = useRef('');
   const [remainingHoldMs, setRemainingHoldMs] = useState(() =>
@@ -269,26 +265,6 @@ function CheckoutView({
     [trip],
   );
 
-  const selectedSeatMap = useMemo(
-    () =>
-      new Map(
-        (Array.isArray(data?.seats) ? data.seats : []).map((seat) => [
-          String(seat?.number || '').trim(),
-          seat,
-        ]),
-      ),
-    [data?.seats],
-  );
-  const staleSelectedSeats = useMemo(
-    () =>
-      (Array.isArray(seats) ? seats : []).filter((seatNumber) => {
-        const matchedSeat = selectedSeatMap.get(String(seatNumber || '').trim());
-        if (!matchedSeat) return true;
-        return matchedSeat.status === 'booked' || (matchedSeat.status === 'held' && !matchedSeat.heldByCurrentUser);
-      }),
-    [seats, selectedSeatMap],
-  );
-  const hasStaleSelectedSeats = staleSelectedSeats.length > 0;
   const supportsRealPromo = Boolean(data?.instanceId);
   const subDiscountRate =
     subscription === 'student' ? 0.15 : subscription === 'vip' ? 0.25 : 0;
@@ -312,9 +288,7 @@ function CheckoutView({
     isWalletSufficient &&
     tripBookability.canBook &&
     !holdExpired &&
-    !promoLoading &&
-    !isRefreshingState &&
-    !hasStaleSelectedSeats;
+    !promoLoading;
 
   const cancellationPreview = useMemo(
     () =>
@@ -369,75 +343,6 @@ function CheckoutView({
     overlapApprovalRef.current = '';
     setOverlapWarning(null);
     showToast('تمام، راجع الرحلتين أولًا قبل تأكيد الحجز.', 'info');
-  };
-
-  const refreshCheckoutTruth = async ({ silent = false } = {}) => {
-    const canRefreshTrip = typeof onRefreshTripState === 'function';
-    const canRefreshAccount = typeof onRefreshAccountState === 'function';
-
-    if (!canRefreshTrip && !canRefreshAccount) {
-      return {
-        trip: data,
-        seats,
-        staleSelectedSeats,
-        holdExpired,
-        authoritativeWallet: wallet,
-      };
-    }
-
-    setIsRefreshingState(true);
-    try {
-      const [tripResult, accountResult] = await Promise.all([
-        canRefreshTrip
-          ? onRefreshTripState({
-              preferredHoldExpiry: trip?.holdExpiresAt || '',
-            })
-          : null,
-        canRefreshAccount ? onRefreshAccountState({ silent: true, force: true }) : null,
-      ]);
-
-      if (!silent) {
-        showToast('تم تحديث الرصيد وحالة الحجز من السيرفر.', 'success');
-      }
-
-      const latestTrip = tripResult?.trip || trip;
-      const latestSeats = Array.isArray(tripResult?.seats) ? tripResult.seats : seats;
-      const latestSeatMap = new Map(
-        (Array.isArray(latestTrip?.seats) ? latestTrip.seats : []).map((seat) => [
-          String(seat?.number || '').trim(),
-          seat,
-        ]),
-      );
-      const latestStaleSeats = (Array.isArray(latestSeats) ? latestSeats : []).filter((seatNumber) => {
-        const matchedSeat = latestSeatMap.get(String(seatNumber || '').trim());
-        if (!matchedSeat) return true;
-        return matchedSeat.status === 'booked' || (matchedSeat.status === 'held' && !matchedSeat.heldByCurrentUser);
-      });
-
-      return {
-        tripResult,
-        accountResult,
-        trip: latestTrip,
-        seats: latestSeats,
-        staleSelectedSeats: latestStaleSeats,
-        holdExpired: Boolean(tripResult?.holdExpired),
-        authoritativeWallet: Number(accountResult?.data?.wallet ?? wallet),
-      };
-    } catch (error) {
-      if (!silent) {
-        showToast('تعذر تحديث حالة الحجز من السيرفر حالياً.', 'warning');
-      }
-      return {
-        trip: data,
-        seats,
-        staleSelectedSeats,
-        holdExpired,
-        authoritativeWallet: wallet,
-        error,
-      };
-    } finally {
-      setIsRefreshingState(false);
-    }
   };
 
   if (!trip) return null;
@@ -522,59 +427,42 @@ function CheckoutView({
   };
 
   const handlePayment = async () => {
-    if (isProcessing || promoLoading || isRefreshingState) return;
+    if (isProcessing || promoLoading) return;
 
     if (!isOnline) {
       showToast('أنت حالياً أوفلاين. اتأكد من الإنترنت قبل الدفع وتأكيد الحجز.', 'warning');
       return;
     }
 
-    const syncedState = await refreshCheckoutTruth({ silent: true });
-    const latestTrip = withStationNames(syncedState?.trip || trip) || data;
-    const latestSeats = Array.isArray(syncedState?.seats) ? syncedState.seats : seats;
-    const latestStaleSeats = Array.isArray(syncedState?.staleSelectedSeats)
-      ? syncedState.staleSelectedSeats
-      : staleSelectedSeats;
-    const authoritativeWallet = Number(syncedState?.authoritativeWallet ?? wallet);
-    const latestHoldExpired = Boolean(syncedState?.holdExpired) || getRemainingHoldMs(latestTrip?.holdExpiresAt) === 0;
-    const bookability = getTripBookability(latestTrip);
+    const bookability = getTripBookability(data);
 
     if (!bookability.canBook) {
       showToast(bookability.reason, 'error');
       return;
     }
 
-    if (latestHoldExpired) {
+    if (holdExpired) {
       showToast('مهلة تثبيت المقاعد انتهت. ارجع للمقاعد وثبّتها تاني.', 'error');
-      onReturnToSeats?.();
       return;
     }
 
-    if (!Array.isArray(latestSeats) || latestSeats.length === 0) {
+    if (!Array.isArray(seats) || seats.length === 0) {
       showToast('اختار المقاعد الأول.', 'error');
-      onReturnToSeats?.();
       return;
     }
 
-    if (latestSeats.length !== passengers || new Set(latestSeats).size !== passengers) {
+    if (seats.length !== passengers || new Set(seats).size !== passengers) {
       showToast('عدد المقاعد المختارة لازم يساوي عدد الركاب.', 'error');
-      onReturnToSeats?.();
       return;
     }
 
-    if (latestStaleSeats.length) {
-      showToast(`المقاعد ${latestStaleSeats.join('، ')} لم تعد متاحة كما كانت. راجع الاختيار أولاً.`, 'warning');
-      onReturnToSeats?.();
-      return;
-    }
-
-    const overlappingTrip = findOverlappingTrip(latestTrip, currentTrips);
+    const overlappingTrip = findOverlappingTrip(data, currentTrips);
     if (overlappingTrip) {
-      const overlapKey = buildOverlapWarningKey(latestTrip, overlappingTrip);
+      const overlapKey = buildOverlapWarningKey(data, overlappingTrip);
       if (overlapApprovalRef.current !== overlapKey) {
         setOverlapWarning({
           key: overlapKey,
-          nextTrip: latestTrip,
+          nextTrip: data,
           existingTrip: overlappingTrip,
         });
         return;
@@ -596,19 +484,17 @@ function CheckoutView({
       }
     }
 
-    const latestBaseTotal = Number(latestTrip.price || 0) * passengers;
-    const latestAutoDiscount = Math.floor(latestBaseTotal * subDiscountRate);
     const backendFinalTotalPreview = Math.max(
       0,
-      latestBaseTotal +
+      baseTotal +
         luggageFee -
-        latestAutoDiscount -
+        autoDiscount -
         (latestPromoState.applied ? latestPromoState.discountAmount : 0),
     );
 
-    if (authoritativeWallet < backendFinalTotalPreview) {
+    if (wallet < backendFinalTotalPreview) {
       showToast(
-        `رصيد المحفظة الحالي ${formatCurrency(authoritativeWallet)} أقل من المطلوب بعد المراجعة النهائية ${formatCurrency(backendFinalTotalPreview)}.`,
+        `رصيد المحفظة الحالي ${formatCurrency(wallet)} أقل من المطلوب بعد المراجعة النهائية ${formatCurrency(backendFinalTotalPreview)}.`,
         'error',
       );
       return;
@@ -619,8 +505,8 @@ function CheckoutView({
 
     try {
       const result = await onCreateBooking({
-        trip: latestTrip,
-        seatNumbers: latestSeats,
+        trip: data,
+        seatNumbers: seats,
         passengers,
         promoCode: latestPromoState.applied ? latestPromoState.code : '',
         promoDiscountAmount: 0,
@@ -630,11 +516,10 @@ function CheckoutView({
 
       if (!result?.ok) {
         log.warn('booking_rejected', {
-          tripInstanceId: latestTrip.instanceId || null,
+          tripInstanceId: data.instanceId || null,
           message: result?.message || 'unknown',
           code: result?.code || null,
         });
-        await refreshCheckoutTruth({ silent: true });
         showToast(result?.message || 'حصلت مشكلة أثناء تأكيد الحجز.', 'error');
         return;
       }
@@ -642,11 +527,10 @@ function CheckoutView({
       onSuccess(result.booking, result.invoice);
     } catch (error) {
       log.error('booking_submit_failed', {
-        tripInstanceId: latestTrip.instanceId || null,
+        tripInstanceId: data.instanceId || null,
         error,
       });
-      await refreshCheckoutTruth({ silent: true });
-      showToast('حصل خطأ أثناء تأكيد الحجز. راجع الحالة من السيرفر قبل ما تحاول تاني.', 'error');
+      showToast('حصل خطأ أثناء تأكيد الحجز. جرّب تاني.', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -697,24 +581,6 @@ function CheckoutView({
           title="الحجز غير متاح حالياً"
           text={tripBookability.reason}
           icon={Clock}
-        />
-      ) : null}
-
-      {hasStaleSelectedSeats ? (
-        <InlineNotice
-          tone="warning"
-          title="اختيار المقاعد يحتاج مراجعة"
-          text={`المقاعد ${staleSelectedSeats.join('، ')} تغيّرت حالتها من السيرفر. ارجع للمقاعد وعدّل الاختيار قبل الدفع.`}
-          icon={AlertTriangle}
-        />
-      ) : null}
-
-      {isRefreshingState ? (
-        <InlineNotice
-          tone="info"
-          title="جاري مزامنة الحجز"
-          text="بنراجع الرصيد وحالة المقاعد من السيرفر قبل المتابعة النهائية."
-          icon={ShieldCheck}
         />
       ) : null}
 
@@ -848,7 +714,6 @@ function CheckoutView({
                 label={`رصيدك الحالي ${formatCurrency(wallet)}`}
                 tone={isWalletSufficient ? 'success' : 'warning'}
               />
-              <MetaChip label="الدفع النهائي يراجع السيرفر" tone="neutral" />
               <MetaChip label={`نقاط بعد الرحلة ${formatInteger(pointsToAwardLater)}`} tone="brand" />
             </div>
           </AppSurface>
@@ -897,7 +762,7 @@ function CheckoutView({
               إجمالي الدفع الآن: {formatCurrency(finalTotalPreview)}
             </p>
             <p className="mt-1 text-sm font-bold text-[var(--ink-muted)]">
-              الحجز بيتأكد بعد المراجعة النهائية فقط، والسيرفر هو المرجع الأخير للرصيد والمقاعد والسعر النهائي.
+              الحجز بيتأكد بعد المراجعة النهائية فقط، ولو فيه مشكلة هتعرفها بوضوح.
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[260px]">
@@ -910,14 +775,6 @@ function CheckoutView({
             >
               {isOnline ? 'ادفع وأكد الحجز' : 'اتأكد من الإنترنت أولًا'}
             </PrimaryButton>
-            <SecondaryButton
-              onClick={() => {
-                refreshCheckoutTruth();
-              }}
-              disabled={isRefreshingState || isProcessing}
-            >
-              {isRefreshingState ? 'جاري التحديث…' : 'حدّث الرصيد والحجز'}
-            </SecondaryButton>
             {!isWalletSufficient ? (
               <SecondaryButton onClick={() => openModal('topup')}>اشحن المحفظة الأول</SecondaryButton>
             ) : null}

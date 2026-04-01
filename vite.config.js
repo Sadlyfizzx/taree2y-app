@@ -19,5 +19,10 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: env.VITE_BUILD_SOURCEMAP === 'true',
     },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      exclude: ['tests/e2e/**', 'tests/smoke/**'],
+    },
   };
 });

@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "npm run test:all",
     "test:run": "vitest run",
     "test:booking": "vitest run src/lib/promoEngine.test.js src/app/screens/CheckoutView.test.jsx",
     "qa:phase3": "npm run test:all && npm run e2e:smoke",

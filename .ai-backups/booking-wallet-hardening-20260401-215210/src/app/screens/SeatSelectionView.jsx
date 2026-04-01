@@ -40,36 +40,14 @@ function SeatSelectionView({
     [seatItems],
   );
 
-  const selectedSeatMap = useMemo(
-    () =>
-      new Map(
-        seatItems.map((seat) => [String(seat?.number || '').trim(), seat]),
-      ),
-    [seatItems],
-  );
-  const staleSelectedSeats = useMemo(
-    () =>
-      (Array.isArray(selectedSeats) ? selectedSeats : []).filter((seatNumber) => {
-        const matchedSeat = selectedSeatMap.get(String(seatNumber || '').trim());
-        if (!matchedSeat) return true;
-        return matchedSeat.status === 'booked' || (matchedSeat.status === 'held' && !matchedSeat.heldByCurrentUser);
-      }),
-    [selectedSeatMap, selectedSeats],
-  );
-  const hasStaleSelectedSeats = staleSelectedSeats.length > 0;
   const remainingSeats = Math.max(0, passengers - selectedSeats.length);
-  const isReady = selectedSeats.length === passengers && !hasStaleSelectedSeats;
+  const isReady = selectedSeats.length === passengers;
   const [isConfirming, setIsConfirming] = useState(false);
 
   if (!trip || !seatItems.length) return null;
 
   const handleConfirm = async () => {
     if (isConfirming || !isReady || !bookability.canBook) return;
-
-    if (hasStaleSelectedSeats) {
-      showToast('بعض المقاعد المختارة اتغيرت من السيرفر. راجع الاختيار قبل ما تكمل.', 'warning');
-      return;
-    }
 
     setIsConfirming(true);
     try {
@@ -133,7 +111,7 @@ function SeatSelectionView({
           />
           <MetaChip
             label={`المختار ${formatInteger(selectedSeats.length)}`}
-            tone={hasStaleSelectedSeats ? 'warning' : isReady ? 'success' : 'neutral'}
+            tone={isReady ? 'success' : 'neutral'}
           />
           <MetaChip label={data.class} tone="neutral" />
         </div>
@@ -144,15 +122,6 @@ function SeatSelectionView({
           tone="danger"
           title="الحجز مش متاح على الرحلة دي"
           text={bookability.reason}
-          icon={Clock}
-        />
-      ) : null}
-
-      {hasStaleSelectedSeats ? (
-        <InlineNotice
-          tone="warning"
-          title="اختيار المقاعد محتاج مراجعة"
-          text={`المقاعد ${staleSelectedSeats.join('، ')} لم تعد متاحة بنفس الحالة. اختار بديل قبل ما تكمل.`}
           icon={Clock}
         />
       ) : null}
@@ -231,11 +200,7 @@ function SeatSelectionView({
             <div className="mt-4 flex flex-wrap gap-2">
               {selectedSeats.length ? (
                 selectedSeats.map((seat) => (
-                  <MetaChip
-                    key={seat}
-                    label={seat}
-                    tone={staleSelectedSeats.includes(seat) ? 'warning' : 'brand'}
-                  />
+                  <MetaChip key={seat} label={seat} tone="brand" />
                 ))
               ) : (
                 <p className="text-sm font-bold text-[var(--ink-muted)]">
@@ -246,22 +211,18 @@ function SeatSelectionView({
           </AppSurface>
 
           <InlineNotice
-            tone={hasStaleSelectedSeats ? 'warning' : isReady ? 'success' : 'info'}
+            tone={isReady ? 'success' : 'info'}
             title={
-              hasStaleSelectedSeats
-                ? 'راجع المقاعد المتغيرة أولًا'
-                : isReady
+              isReady
                 ? 'تمام، المقاعد جاهزة للمراجعة'
                 : `فاضل ${remainingSeats} ${remainingSeats === 1 ? 'مقعد' : 'مقاعد'}`
             }
             text={
-              hasStaleSelectedSeats
-                ? 'بعض المقاعد تغيّرت من السيرفر أثناء المراجعة. عدّل الاختيار ثم كمّل.'
-                : isReady
+              isReady
                 ? 'لو كل حاجة مناسبة، كمّل لخطوة الدفع.'
                 : 'اختار العدد المطلوب فقط عشان تقدر تثبّت المقاعد وتكمل.'
             }
-            icon={hasStaleSelectedSeats ? Clock : isReady ? Check : Clock}
+            icon={isReady ? Check : Clock}
           />
 
           <AppSurface className="p-5">

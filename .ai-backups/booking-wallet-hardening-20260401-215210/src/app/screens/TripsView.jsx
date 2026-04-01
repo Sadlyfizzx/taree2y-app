@@ -254,7 +254,7 @@ export default function TripsView({
                         </p>
                         <p className="mt-1 text-[12px] font-bold leading-5 text-[var(--ink-muted)] sm:text-sm sm:leading-6">
                           {policy.allowed
-                            ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}، لكن المبلغ النهائي بيتحدد من السيرفر وقت تنفيذ الإلغاء.`
+                            ? `لو ألغيت دلوقتي المتوقع يرجعلك ${formatCurrency(policy.refundAmount)}.`
                             : policy.message}
                         </p>
                       </div>
@@ -291,7 +291,7 @@ export default function TripsView({
                         setCancelingTrip(trip);
                       }}
                     >
-                      {isPendingCancellation ? 'قيد الإلغاء / الاسترداد' : 'إلغاء الرحلة'}
+                      {isPendingCancellation ? 'جاري الإلغاء' : 'إلغاء الرحلة'}
                     </SecondaryButton>
                   ) : null}
                 </div>
@@ -308,7 +308,7 @@ export default function TripsView({
             setCancelingTrip(null);
           }}
           title="تأكيد إلغاء الرحلة"
-          subtitle="راجع الرسوم والمبلغ المتوقع يرجع للمحفظة قبل ما تأكد. التنفيذ النهائي وقيمة الاسترداد المؤكدة بيرجعوا من السيرفر."
+          subtitle="راجع الرسوم والمبلغ المتوقع يرجع للمحفظة قبل ما تأكد."
           icon={<AlertTriangle className="h-6 w-6" />}
           maxWidth="max-w-lg"
           footer={
